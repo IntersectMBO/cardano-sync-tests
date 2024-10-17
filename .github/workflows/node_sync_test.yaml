@@ -2,11 +2,9 @@ name: node_sync_tests
 
 on:
   workflow_dispatch:
-    branches:
-      - main
     inputs:
       environment:
-        description: Environment on which Buildkite agent will run tests
+        description: "Environment on which Buildkite agent will run tests"
         type: choice
         options: 
         - mainnet
@@ -15,59 +13,61 @@ on:
         - shelley-qa
         default: mainnet
       build_mode:
-        description: Currently only nix is supported, there are no prebuilt CI binaries available anymore. Windows agents can only build with cabal - nix is not supported. 
+        description: "build-mode"
         type: choice
         options: 
         - nix
         default: nix
       tag_no1:
-        description: rev_label in db/visuals (1.33.0-rc2 (tag number) or 1.33.0 (release number) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version))
+        description: "Initial sync - Graph axis label"
         required: true
-        default: "8.0.0-legacy"
+        default: "9.2.1"
       node_rev1:
-        description: Desired cardano-node revision (used for initial sync) - cardano-node (tags/1.33.0-rc2) tag or branch
+        description: "Initial sync - cardano-node revision"
         required: true
-        default: "tags/8.0.0"
+        default: "tags/9.2.1"
       node_topology1:
-        description: Desired cardano-node topology type (used for initial sync) - legacy, p2p
+        description: "Initial sync - cardano-node topology"
         type: choice
         options: 
         - legacy
         - p2p
         default: legacy
       node_start_arguments1:
-        description: Extra arguments to be used when starting the node using tag_no1 (--a1 --a2 21)
+        description: "Initial sync - Extra arguments when starting the node"
         required: false
         default: "None"
       tag_no2:
-        description: rev_label in db/visuals (1.33.0-rc2 (tag number) or 1.33.0 (release number) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version))
+        description: "Upgrade node - Graph axis label"
         required: true
         default: "None"
       node_rev2:
-        description: Desired cardano-node revision (used for final sync) - cardano-node (tags/1.33.0-rc2) tag or branch
+        description: "Upgrade node - cardano-node revision"
         required: true
         default: "None"
       node_topology2:
-        description: Desired cardano-node topology type (used for final sync) - legacy, p2p
+        description: "Upgrade node - cardano-node topology"
         type: choice
         options: 
         - legacy
         - p2p
         default: legacy
       node_start_arguments2:
-        description: Extra arguments to be used when starting the node using tag_no2 (--a1 --a2 21)
+        description: "Upgrade node - Extra arguments when starting the node"
         required: false
         default: "None"
+
+
 jobs:
   node_sync_test_mainnet:
     runs-on: ubuntu-latest
     steps:
-      - name: trigger the Buildkite pipeline - run sync tests on Mainnet
+      - name: Trigger the Buildkite pipeline - run sync tests on Mainnet
         uses: 'buildkite/trigger-pipeline-action@v1.5.0'
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
-          PIPELINE: 'input-output-hk/qa-sync-tests'
-          BRANCH: 'sync_tests'
+          PIPELINE: 'input-output-hk/node-sync-tests'
+          BRANCH: ${{ github.ref_name }}
           MESSAGE: ':github: Triggered by GitHub Action'
           AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
           AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
@@ -100,7 +100,7 @@ jobs:
         cabal: ["3.8.1.0"]
         ghc: ["8.10.7"]
         branch:
-          - main
+          - ${{ github.ref_name }}
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 600
@@ -150,16 +150,16 @@ jobs:
           git-ref: ${{ env.SECP256K1_REF }}
           cache-version: ${{ env.SECP_CACHE_VERSION }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: "[PowerShell] Add build script path"        
         if: runner.os == 'Windows'
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH "$(pwd)/.github/bin"
 
-      - name: Checkout cardano-node-tests repo
-        uses: actions/checkout@v3
+      - name: Checkout cardano-sync-tests repo
+        uses: actions/checkout@v4
         with:
-          path: cardano_node_tests
+          path: cardano_sync_tests
           ref: main
 
       - uses: cachix/install-nix-action@v22
@@ -190,7 +190,7 @@ jobs:
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
           ${{ (runner.os == 'Windows' && '$env:PATH=("C:\msys64\mingw64\bin;{0}" -f $env:PATH)') || '' }}
-          cd cardano_node_tests
+          cd cardano_sync_tests
           echo "current branch: $(git branch --show-current)"
           python sync_tests/node_sync_test.py -e ${{ matrix.env }} -b ${{ github.event.inputs.build_mode }} -t1 "${{ github.event.inputs.tag_no1 }}" -t2 "${{ github.event.inputs.tag_no2 }}" -r1 "${{ github.event.inputs.node_rev1 }}" -r2 "${{ github.event.inputs.node_rev2 }}" -n1 "${{ github.event.inputs.node_topology1 }}" -n2 "${{ github.event.inputs.node_topology2 }}" -a1="${{ github.event.inputs.node_start_arguments1 }}" -a2="${{ github.event.inputs.node_start_arguments2 }}"
       
@@ -202,17 +202,17 @@ jobs:
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          cd cardano_node_tests
+          cd cardano_sync_tests
           echo "current branch: $(git branch --show-current)"
           python sync_tests/node_write_sync_values_to_db.py -e ${{ matrix.env }}
       
       - name: Generate artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: node_logs_${{ matrix.env }}_${{ matrix.os }}
           path: |
-            cardano_node_tests/logfile_copy.log
-            cardano_node_tests/sync_results.json
-            cardano_node_tests/config.json
-            cardano_node_tests/topology.json
+            cardano_sync_tests/logfile_copy.log
+            cardano_sync_tests/sync_results.json
+            cardano_sync_tests/config.json
+            cardano_sync_tests/topology.json
