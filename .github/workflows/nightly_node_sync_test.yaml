@@ -1,0 +1,57 @@
+name: Nightly node sync tests
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # Every day at 23:00 UTC
+  workflow_dispatch:
+
+jobs:
+  nightly_job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout cardano-sync-tests repository
+        uses: actions/checkout@v4
+        with:
+          path: cardano_sync_tests
+          ref: ${{ github.ref_name }}
+
+      - name: Get graph label with run date
+        id: get_graph_label
+        shell: bash
+        run: |
+          current_date=$(date +'%Y-%m-%d')
+          echo "tag_no1=nightly_node_$current_date" >> $GITHUB_OUTPUT
+
+      - name: Trigger Buildkite pipeline for Mainnet sync tests
+        uses: 'buildkite/trigger-pipeline-action@v1.5.0'
+        env:
+          BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
+          PIPELINE: 'input-output-hk/node-sync-tests'
+          BRANCH: 'main'
+          MESSAGE: ':github: Triggered by GitHub Action'
+
+          # Database secrets
+          AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
+          AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
+          AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
+          AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
+
+          # Blockfrost API
+          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
+
+          BUILD_ENV_VARS: '{
+          "env":"mainnet",
+          "build_mode":"nix",
+          "node_rev1":"master",
+          "tag_no1":"${{ steps.set_tag_no1.outputs.tag_no1 }}",
+          "node_topology1":"non-bootstrap-peers",
+          "node_start_arguments1":"",
+          "node_topology2":"",
+          "tag_no2":"",
+          "node_rev2":"",          
+          "node_start_arguments2":""
+          }'
+
+      - name: Finalize sync
+        run: echo "Sync job finished."

@@ -58,10 +58,6 @@ on:
         default: "None"
 
 
-  schedule:
-    - cron: '0 23 * * */1'  # Every day at 23:00
-
-
 jobs:
   node_sync_test_buildkite_mainnet:
     runs-on: ubuntu-latest
