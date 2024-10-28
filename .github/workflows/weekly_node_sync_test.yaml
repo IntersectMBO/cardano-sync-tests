@@ -1,4 +1,4 @@
-name: Nightly node sync tests
+name: Weekly node sync tests
 
 on:
   schedule:
