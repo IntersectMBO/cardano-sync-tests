@@ -3,7 +3,7 @@
 # ! nix-shell -I nixpkgs=./nix
 # shellcheck shell=bash
 
-set -xeuo pipefail
+set -xeo pipefail
 
 echo " ==== set WORKDIR"
 WORKDIR="/scratch/workdir"
@@ -29,12 +29,12 @@ python3 -c "import requests, pandas, psutil, pymysql;"
 env=$1
 build_mode=$2
 node_rev1=$3
-node_rev2=$4
-tag_no1=$5
-tag_no2=$6
-node_topology1=$7
-node_topology2=$8
-node_start_arguments1=$9
+tag_no1=$4
+node_topology1=$5
+node_start_arguments1=$6
+node_rev2=$7
+tag_no2=$8
+node_topology2=$9
 node_start_arguments2=${10}
 
 echo " ==== start sync test"

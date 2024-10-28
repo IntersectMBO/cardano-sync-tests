@@ -718,7 +718,7 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
     node_repo_name = 'cardano-node'
     node_repo_dir = test_directory / 'cardano_node_dir'
 
-    cli_rev = 'e7e5a86'
+    cli_rev = 'main'
     cli_repo_name = 'cardano-cli'
     cli_repo_dir = test_directory / 'cardano_cli_dir'
 
