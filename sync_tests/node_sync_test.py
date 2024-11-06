@@ -281,7 +281,7 @@ def wait_for_node_to_start(timeout_minutes=20):
 
 
 def get_current_tip(timeout_minutes=10):
-    cmd = CLI + ' query tip ' + get_testnet_value()
+    cmd = CLI + ' latest query tip ' + get_testnet_value()
 
     for i in range(timeout_minutes):
         try:
@@ -683,7 +683,7 @@ def copy_node_executables(src_location, dst_location, build_mode):
             shutil.copy2(Path(src_location) / node_binary_location / 'cardano-node',
                          Path(dst_location) / 'cardano-node')
         except Exception as e:
-            print_error(f" !!! ERROR - could not copy the cardano-cli file - {e}")
+            print_error(f" !!! ERROR - could not copy the cardano-node file - {e}")
             exit(1)
         try:
             shutil.copy2(Path(src_location) / cli_binary_location / 'cardano-cli',
@@ -718,19 +718,10 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
     node_repo_name = 'cardano-node'
     node_repo_dir = test_directory / 'cardano_node_dir'
 
-    cli_rev = 'main'
-    cli_repo_name = 'cardano-cli'
-    cli_repo_dir = test_directory / 'cardano_cli_dir'
-
     if is_dir(node_repo_dir):
         repo = git_checkout(repository, node_rev)
     else:
         repo = git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
-
-    if is_dir(cli_repo_dir):
-        git_checkout(repository, cli_rev)
-    else:
-        git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
 
     if build_tool == 'nix':
         os.chdir(node_repo_dir)
@@ -742,6 +733,15 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
 
     elif build_tool == 'cabal':
         cabal_local_file = Path(test_directory) / 'sync_tests' / 'cabal.project.local'
+
+        cli_rev = 'main'
+        cli_repo_name = 'cardano-cli'
+        cli_repo_dir = test_directory / 'cardano_cli_dir'
+
+        if is_dir(cli_repo_dir):
+            git_checkout(repository, cli_rev)
+        else:
+            git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
 
         # Build cli
         os.chdir(cli_repo_dir)
