@@ -3,38 +3,27 @@ name: db-sync - full cycle tests
 on:
   workflow_dispatch:
     inputs:
-      node_pr:
-        description: node pull request number
-        required: true
-        default: "4269"
-      node_branch:
-        description: node branch or tag
-        required: true
-        default: "1.35.3"
       node_version:
-        description: node version - 1.33.0-rc2 (tag number) or 1.33.0 (release number - for released versions) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version)
+        description: "cardano-node version"
         required: true
-        default: "1.35.3"
-      db_sync_branch:
-        description: db-sync branch or tag
-        required: true
-        default: "tags/13.0.5"
-      db_sync_pr:
-        description: db-sync pr
-        required: true
-        default: "1208"
+        default: "tags/10.1.2"
       db_sync_version:
-        description: db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 (release number - for released versions) or 12.0.2_PR2124 (for not released and not tagged runs with a specific db_sync PR/version)
+        description: "db-sync version"
         required: true
-        default: "13.0.5"
+        default: "tags/13.6.0.1"
       db_sync_start_arguments:
-        description: argument to be passed when starting the db-sync - none, disable-ledger, disable-epoch, disable-cache
+        description: "db-sync start arguments"
         required: false
         default: "none"
       environment:
-        description: environment on which to run the tests - shelley-qa, preview, preprod or mainnet
-        required: true
-        default: "preprod"
+        description: "Environment on which Buildkite agent will run tests"
+        type: choice
+        options:
+        - mainnet
+        - preprod
+        - preview
+        - shelley-qa
+        default: preprod
       run_only_sync_test:
         type: boolean
         default: true
@@ -48,7 +37,7 @@ jobs:
         uses: 'buildkite/trigger-pipeline-action@v1.5.0'
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
-          PIPELINE: 'input-output-hk/db-sync_sync_tests'
+          PIPELINE: 'input-output-hk/db-sync-sync-tests'
           BRANCH: ${{ github.ref_name || 'main' }}
           MESSAGE: ':github: Triggered by GitHub Action'
           AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
@@ -56,11 +45,7 @@ jobs:
           AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
           BUILD_ENV_VARS: '{
-          "node_pr":"${{ github.event.inputs.node_pr }}",
-          "node_branch":"${{ github.event.inputs.node_branch }}",
           "node_version":"${{ github.event.inputs.node_version }}",
-          "db_sync_pr":"${{ github.event.inputs.db_sync_pr }}",
-          "db_sync_branch":"${{ github.event.inputs.db_sync_branch }}",
           "db_sync_version":"${{ github.event.inputs.db_sync_version }}",
           "db_sync_start_arguments":"${{ github.event.inputs.db_sync_start_arguments }}",
           "environment":"${{ github.event.inputs.environment }}",

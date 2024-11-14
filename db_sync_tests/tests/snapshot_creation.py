@@ -80,7 +80,7 @@ def main():
     print(f"Stage 2 result: {stage_2_result}")
     end_snapshot_creation = time.perf_counter()
 
-    snapshot_file = stage_2_result.split(" ")[1]
+    snapshot_file = stage_2_result
     set_buildkite_meta_data("snapshot_file", snapshot_file)
     print(f"Snapshot file name: {snapshot_file}")
 

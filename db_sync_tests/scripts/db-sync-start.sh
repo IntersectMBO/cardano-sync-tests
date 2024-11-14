@@ -7,7 +7,7 @@ export PGPASSFILE=config/pgpass-$ENVIRONMENT
 
 if [[ $FIRST_START == "True" ]]; then
     cd config
-    wget -O $ENVIRONMENT-db-config.json https://book.world.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json
+    wget -O $ENVIRONMENT-db-config.json https://book.play.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json
     sed -i "s/NodeConfigFile.*/NodeConfigFile\": \"..\/..\/cardano-node\/$ENVIRONMENT-config.json\",/g" "$ENVIRONMENT-db-config.json"
     cd ..
 fi

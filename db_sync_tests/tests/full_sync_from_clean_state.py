@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import subprocess
 from collections import OrderedDict
 from pathlib import Path
 import sys
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 
 sys.path.append(os.getcwd())
 
-from utils.utils import seconds_to_time, get_no_of_cpu_cores, get_current_date_time, \
+from db_sync_tests.utils.utils import seconds_to_time, get_no_of_cpu_cores, get_current_date_time, \
     get_os_type, get_total_ram_in_GB, upload_artifact, clone_repo, zip_file, execute_command, \
     print_file, stop_process, write_data_as_json_to_file, get_node_config_files, \
     get_node_version, get_db_sync_version, start_node_in_cwd, wait_for_db_to_sync, \
@@ -24,7 +25,7 @@ from utils.utils import seconds_to_time, get_no_of_cpu_cores, get_current_date_t
     NODE_ARCHIVE, DB_SYNC_ARCHIVE, SYNC_DATA_ARCHIVE, EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES, \
     ENVIRONMENT \
 
-from utils.aws_db_utils import get_identifier_last_run_from_table, \
+from db_sync_tests.utils.aws_db_utils import get_identifier_last_run_from_table, \
     add_bulk_rows_into_db, add_single_row_into_db
 
 
@@ -168,10 +169,11 @@ def main():
     print(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # cardano-node setup
-    NODE_DIR=clone_repo('cardano-node', node_branch)
+    NODE_DIR=clone_repo('cardano-node', node_version_from_gh_action)
     os.chdir(NODE_DIR)
     execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-    execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
+    execute_command("nix build -v --debug .#cardano-cli -o cardano-cli-bin")
+
     print("--- Node setup")
     copy_node_executables(build_method="nix")
     get_node_config_files(env)
@@ -184,7 +186,7 @@ def main():
 
     # cardano-db sync setup
     os.chdir(ROOT_TEST_PATH)
-    DB_SYNC_DIR = clone_repo('cardano-db-sync', db_branch)
+    DB_SYNC_DIR = clone_repo('cardano-db-sync', db_sync_version_from_gh_action.rstrip())
     os.chdir(DB_SYNC_DIR)
     print("--- Db sync setup")
     setup_postgres() # To login use: psql -h /path/to/postgres -p 5432 -e postgres

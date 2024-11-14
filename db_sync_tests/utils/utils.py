@@ -27,14 +27,14 @@ import time
 
 ONE_MINUTE = 60
 ROOT_TEST_PATH = Path.cwd()
-ENVIRONMENT = os.environ['environment']
+ENVIRONMENT = os.environ.get('environment', None)
 
-NODE_PR = os.environ['node_pr']
-NODE_BRANCH = os.environ['node_branch']
-NODE_VERSION = os.environ['node_version']
+NODE_PR = os.environ.get('node_pr', None)
+NODE_BRANCH = os.environ.get('node_branch', None)
+NODE_VERSION = os.environ.get('node_version', None)
 
-DB_SYNC_BRANCH = os.environ['db_sync_branch']
-DB_SYNC_VERSION = os.environ['db_sync_version']
+DB_SYNC_BRANCH = os.environ.get('db_sync_branch', None)
+DB_SYNC_VERSION = os.environ.get('db_sync_version', None)
 
 POSTGRES_DIR = ROOT_TEST_PATH.parents[0]
 POSTGRES_USER = subprocess.run(['whoami'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
@@ -234,7 +234,9 @@ def print_file(file, number_of_lines = 0):
             if index < number_of_lines + 1:
                 print(line, flush=True)
             else: break
-    else: print(contents, flush=True)
+    else:
+        print(contents, flush=True)
+        return contents
 
 
 def get_process_info(proc_name):
@@ -480,20 +482,36 @@ def get_node_archive_url(node_pr):
 
 
 def get_node_config_files(env):
-    base_url = "https://book.world.dev.cardano.org/environments/"
-    urllib.request.urlretrieve(base_url + env + "/config.json", env + "-config.json",)
-    urllib.request.urlretrieve(base_url + env + "/byron-genesis.json", "byron-genesis.json",)
-    urllib.request.urlretrieve(base_url + env + "/shelley-genesis.json", "shelley-genesis.json",)
-    urllib.request.urlretrieve(base_url + env + "/alonzo-genesis.json", "alonzo-genesis.json",)
-    urllib.request.urlretrieve(base_url + env + "/conway-genesis.json", "conway-genesis.json",)
-    urllib.request.urlretrieve(base_url + env + "/topology.json", env + "-topology.json",)
+    base_url = "https://book.play.dev.cardano.org/environments/"
+    filenames = [
+        (base_url + env + "/config.json", f"{env}-config.json"),
+        (base_url + env + "/byron-genesis.json", "byron-genesis.json"),
+        (base_url + env + "/shelley-genesis.json", "shelley-genesis.json"),
+        (base_url + env + "/alonzo-genesis.json", "alonzo-genesis.json"),
+        (base_url + env + "/conway-genesis.json", "conway-genesis.json"),
+        (base_url + env + "/topology.json", f"{env}-topology.json")
+    ]
+    for url, filename in filenames:
+        try:
+            urllib.request.urlretrieve(url, filename)
+            # Check if the file exists after download
+            if not os.path.isfile(filename):
+                raise FileNotFoundError(f"Downloaded file '{filename}' does not exist.")
+        except Exception as e:
+            print(f"Error downloading {url}: {e}")
+            exit(1)
 
 
 def copy_node_executables(build_method="nix"):
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     node_dir = Path.cwd() / 'cardano-node'
+    node_bin_dir = node_dir / "cardano-node-bin/"
     os.chdir(node_dir)
+    print(f"current_directory: {os.getcwd()}")
+
+    result = subprocess.run(['nix', '--version'], stdout=subprocess.PIPE, text=True, check=True)
+    print(f"Nix version: {result.stdout.strip()}")
     
     if build_method == "nix":
         node_binary_location = "cardano-node-bin/bin/cardano-node"
@@ -595,7 +613,7 @@ def set_node_socket_path_env_var_in_cwd():
 def get_node_tip(env, timeout_minutes=20):
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-node")
-    cmd = "./_cardano-cli query tip " + get_testnet_value(env)
+    cmd = "./_cardano-cli latest query tip " + get_testnet_value(env)
 
     for i in range(timeout_minutes):
         try:
@@ -690,7 +708,7 @@ def start_node_in_cwd(env):
         p = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
         print("waiting for db folder to be created")
         counter = 0
-        timeout_counter = 25 * ONE_MINUTE
+        timeout_counter = 1 * ONE_MINUTE
         node_db_dir = current_directory + "/db"
         while not os.path.isdir(node_db_dir):
             time.sleep(1)
@@ -698,6 +716,8 @@ def start_node_in_cwd(env):
             if counter > timeout_counter:
                 print(
                     f"ERROR: waited {timeout_counter} seconds and the DB folder was not created yet")
+                node_startup_error = print_file(NODE_LOG)
+                print_color_log(sh_colors.FAIL, f"Error: {node_startup_error}")
                 exit(1)
 
         print(f"DB folder was created after {counter} seconds")
@@ -952,25 +972,35 @@ def create_db_sync_snapshot_stage_1(env):
         )
 
 def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
-    os.chdir(ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / 'cardano-db-sync')
+    os.chdir(ROOT_TEST_PATH / 'cardano-db-sync')
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
-    cmd = f"{stage_2_cmd}"
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
-
     try:
-        outs, errs = p.communicate(timeout=43200) # 12 hours
-        print(f"Snapshot Creation - Stage 2 result: {outs}")
-        if errs:
-            print(f"Warnings or Errors: {errs}")
-        return outs.split("\n")[3].lstrip()
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        # Running the command and capturing output and error
+        result = subprocess.run(
+            stage_2_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=43200  # 12 hours
         )
+
+        print(f"Snapshot Creation - Stage 2 Output:\n{result.stdout}")
+        if result.stderr:
+            print(f"Warnings or Errors:\n{result.stderr}")
+        # Extracting the snapshot path from the last line mentioning 'Created'
+        snapshot_line = next(
+            (line for line in result.stdout.splitlines() if line.startswith("Created")),
+            "Snapshot creation output not found."
+        )
+        snapshot_path = snapshot_line.split()[
+            1] if "Created" in snapshot_line else "Snapshot path unknown"
+
+        return snapshot_path
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Snapshot creation timed out.")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Command '{e.cmd}' failed with error: {e.stderr}")
 
         
 def get_db_sync_tip(env):
@@ -1114,7 +1144,7 @@ def start_db_sync(env, start_args="", first_start="True"):
     export_env_var("LOG_FILEPATH", DB_SYNC_LOG)
 
     try:
-        cmd = "./scripts/db-sync-start.sh"
+        cmd = "./db_sync_tests/scripts/db-sync-start.sh"
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
@@ -1185,7 +1215,7 @@ def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port='5432'):
     export_env_var("PGPORT", pg_port)
 
     try:
-        cmd = ["./scripts/postgres-start.sh", f"{pg_dir}", "-k"]
+        cmd = ["./db_sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
         output = (
             subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             .decode("utf-8")
