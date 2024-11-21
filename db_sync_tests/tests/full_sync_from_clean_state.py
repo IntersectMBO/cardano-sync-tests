@@ -172,7 +172,7 @@ def main():
     NODE_DIR=clone_repo('cardano-node', node_version_from_gh_action)
     os.chdir(NODE_DIR)
     execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-    execute_command("nix build -v --debug .#cardano-cli -o cardano-cli-bin")
+    execute_command("nix-build -v -A cardano-cli -o cardano-cli-bin")
 
     print("--- Node setup")
     copy_node_executables(build_method="nix")

@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-from utils.utils import seconds_to_time, get_no_of_cpu_cores, get_current_date_time, \
+from db_sync_tests.utils.utils import seconds_to_time, get_no_of_cpu_cores, get_current_date_time, \
     get_os_type, get_total_ram_in_GB, upload_artifact, clone_repo, wait, zip_file, \
     print_file, stop_process, copy_node_executables, write_data_as_json_to_file, \
     execute_command, get_node_config_files, are_errors_present_in_db_sync_logs, \
