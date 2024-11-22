@@ -1,19 +1,7 @@
 steps:
   - label: ':drum_with_drumsticks: Run the Cardano node sync test on Mainnet using a Linux machine'
     commands:
-      - export BUILD_MODE="$build_mode"
-      - export ENV="$env"
-      - export TAG_NO1="$tag_no1"
-      - export TAG_NO2="$tag_no2"
-      - export NODE_REV1="$node_rev1"
-      - export NODE_REV2="$node_rev2"
-      - export NODE_TOPOLOGY1="$node_topology1"
-      - export NODE_TOPOLOGY2="$node_topology2"
-      - export NODE_START_ARGUMENTS1="$node_start_arguments1"
-      - export NODE_START_ARGUMENTS2="$node_start_arguments2"
-      - nix develop --accept-flake-config .#python --command python ./sync_tests/node_sync_test.py \
-          -b "$BUILD_MODE" -e "$ENV" -t1 "$TAG_NO1" -t2 "$TAG_NO2" -r1 "$NODE_REV1" -r2 "$NODE_REV2" \
-          -n1 "$NODE_TOPOLOGY1" -n2 "$NODE_TOPOLOGY2" -a1="$NODE_START_ARGUMENTS1" -a2="$NODE_START_ARGUMENTS2"
+      - nix develop --accept-flake-config .#python --command python ./sync_tests/tests/node_sync_test.py -b "${build_mode}" -e "${env}" -t1 "${tag_no1}" -t2 "${tag_no2}" -r1 "${node_rev1}" -r2 "${node_rev2}" -n1 "${node_topology1}" -n2 "${node_topology2}" -a1 "${node_start_arguments1}" -a2 "${node_start_arguments2}"
     timeout_in_minutes: 3000
     agents:
       system: x86_64-linux

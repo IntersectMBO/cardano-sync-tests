@@ -97,7 +97,7 @@ jobs:
           AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
           AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
-          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}         
+          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
           BUILD_ENV_VARS: '{
           "env":"${{ github.event.inputs.environment }}",
           "build_mode":"${{ github.event.inputs.build_mode }}",
@@ -120,12 +120,10 @@ jobs:
   node_sync_test:
     strategy:
       matrix:
-        env: [ preprod, preview ]
-        ghc: [ "9.6" ]
-        cabal: [ "3.12.1.0" ]
+        env: [preprod, preview]
+        ghc: ["9.6"]
+        cabal: ["3.12.1.0"]
         sys:
-          # skip windows for now, we need to check if is really worth the time to make it work
-          # - { os: windows-latest, shell: 'C:/msys64/usr/bin/bash.exe -e {0}' }
           - { os: ubuntu-latest, shell: bash }
           - { os: macos-latest, shell: bash }
         branch:
@@ -137,27 +135,12 @@ jobs:
       MSYS2_PATH_TYPE: inherit
       MSYSTEM: MINGW64
     steps:
-      - name: Install Haskell
-        if: matrix.sys.os == 'windows-latest'
-        uses: input-output-hk/actions/haskell@latest
-        id: setup-haskell
-        with:
-          ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
-
-      - name: Install system dependencies
-        if: matrix.sys.os == 'windows-latest'
-        uses: input-output-hk/actions/base@latest
-        with:
-          use-sodium-vrf: true
-
-      - name: Checkout cardano-sync-tests repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          path: cardano_sync_tests
           ref: ${{ github.ref_name }}
 
-      - name: Install nix
+      - name: Install Nix
         uses: cachix/install-nix-action@v27
         if: matrix.sys.os != 'windows-latest'
         with:
@@ -166,48 +149,32 @@ jobs:
             substituters = https://cache.nixos.org https://cache.iog.io
             allow-import-from-derivation = true
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install Python dependencies
+      - name: Enter Nix Development Shell
+        if: matrix.sys.os != 'windows-latest'
         run: |
-          pip install pymysql
-          pip install requests
-          pip install psutil
-          pip install pandas
-          pip install blockfrost-python
-          pip install GitPython
-          pip install colorama
-
-      - name: "[Windows] Update environment variables"
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "PATH=C:\\msys64\\mingw64\\opt\\cardano\\bin;C:\\msys64\\mingw64\\bin;{0}" -f $env:PATH  >> $env:GITHUB_ENV
-          "PKG_CONFIG_PATH=C:\\msys64\\mingw64\\opt\\cardano\\lib\\pkgconfig;C:\\msys64\\mingw64\\lib\\pkgconfig;C:\\msys64\\mingw64\\share\\pkgconfig;C:\\msys64\\usr\\lib\\pkgconfig;C:\\msys64\\usr\\share\\pkgconfig;{0}" -f $env:PKG_CONFIG_PATH >> $env:GITHUB_ENV
-      
-
-      - name: Run sync test on Windows
-        if: runner.os == 'Windows'
-        env:
-          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
-        run: |
-          cd cardano_sync_tests
-          echo "current branch: $(git branch --show-current)"
-          python sync_tests/node_sync_test.py -e ${{ matrix.env }} -b ${{ github.event.inputs.build_mode }} -t1 "${{ github.event.inputs.tag_no1 }}" -t2 "${{ github.event.inputs.tag_no2 }}" -r1 "${{ github.event.inputs.node_rev1 }}" -r2 "${{ github.event.inputs.node_rev2 }}" -n1 "${{ github.event.inputs.node_topology1 }}" -n2 "${{ github.event.inputs.node_topology2 }}" -a1="${{ github.event.inputs.node_start_arguments1 }}" -a2="${{ github.event.inputs.node_start_arguments2 }}"
-        continue-on-error: true  # This will ensure the job does not fail if Windows tests fail - which is expected because they run slower
+          nix develop --accept-flake-config .#python --command bash -c "
+            echo 'Inside Nix development shell';
+            python -m pip install --upgrade pip;
+            pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib;
+          "
 
       - name: Run sync test
         if: runner.os != 'Windows'
         env:
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          cd cardano_sync_tests
-          echo "current branch: $(git branch --show-current)"
-          python sync_tests/node_sync_test.py -e ${{ matrix.env }} -b ${{ github.event.inputs.build_mode }} -t1 "${{ github.event.inputs.tag_no1 }}" -t2 "${{ github.event.inputs.tag_no2 }}" -r1 "${{ github.event.inputs.node_rev1 }}" -r2 "${{ github.event.inputs.node_rev2 }}" -n1 "${{ github.event.inputs.node_topology1 }}" -n2 "${{ github.event.inputs.node_topology2 }}" -a1="${{ github.event.inputs.node_start_arguments1 }}" -a2="${{ github.event.inputs.node_start_arguments2 }}"
-      
+          nix develop --accept-flake-config .#python --command python sync_tests/tests/node_sync_test.py \
+            -e ${{ matrix.env }} \
+            -b ${{ github.event.inputs.build_mode }} \
+            -t1 "${{ github.event.inputs.tag_no1 }}" \
+            -t2 "${{ github.event.inputs.tag_no2 }}" \
+            -r1 "${{ github.event.inputs.node_rev1 }}" \
+            -r2 "${{ github.event.inputs.node_rev2 }}" \
+            -n1 "${{ github.event.inputs.node_topology1 }}" \
+            -n2 "${{ github.event.inputs.node_topology2 }}" \
+            -a1="${{ github.event.inputs.node_start_arguments1 }}" \
+            -a2="${{ github.event.inputs.node_start_arguments2 }}"
+
       - name: Write the test results into the database
         env:
           AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
@@ -216,14 +183,12 @@ jobs:
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          cd cardano_sync_tests
-          echo "current branch: $(git branch --show-current)"
-          python sync_tests/node_write_sync_values_to_db.py -e ${{ matrix.env }}
+          nix develop --accept-flake-config .#python --command python sync_tests/tests/node_write_sync_values_to_db.py \
+            -e ${{ matrix.env }}
 
       - name: Prepare node logs
         if: always()
         run: |
-          cd cardano_sync_tests
           cp logfile.log node.log
 
       - name: Generate artifacts
@@ -232,7 +197,6 @@ jobs:
         with:
           name: node_logs_${{ matrix.env }}_${{ matrix.sys.os }}
           path: |
-            cardano_sync_tests/node.log
-            cardano_sync_tests/sync_results.json
-            cardano_sync_tests/config.json
-            cardano_sync_tests/topology.json
+            logfile.log
+            node.log
+            sync_results.json

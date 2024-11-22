@@ -35,6 +35,5 @@ jobs:
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          cd cardano_sync_tests
           echo "current branch: $(git branch --show-current)"
-          python sync_tests/node_write_mainnet_tx_count_per_epoch.py
+          python sync_tests/tests/node_write_mainnet_tx_count_per_epoch.py

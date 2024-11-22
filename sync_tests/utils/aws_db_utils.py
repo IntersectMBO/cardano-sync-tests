@@ -3,7 +3,7 @@ import os
 import pymysql.cursors
 import pandas as pd
 
-from utils import print_info, print_ok, print_error
+from .utils import print_info, print_ok, print_error
 
 
 
@@ -317,6 +317,54 @@ def add_bulk_csv_to_table(table_name, csv_path):
     col_to_insert = list(df.columns)
     val_to_insert = df.values.tolist()
     add_bulk_values_into_db(table_name, col_to_insert, val_to_insert)
+
+
+def add_single_row_into_db(table_name, col_names_list, col_values_list):
+    print(f"Adding 1 new entry into {table_name} table")
+    initial_rows_no = get_last_row_no(table_name)
+    col_names = ','.join(col_names_list)
+    col_spaces = ','.join(['%s'] * len(col_names_list))
+    conn = create_connection()
+    sql_query = f"INSERT INTO `{table_name}` (%s) values(%s)" % (col_names, col_spaces)
+    print(f"  -- sql_query: {sql_query}")
+    try:
+        cur = conn.cursor()
+        cur.execute(sql_query, col_values_list)
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"  -- !!! ERROR: Failed to insert data into {table_name} table: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+    final_rows_no = get_last_row_no(table_name)
+    print(f"Successfully added {final_rows_no - initial_rows_no} rows into table {table_name}")
+    return True
+
+
+def add_bulk_rows_into_db(table_name, col_names_list, col_values_list):
+    print(f"Adding {len(col_values_list)} entries into {table_name} table")
+    initial_rows_no = get_last_row_no(table_name)
+    col_names = ','.join(col_names_list)
+    col_spaces = ','.join(['%s'] * len(col_names_list))
+    conn = create_connection()
+    sql_query = f"INSERT INTO `{table_name}` (%s) values (%s)" % (col_names, col_spaces)
+    print(f"  -- sql_query: {sql_query}")
+    try:
+        cur = conn.cursor()
+        cur.executemany(sql_query, col_values_list)
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"  -- !!! ERROR: Failed to bulk insert data into {table_name} table: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+    final_rows_no = get_last_row_no(table_name)
+    print(f"Successfully added {final_rows_no - initial_rows_no} rows into table {table_name}")
+    return True
 
 # Delete specified identifiers
 # env = "testnet"

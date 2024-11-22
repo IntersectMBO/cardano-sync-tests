@@ -1,8 +1,8 @@
 import pandas as pd
 
-from utils import print_info, print_warn
-from aws_db_utils import get_last_epoch_no_from_table, add_bulk_values_into_db
-from blockfrost_utils import get_tx_count_per_epoch_from_blockfrost, \
+from sync_tests.utils.utils import print_info, print_warn
+from sync_tests.utils.aws_db_utils import get_last_epoch_no_from_table, add_bulk_values_into_db
+from sync_tests.utils.blockfrost_utils import get_tx_count_per_epoch_from_blockfrost, \
     get_current_epoch_no_from_blockfrost
 
 
