@@ -1144,7 +1144,7 @@ def start_db_sync(env, start_args="", first_start="True"):
     export_env_var("LOG_FILEPATH", DB_SYNC_LOG)
 
     try:
-        cmd = "./db_sync_tests/scripts/db-sync-start.sh"
+        cmd = "./sync_tests/scripts/db-sync-start.sh"
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
@@ -1215,7 +1215,7 @@ def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port='5432'):
     export_env_var("PGPORT", pg_port)
 
     try:
-        cmd = ["./db_sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
+        cmd = ["./sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
         output = (
             subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             .decode("utf-8")

@@ -38,7 +38,7 @@ node_topology2=$9
 node_start_arguments2=${10}
 
 echo " ==== start sync test"
-python ./sync_tests/node_sync_test.py -b "$build_mode" -e "$env" -t1 "$tag_no1" -t2 "$tag_no2" -r1 "$node_rev1" -r2 "$node_rev2" -n1 "$node_topology1" -n2 "$node_topology2" -a1="$node_start_arguments1" -a2="$node_start_arguments2"
+python ./sync_tests/tests/node_sync_test.py -b "$build_mode" -e "$env" -t1 "$tag_no1" -t2 "$tag_no2" -r1 "$node_rev1" -r2 "$node_rev2" -n1 "$node_topology1" -n2 "$node_topology2" -a1="$node_start_arguments1" -a2="$node_start_arguments2"
 
 echo "--- Prepare for adding sync test results to the AWS Database"
-python ./sync_tests/node_write_sync_values_to_db.py -e "$env"
+python ./sync_tests/tests/node_write_sync_values_to_db.py -e "$env"

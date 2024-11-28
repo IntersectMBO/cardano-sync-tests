@@ -8,7 +8,7 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
-from db_sync_tests.utils.utils import seconds_to_time, get_no_of_cpu_cores, \
+from sync_tests.utils.utils_db_sync import seconds_to_time, get_no_of_cpu_cores, \
     get_current_date_time, get_os_type, get_total_ram_in_GB, \
     upload_artifact, print_file, create_db_sync_snapshot_stage_2, \
     write_data_as_json_to_file, set_buildkite_meta_data, \
@@ -17,7 +17,7 @@ from db_sync_tests.utils.utils import seconds_to_time, get_no_of_cpu_cores, \
     get_file_size, create_db_sync_snapshot_stage_1, print_color_log, \
     ROOT_TEST_PATH, ENVIRONMENT
 
-from db_sync_tests.utils.aws_db_utils import get_identifier_last_run_from_table, add_single_row_into_db
+from sync_tests.utils.aws_db_utils import get_identifier_last_run_from_table, add_single_row_into_db
 
 
 

@@ -9,6 +9,7 @@ import shutil
 import signal
 import fileinput
 import subprocess
+import sys
 
 import requests
 import time
@@ -19,12 +20,13 @@ from pathlib import Path
 
 from psutil import process_iter
 
-from explorer_utils import get_epoch_start_datetime_from_explorer
-from blockfrost_utils import get_epoch_start_datetime_from_blockfrost
-from gitpython_utils import git_clone_iohk_repo, git_checkout
+sys.path.append(os.getcwd())
 
-import utils
-from utils import print_info, print_ok, print_warn, print_info_warn, print_error, seconds_to_time, \
+from sync_tests.utils.explorer_utils import get_epoch_start_datetime_from_explorer
+from sync_tests.utils.blockfrost_utils import get_epoch_start_datetime_from_blockfrost
+from sync_tests.utils.gitpython_utils import git_clone_iohk_repo, git_checkout
+
+from sync_tests.utils.utils import print_info, print_ok, print_warn, print_info_warn, print_error, seconds_to_time, \
     date_diff_in_seconds, get_no_of_cpu_cores, \
     get_current_date_time, get_os_type, get_directory_size, get_total_ram_in_GB, delete_file, \
     is_dir, \
@@ -92,7 +94,7 @@ def check_string_format(input_string):
 
 
 def delete_node_files():
-    for p in Path(".").glob("cardano-*"):
+    for p in Path("..").glob("cardano-*"):
         print_info_warn(f"deleting file: {p}")
         p.unlink(missing_ok=True)
 
@@ -133,7 +135,7 @@ def disable_p2p_node_config():
 def rm_node_config_files() -> None:
     print_info_warn('Removing existing config files')
     os.chdir(Path(ROOT_TEST_PATH))
-    for gen in Path(".").glob("*-genesis.json"):
+    for gen in Path("..").glob("*-genesis.json"):
         Path(gen).unlink(missing_ok=True)
     for f in ('config.json', 'topology.json'):
         Path(f).unlink(missing_ok=True)
