@@ -9,23 +9,29 @@ jobs:
   mainnet_tx_count_per_epoch:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout cardano-sync-tests repo
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          path: cardano_sync_tests
-          ref: ${{ github.ref_name }}
-      - name: Setup Python
-        uses: actions/setup-python@v5
+          ref: ${{ github.ref_name || 'main' }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        if: matrix.sys.os != 'windows-latest'
         with:
-          python-version: '3.10'
-      - name: Install Python libraries
+          extra_nix_config: |
+            trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+            substituters = https://cache.nixos.org https://cache.iog.io
+            allow-import-from-derivation = true
+
+      - name: Enter Nix Development Shell
+        if: matrix.sys.os != 'windows-latest'
         run: |
-          pip install requests
-          pip install psutil
-          pip install pandas
-          pip install pymysql
-          pip install blockfrost-python
-          pip install colorama
+          nix develop --accept-flake-config .#python --command bash -c "
+            echo 'Inside Nix development shell';
+            python -m pip install --upgrade pip;
+            pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib;
+          "
+
       - name: Get the automated tests results
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
@@ -36,4 +42,4 @@ jobs:
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
           echo "current branch: $(git branch --show-current)"
-          python sync_tests/tests/node_write_mainnet_tx_count_per_epoch.py
+          nix develop --accept-flake-config .#python --command python -m sync_tests.tests.node_write_mainnet_tx_count_per_epoch
