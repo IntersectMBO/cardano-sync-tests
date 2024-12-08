@@ -1,55 +1,54 @@
 import hashlib
+import json
+import mmap
 import os
 import platform
-import shutil
-import mmap
-import zipfile
-import signal
-import subprocess
-import requests
-import urllib.request
-import tarfile
-import xmltodict
-import json
-import shlex
 import psycopg2
-from assertpy import assert_that, assert_warn
+import requests
+import shutil
+import subprocess
+import tarfile
+import time
+import urllib.request
+import zipfile
+import xmltodict
 
-from os.path import normpath, basename
+from assertpy import assert_that
+from os.path import basename, normpath
 from pathlib import Path
 from psutil import process_iter
-from datetime import datetime
-from git import Repo
-
-import psutil
-import time
 
 
+# Constants
 ONE_MINUTE = 60
 ROOT_TEST_PATH = Path.cwd()
-ENVIRONMENT = os.environ.get('environment', None)
 
-NODE_PR = os.environ.get('node_pr', None)
-NODE_BRANCH = os.environ.get('node_branch', None)
-NODE_VERSION = os.environ.get('node_version', None)
+# Environment Variables
+ENVIRONMENT = os.getenv('environment')
+NODE_PR = os.getenv('node_pr')
+NODE_BRANCH = os.getenv('node_branch')
+NODE_VERSION = os.getenv('node_version')
+DB_SYNC_BRANCH = os.getenv('db_sync_branch')
+DB_SYNC_VERSION = os.getenv('db_sync_version')
 
-DB_SYNC_BRANCH = os.environ.get('db_sync_branch', None)
-DB_SYNC_VERSION = os.environ.get('db_sync_version', None)
-
+# System Information
 POSTGRES_DIR = ROOT_TEST_PATH.parents[0]
-POSTGRES_USER = subprocess.run(['whoami'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+POSTGRES_USER = subprocess.run(['whoami'], stdout=subprocess.PIPE, text=True).stdout.strip()
 
+# Log and Stats Paths
+DB_SYNC_PERF_STATS_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_performance_stats.json"
+NODE_LOG_FILE = ROOT_TEST_PATH / f"cardano-node/node_{ENVIRONMENT}_logfile.log"
+DB_SYNC_LOG_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
+EPOCH_SYNC_TIMES_FILE = ROOT_TEST_PATH / f"cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
+
+# Archive Names
+NODE_ARCHIVE_NAME = f"cardano_node_{ENVIRONMENT}_logs.zip"
+DB_SYNC_ARCHIVE_NAME = f"cardano_db_sync_{ENVIRONMENT}_logs.zip"
+SYNC_DATA_ARCHIVE_NAME = f"epoch_sync_times_{ENVIRONMENT}_dump.zip"
+PERF_STATS_ARCHIVE_NAME = f"db_sync_{ENVIRONMENT}_perf_stats.zip"
+
+# Data Storage
 db_sync_perf_stats = []
-DB_SYNC_PERF_STATS = f"{ROOT_TEST_PATH}/cardano-db-sync/db_sync_{ENVIRONMENT}_performance_stats.json"
-
-NODE_LOG = f"{ROOT_TEST_PATH}/cardano-node/node_{ENVIRONMENT}_logfile.log"
-DB_SYNC_LOG = f"{ROOT_TEST_PATH}/cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
-EPOCH_SYNC_TIMES = f"{ROOT_TEST_PATH}/cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
-
-NODE_ARCHIVE = f"cardano_node_{ENVIRONMENT}_logs.zip"
-DB_SYNC_ARCHIVE = f"cardano_db_sync_{ENVIRONMENT}_logs.zip"
-SYNC_DATA_ARCHIVE = f"epoch_sync_times_{ENVIRONMENT}_dump.zip"
-PERF_STATS_ARCHIVE = f"db_sync_{ENVIRONMENT}_perf_stats.zip"
 
 
 class sh_colors:
@@ -68,30 +67,6 @@ def print_color_log(log_type, message):
     print(f"{log_type}{message}{sh_colors.ENDC}")
 
 
-def date_diff_in_seconds(dt2, dt1):
-    # dt1 and dt2 should be datetime types
-    timedelta = dt2 - dt1
-    return int(timedelta.days * 24 * 3600 + timedelta.seconds)
-
-
-def seconds_to_time(seconds_val):
-    mins, secs = divmod(seconds_val, 60)
-    hour, mins = divmod(mins, 60)
-    return "%d:%02d:%02d" % (hour, mins, secs)
-
-
-def get_os_type():
-    return [platform.system(), platform.release(), platform.version()]
-
-
-def get_no_of_cpu_cores():
-    return os.cpu_count()
-
-
-def get_total_ram_in_GB():
-    return int(psutil.virtual_memory().total / 1000000000)
-
-
 def get_machine_name():
     return platform.node()
 
@@ -99,21 +74,9 @@ def get_machine_name():
 def export_env_var(name, value):
     os.environ[name] = str(value)
 
-    
-def read_env_var(name):
-    return os.environ[name]
-
 
 def wait(seconds):
     time.sleep(seconds)
-
-
-def clone_repo(repo_name, repo_branch):
-    location = os.getcwd() + f"/{repo_name}"
-    repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", location)
-    repo.git.checkout(repo_branch)
-    print(f"Repo: {repo_name} cloned to: {location}")
-    return location
 
 
 def make_tarfile(output_filename, source_dir):
@@ -192,23 +155,6 @@ def create_node_database_archive(env):
     node_db_archive_path = node_directory + f"/{node_db_archive}"
     return node_db_archive_path
 
-
-def set_github_env_var(env_var, value):
-    env_file = os.getenv('GITHUB_ENV')
-    with open(env_file, "a") as my_env_file:
-        my_env_file.write(f"{env_var}={value}")
-
-
-def set_github_job_summary(value):
-    job_summary = os.getenv('GITHUB_STEP_SUMMARY')
-    with open(job_summary, "a") as job_summary:
-        job_summary.write(f"{value}")
-        job_summary.write(f"\n\n")
-
-
-def set_github_warning(warning_msg):
-  print(f"::warning::{warning_msg}")
-
         
 def set_buildkite_meta_data(key, value):
     p = subprocess.Popen(["buildkite-agent", "meta-data", "set", f"{key}", f"{value}"])
@@ -257,19 +203,6 @@ def stop_process(proc_name):
             proc.kill()
 
 
-def show_percentage(part, whole):
-    return round(100 * float(part) / float(whole), 2)
-
-
-def get_current_date_time():
-    now = datetime.now()
-    return now.strftime("%d/%m/%Y %H:%M:%S")
-
-
-def get_file_creation_date(path_to_file):
-    return time.ctime(os.path.getmtime(path_to_file))
-
-
 def create_dir(dir_name, root='.'):
     Path(f"{root}/{dir_name}").mkdir(parents=True, exist_ok=True)
     return f"{root}/{dir_name}"
@@ -280,15 +213,6 @@ def remove_dir(dir_name):
         shutil.rmtree(dir_name)
     except OSError as e:
         print("Error: %s : %s" % (dir_name, e.strerror))
-
-
-def get_directory_size(start_path='.'):
-    total_size_in_bytes = 0
-    for dirpath, dirnames, filenames in os.walk(start_path):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size_in_bytes += os.path.getsize(fp)
-    return total_size_in_bytes
 
 
 def zip_file(archive_name, file_path):
@@ -305,14 +229,6 @@ def unzip_file(file_name):
         zip.extractall()
 
 
-def delete_file(file_path):
-    # file_path => a Path (pathlib object)
-    try:
-        file_path.unlink()
-    except OSError as e:
-        print(f"Error: {file_path} : {e.strerror}")
-
-
 def get_file_sha_256_sum(filename):
     with open(filename,"rb") as f:
         bytes = f.read()
@@ -326,23 +242,6 @@ def print_n_last_lines_from_file(n, file_name):
     for line in logs:
         print(line, flush=True)
     print("")
-
-    
-def execute_command(command):
-    print(f"--- Execute command {command}")
-    try:
-        cmd = shlex.split(command)
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
-        outs, errors = process.communicate(timeout=3600)               
-        if errors:
-            print(f"Warnings or Errors: {errors}", flush=True)
-        print(f"Output of command: {command} : {outs}", flush=True)                    
-        exit_code = process.returncode
-        if (exit_code != 0):
-            print(f"Command {command} returned exit code: {exit_code}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        print(f"Command {command} returned exception: {e}")
-        raise
     
   
 def get_last_perf_stats_point():
@@ -357,62 +256,43 @@ def get_last_perf_stats_point():
     return last_perf_stats_point
     
 
-def should_skip(args):
-    return vars(args)["run_only_sync_test"]
+def get_arg_value(args, key, default=None, strip=True):
+    """
+    Get a value from the args object safely.
 
-    
-def get_environment(args):
-    return vars(args)["environment"]
+    Args:
+        args (Namespace): The arguments object (e.g., from argparse).
+        key (str): The key to retrieve.
+        default (Any): Default value if the key is not found.
+        strip (bool): Whether to strip whitespace from the value (if string).
 
-
-def get_node_pr(args):
-    return str(vars(args)["node_pr"]).strip()
-
-
-def get_node_branch(args):
-    return str(vars(args)["node_branch"]).strip()
-
-
-def get_node_version_from_gh_action(args):
-    return str(vars(args)["node_version_gh_action"]).strip()
-
-
-def get_db_pr(args):
-    return str(vars(args)["db_sync_pr"]).strip()
-
-
-def get_db_sync_branch(args):
-    return str(vars(args)["db_sync_branch"]).strip()
-
-
-def get_db_sync_start_options(args):
-    options = str(vars(args)["db_sync_start_options"]).strip()
-    if options == "--none":
-        return ''
-    return options
-
-
-def get_snapshot_url(args):
-    return str(vars(args)["snapshot_url"]).strip()
-
-
-def get_db_sync_version_from_gh_action(args):
-    return str(vars(args)["db_sync_version_gh_action"]).strip()    
+    Returns:
+        Any: The value of the argument, or the default if not found.
+    """
+    value = vars(args).get(key, default)
+    if isinstance(value, str) and strip:
+        return value.strip()
+    return value
 
 
 def get_testnet_value(env):
-    if env == "mainnet":
-        return "--mainnet"
-    if env == "preprod":
-        return "--testnet-magic 1"
-    if env == "preview":
-        return "--testnet-magic 2"
-    elif env == "shelley-qa":
-        return "--testnet-magic 3"
-    elif env == "staging":
-        return "--testnet-magic 633343913"
-    else:
-        return None
+    """
+    Get the appropriate testnet flag for the given environment.
+
+    Args:
+        env (str): The environment (e.g., "mainnet", "preprod").
+
+    Returns:
+        str or None: The corresponding testnet flag or None if invalid.
+    """
+    testnet_values = {
+        "mainnet": "--mainnet",
+        "preprod": "--testnet-magic 1",
+        "preview": "--testnet-magic 2",
+        "shelley-qa": "--testnet-magic 3",
+        "staging": "--testnet-magic 633343913",
+    }
+    return testnet_values.get(env)
 
 
 def get_log_output_frequency(env):
@@ -440,45 +320,21 @@ def export_epoch_sync_times_from_db(env, file, snapshot_epoch_no = 0):
 
 
 def emergency_upload_artifacts(env):
-    write_data_as_json_to_file(DB_SYNC_PERF_STATS, db_sync_perf_stats)
-    export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES)
+    write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
+    export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
 
-    zip_file(PERF_STATS_ARCHIVE, DB_SYNC_PERF_STATS)
-    zip_file(SYNC_DATA_ARCHIVE, EPOCH_SYNC_TIMES)
-    zip_file(DB_SYNC_ARCHIVE, DB_SYNC_LOG)
-    zip_file(NODE_ARCHIVE, NODE_LOG)
+    zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
+    zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
+    zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
+    zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
 
-    upload_artifact(PERF_STATS_ARCHIVE)
-    upload_artifact(SYNC_DATA_ARCHIVE)
-    upload_artifact(DB_SYNC_ARCHIVE)
-    upload_artifact(NODE_ARCHIVE)
+    upload_artifact(PERF_STATS_ARCHIVE_NAME)
+    upload_artifact(SYNC_DATA_ARCHIVE_NAME)
+    upload_artifact(DB_SYNC_ARCHIVE_NAME)
+    upload_artifact(NODE_ARCHIVE_NAME)
 
     stop_process('cardano-db-sync')
     stop_process('cardano-node')
-
-
-def get_and_extract_archive_files(archive_url):
-    current_directory = os.getcwd()
-    request = requests.get(archive_url, allow_redirects=True)
-    download_url = request.url
-    archive_name = download_url.split("/")[-1].strip()
-
-    print("Get and extract archive files:")
-    print(f" - current_directory: {current_directory}")
-    print(f" - download_url: {download_url}")
-    print(f" - archive name: {archive_name}")
-
-    urllib.request.urlretrieve(download_url, Path(current_directory) / archive_name)
-
-    print(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
-    tf = tarfile.open(Path(current_directory) / archive_name)
-    tf.extractall(Path(current_directory))
-    print(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
-
-
-def get_node_archive_url(node_pr):
-    cardano_node_pr=f"-pr-{node_pr}"
-    return f"https://hydra.iohk.io/job/Cardano/cardano-node{cardano_node_pr}/linux.musl.cardano-node-linux/latest-finished/download/1/"
 
 
 def get_node_config_files(env):
@@ -597,7 +453,7 @@ def download_and_extract_node_snapshot(env):
     tf = tarfile.open(Path(current_directory) / archive_name)
     tf.extractall(Path(current_directory))
     os.rename(f"db-{env}","db")
-    delete_file(Path(current_directory) / archive_name)
+    Path(current_directory).unlink(missing_ok=True)
     print(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
@@ -701,7 +557,7 @@ def start_node_in_cwd(env):
         f"{env}-config.json --socket-path ./db/node.socket"
     )
 
-    logfile = open(NODE_LOG, "w+")
+    logfile = open(NODE_LOG_FILE, "w+")
     print(f"start node cmd: {cmd}")
 
     try:
@@ -716,7 +572,7 @@ def start_node_in_cwd(env):
             if counter > timeout_counter:
                 print(
                     f"ERROR: waited {timeout_counter} seconds and the DB folder was not created yet")
-                node_startup_error = print_file(NODE_LOG)
+                node_startup_error = print_file(NODE_LOG_FILE)
                 print_color_log(sh_colors.FAIL, f"Error: {node_startup_error}")
                 exit(1)
 
@@ -816,11 +672,6 @@ def copy_db_sync_executables(build_method="nix"):
         )
 
 
-def get_db_sync_archive_url(db_pr):
-    cardano_db_sync_pr=f"-pr-{db_pr}"
-    return f"https://hydra.iohk.io/job/Cardano/cardano-db-sync{cardano_db_sync_pr}/cardano-db-sync-linux/latest-finished/download/1/"
-
-
 def get_db_sync_version():
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
@@ -844,7 +695,7 @@ def get_db_sync_version():
 
 
 def get_latest_snapshot_url(env, args):
-    github_snapshot_url = get_snapshot_url(args)
+    github_snapshot_url = get_arg_value(args, "snapshot_url", default="")
     if github_snapshot_url != "latest":
         return github_snapshot_url
 
@@ -971,6 +822,7 @@ def create_db_sync_snapshot_stage_1(env):
             )
         )
 
+
 def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
     os.chdir(ROOT_TEST_PATH / 'cardano-db-sync')
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
@@ -1072,7 +924,7 @@ def wait_for_db_to_sync(env, sync_percentage = 99.9):
             if current_progress < db_sync_progress and db_sync_progress > 3:
                 print(f"Progress decreasing - current progress: {current_progress} VS previous: {db_sync_progress}.")
                 print("Possible rollback... Printing last 10 lines of log")
-                print_n_last_lines_from_file(10, DB_SYNC_LOG)
+                print_n_last_lines_from_file(10, DB_SYNC_LOG_FILE)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
                     print("Resetting previous rollback counter as there was no progress decrease for more than 10 minutes", flush=True)
                     rollback_counter = 0
@@ -1089,9 +941,9 @@ def wait_for_db_to_sync(env, sync_percentage = 99.9):
             print(f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, block: {node_block_no}, slot: {node_slot}, era: {node_era}", flush=True)
             epoch_no, block_no, slot_no = get_db_sync_tip(env)
             db_sync_progress = get_db_sync_progress(env)
-            sync_time_h_m_s = seconds_to_time(time.perf_counter() - start_sync)
+            sync_time_h_m_s = time.strftime("%H:%M:%S", time.gmtime(time.perf_counter() - start_sync))
             print(f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, epoch: {epoch_no}, block: {block_no}, slot: {slot_no}", flush=True)
-            print_n_last_lines_from_file(5, DB_SYNC_LOG)
+            print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
 
         try:
             time_point = int(time.perf_counter() - start_sync)
@@ -1108,7 +960,7 @@ def wait_for_db_to_sync(env, sync_percentage = 99.9):
 
         stats_data_point = {"time": time_point, "slot_no": slot_no, "cpu_percent_usage": cpu_usage, "rss_mem_usage": rss_mem_usage}
         db_sync_perf_stats.append(stats_data_point)
-        write_data_as_json_to_file(DB_SYNC_PERF_STATS, db_sync_perf_stats)
+        write_data_as_json_to_file(PERF_STATS_ARCHIVE_NAME, db_sync_perf_stats)
         time.sleep(ONE_MINUTE)
         counter += 1
 
@@ -1141,7 +993,7 @@ def start_db_sync(env, start_args="", first_start="True"):
     export_env_var("DB_SYNC_START_ARGS", start_args)
     export_env_var("FIRST_START", f"{first_start}")
     export_env_var("ENVIRONMENT", env)
-    export_env_var("LOG_FILEPATH", DB_SYNC_LOG)
+    export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
 
     try:
         cmd = "./sync_tests/scripts/db-sync-start.sh"
@@ -1321,404 +1173,3 @@ def check_database(fn, err_msg, expected_value):
     except AssertionError as e:
         print_color_log(sh_colors.WARNING, f'Warning - validation errors: {e}\n\n')
         return e
-
-
-EXPECTED_DB_SCHEMA = {
-    'schema_version': [('id', 'bigint'), ('stage_one', 'bigint'),
-                       ('stage_two', 'bigint'), ('stage_three', 'bigint'
-                       )],
-    'pool_update': [
-        ('id', 'bigint'),
-        ('hash_id', 'bigint'),
-        ('cert_index', 'integer'),
-        ('vrf_key_hash', 'hash32type'),
-        ('pledge', 'lovelace'),
-        ('active_epoch_no', 'bigint'),
-        ('meta_id', 'bigint'),
-        ('margin', 'double precision'),
-        ('fixed_cost', 'lovelace'),
-        ('registered_tx_id', 'bigint'),
-        ('reward_addr_id', 'bigint'),
-        ],
-    'pool_owner': [('id', 'bigint'), ('addr_id', 'bigint'),
-                   ('pool_update_id', 'bigint')],
-    'pool_metadata_ref': [('id', 'bigint'), ('pool_id', 'bigint'),
-                          ('url', 'character varying'), ('hash',
-                          'hash32type'), ('registered_tx_id', 'bigint'
-                          )],
-    'ada_pots': [
-        ('id', 'bigint'),
-        ('slot_no', 'word63type'),
-        ('epoch_no', 'word31type'),
-        ('treasury', 'lovelace'),
-        ('reserves', 'lovelace'),
-        ('rewards', 'lovelace'),
-        ('utxo', 'lovelace'),
-        ('deposits', 'lovelace'),
-        ('fees', 'lovelace'),
-        ('block_id', 'bigint'),
-        ],
-    'pool_retire': [('id', 'bigint'), ('hash_id', 'bigint'),
-                    ('cert_index', 'integer'), ('announced_tx_id',
-                    'bigint'), ('retiring_epoch', 'word31type')],
-    'pool_hash': [('id', 'bigint'), ('hash_raw', 'hash28type'), ('view'
-                  , 'character varying')],
-    'slot_leader': [('id', 'bigint'), ('hash', 'hash28type'),
-                    ('pool_hash_id', 'bigint'), ('description',
-                    'character varying')],
-    'block': [
-        ('id', 'bigint'),
-        ('hash', 'hash32type'),
-        ('epoch_no', 'word31type'),
-        ('slot_no', 'word63type'),
-        ('epoch_slot_no', 'word31type'),
-        ('block_no', 'word31type'),
-        ('previous_id', 'bigint'),
-        ('slot_leader_id', 'bigint'),
-        ('size', 'word31type'),
-        ('time', 'timestamp without time zone'),
-        ('tx_count', 'bigint'),
-        ('proto_major', 'word31type'),
-        ('proto_minor', 'word31type'),
-        ('vrf_key', 'character varying'),
-        ('op_cert', 'hash32type'),
-        ('op_cert_counter', 'word63type'),
-        ],
-    'tx': [
-        ('id', 'bigint'),
-        ('hash', 'hash32type'),
-        ('block_id', 'bigint'),
-        ('block_index', 'word31type'),
-        ('out_sum', 'lovelace'),
-        ('fee', 'lovelace'),
-        ('deposit', 'bigint'),
-        ('size', 'word31type'),
-        ('invalid_before', 'word64type'),
-        ('invalid_hereafter', 'word64type'),
-        ('valid_contract', 'boolean'),
-        ('script_size', 'word31type'),
-        ],
-    'stake_address': [('id', 'bigint'), ('hash_raw', 'addr29type'),
-                      ('view', 'character varying'), ('script_hash',
-                      'hash28type')],
-    'redeemer': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('unit_mem', 'word63type'),
-        ('unit_steps', 'word63type'),
-        ('fee', 'lovelace'),
-        ('purpose', 'scriptpurposetype'),
-        ('index', 'word31type'),
-        ('script_hash', 'hash28type'),
-        ('redeemer_data_id', 'bigint'),
-        ],
-    'tx_out': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('index', 'txindex'),
-        ('address', 'character varying'),
-        ('address_raw', 'bytea'),
-        ('address_has_script', 'boolean'),
-        ('payment_cred', 'hash28type'),
-        ('stake_address_id', 'bigint'),
-        ('value', 'lovelace'),
-        ('data_hash', 'hash32type'),
-        ('inline_datum_id', 'bigint'),
-        ('reference_script_id', 'bigint'),
-        ],
-    'datum': [('id', 'bigint'), ('hash', 'hash32type'), ('tx_id',
-              'bigint'), ('value', 'jsonb'), ('bytes', 'bytea')],
-    'tx_in': [('id', 'bigint'), ('tx_in_id', 'bigint'), ('tx_out_id',
-              'bigint'), ('tx_out_index', 'txindex'), ('redeemer_id',
-              'bigint')],
-    'collateral_tx_in': [('id', 'bigint'), ('tx_in_id', 'bigint'),
-                         ('tx_out_id', 'bigint'), ('tx_out_index',
-                         'txindex')],
-    'epoch': [
-        ('id', 'bigint'),
-        ('out_sum', 'word128type'),
-        ('fees', 'lovelace'),
-        ('tx_count', 'word31type'),
-        ('blk_count', 'word31type'),
-        ('no', 'word31type'),
-        ('start_time', 'timestamp without time zone'),
-        ('end_time', 'timestamp without time zone'),
-        ],
-    'pool_relay': [
-        ('id', 'bigint'),
-        ('update_id', 'bigint'),
-        ('ipv4', 'character varying'),
-        ('ipv6', 'character varying'),
-        ('dns_name', 'character varying'),
-        ('dns_srv_name', 'character varying'),
-        ('port', 'integer'),
-        ],
-    'stake_registration': [('id', 'bigint'), ('addr_id', 'bigint'),
-                           ('cert_index', 'integer'), ('epoch_no',
-                           'word31type'), ('tx_id', 'bigint')],
-    'stake_deregistration': [
-        ('id', 'bigint'),
-        ('addr_id', 'bigint'),
-        ('cert_index', 'integer'),
-        ('epoch_no', 'word31type'),
-        ('tx_id', 'bigint'),
-        ('redeemer_id', 'bigint'),
-        ],
-    'delegation': [
-        ('id', 'bigint'),
-        ('addr_id', 'bigint'),
-        ('cert_index', 'integer'),
-        ('pool_hash_id', 'bigint'),
-        ('active_epoch_no', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('slot_no', 'word63type'),
-        ('redeemer_id', 'bigint'),
-        ],
-    'tx_metadata': [('id', 'bigint'), ('key', 'word64type'), ('json',
-                    'jsonb'), ('bytes', 'bytea'), ('tx_id', 'bigint')],
-    'reward': [
-        ('id', 'bigint'),
-        ('addr_id', 'bigint'),
-        ('type', 'rewardtype'),
-        ('amount', 'lovelace'),
-        ('earned_epoch', 'bigint'),
-        ('spendable_epoch', 'bigint'),
-        ('pool_id', 'bigint'),
-        ],
-    'withdrawal': [('id', 'bigint'), ('addr_id', 'bigint'), ('amount',
-                   'lovelace'), ('redeemer_id', 'bigint'), ('tx_id',
-                   'bigint')],
-    'epoch_stake': [('id', 'bigint'), ('addr_id', 'bigint'), ('pool_id'
-                    , 'bigint'), ('amount', 'lovelace'), ('epoch_no',
-                    'word31type')],
-    'ma_tx_mint': [('id', 'bigint'), ('quantity', 'int65type'), ('tx_id'
-                   , 'bigint'), ('ident', 'bigint')],
-    'treasury': [('id', 'bigint'), ('addr_id', 'bigint'), ('cert_index'
-                 , 'integer'), ('amount', 'int65type'), ('tx_id',
-                 'bigint')],
-    'reserve': [('id', 'bigint'), ('addr_id', 'bigint'), ('cert_index',
-                'integer'), ('amount', 'int65type'), ('tx_id', 'bigint'
-                )],
-    'pot_transfer': [('id', 'bigint'), ('cert_index', 'integer'),
-                     ('treasury', 'int65type'), ('reserves', 'int65type'
-                     ), ('tx_id', 'bigint')],
-    'epoch_sync_time': [('id', 'bigint'), ('no', 'bigint'), ('seconds',
-                        'word63type'), ('state', 'syncstatetype')],
-    'ma_tx_out': [('id', 'bigint'), ('quantity', 'word64type'),
-                  ('tx_out_id', 'bigint'), ('ident', 'bigint')],
-    'script': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('hash', 'hash28type'),
-        ('type', 'scripttype'),
-        ('json', 'jsonb'),
-        ('bytes', 'bytea'),
-        ('serialised_size', 'word31type'),
-        ],
-    'pool_offline_data': [
-        ('id', 'bigint'),
-        ('pool_id', 'bigint'),
-        ('ticker_name', 'character varying'),
-        ('hash', 'hash32type'),
-        ('json', 'jsonb'),
-        ('bytes', 'bytea'),
-        ('pmr_id', 'bigint'),
-        ],
-    'cost_model': [('id', 'bigint'), ('costs', 'jsonb'), ('hash',
-                   'hash32type')],
-    'param_proposal': [
-        ('id', 'bigint'),
-        ('epoch_no', 'word31type'),
-        ('key', 'hash28type'),
-        ('min_fee_a', 'word64type'),
-        ('min_fee_b', 'word64type'),
-        ('max_block_size', 'word64type'),
-        ('max_tx_size', 'word64type'),
-        ('max_bh_size', 'word64type'),
-        ('key_deposit', 'lovelace'),
-        ('pool_deposit', 'lovelace'),
-        ('max_epoch', 'word64type'),
-        ('optimal_pool_count', 'word64type'),
-        ('influence', 'double precision'),
-        ('monetary_expand_rate', 'double precision'),
-        ('treasury_growth_rate', 'double precision'),
-        ('decentralisation', 'double precision'),
-        ('entropy', 'hash32type'),
-        ('protocol_major', 'word31type'),
-        ('protocol_minor', 'word31type'),
-        ('min_utxo_value', 'lovelace'),
-        ('min_pool_cost', 'lovelace'),
-        ('cost_model_id', 'bigint'),
-        ('price_mem', 'double precision'),
-        ('price_step', 'double precision'),
-        ('max_tx_ex_mem', 'word64type'),
-        ('max_tx_ex_steps', 'word64type'),
-        ('max_block_ex_mem', 'word64type'),
-        ('max_block_ex_steps', 'word64type'),
-        ('max_val_size', 'word64type'),
-        ('collateral_percent', 'word31type'),
-        ('max_collateral_inputs', 'word31type'),
-        ('registered_tx_id', 'bigint'),
-        ('coins_per_utxo_size', 'lovelace'),
-        ],
-    'epoch_param': [
-        ('id', 'bigint'),
-        ('epoch_no', 'word31type'),
-        ('min_fee_a', 'word31type'),
-        ('min_fee_b', 'word31type'),
-        ('max_block_size', 'word31type'),
-        ('max_tx_size', 'word31type'),
-        ('max_bh_size', 'word31type'),
-        ('key_deposit', 'lovelace'),
-        ('pool_deposit', 'lovelace'),
-        ('max_epoch', 'word31type'),
-        ('optimal_pool_count', 'word31type'),
-        ('influence', 'double precision'),
-        ('monetary_expand_rate', 'double precision'),
-        ('treasury_growth_rate', 'double precision'),
-        ('decentralisation', 'double precision'),
-        ('protocol_major', 'word31type'),
-        ('protocol_minor', 'word31type'),
-        ('min_utxo_value', 'lovelace'),
-        ('min_pool_cost', 'lovelace'),
-        ('nonce', 'hash32type'),
-        ('cost_model_id', 'bigint'),
-        ('price_mem', 'double precision'),
-        ('price_step', 'double precision'),
-        ('max_tx_ex_mem', 'word64type'),
-        ('max_tx_ex_steps', 'word64type'),
-        ('max_block_ex_mem', 'word64type'),
-        ('max_block_ex_steps', 'word64type'),
-        ('max_val_size', 'word64type'),
-        ('collateral_percent', 'word31type'),
-        ('max_collateral_inputs', 'word31type'),
-        ('block_id', 'bigint'),
-        ('extra_entropy', 'hash32type'),
-        ('coins_per_utxo_size', 'lovelace'),
-        ],
-    'pool_offline_fetch_error': [
-        ('id', 'bigint'),
-        ('pool_id', 'bigint'),
-        ('fetch_time', 'timestamp without time zone'),
-        ('pmr_id', 'bigint'),
-        ('fetch_error', 'character varying'),
-        ('retry_count', 'word31type'),
-        ],
-    'multi_asset': [('id', 'bigint'), ('policy', 'hash28type'), ('name'
-                    , 'asset32type'), ('fingerprint',
-                    'character varying')],
-    'meta': [('id', 'bigint'), ('start_time',
-             'timestamp without time zone'), ('network_name',
-             'character varying'), ('version', 'character varying')],
-    'delisted_pool': [('id', 'bigint'), ('hash_raw', 'hash28type')],
-    'reserved_pool_ticker': [('id', 'bigint'), ('name',
-                             'character varying'), ('pool_hash',
-                             'hash28type')],
-    'extra_key_witness': [('id', 'bigint'), ('hash', 'hash28type'),
-                          ('tx_id', 'bigint')],
-    'reference_tx_in': [('id', 'bigint'), ('tx_in_id', 'bigint'),
-                        ('tx_out_id', 'bigint'), ('tx_out_index',
-                        'txindex')],
-    'redeemer_data': [('id', 'bigint'), ('hash', 'hash32type'), ('tx_id'
-                      , 'bigint'), ('value', 'jsonb'), ('bytes', 'bytea'
-                      )],
-    'collateral_tx_out': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('index', 'txindex'),
-        ('address', 'character varying'),
-        ('address_raw', 'bytea'),
-        ('address_has_script', 'boolean'),
-        ('payment_cred', 'hash28type'),
-        ('stake_address_id', 'bigint'),
-        ('value', 'lovelace'),
-        ('data_hash', 'hash32type'),
-        ('multi_assets_descr', 'character varying'),
-        ('inline_datum_id', 'bigint'),
-        ('reference_script_id', 'bigint'),
-        ],
-    'reverse_index': [('id', 'bigint'), ('block_id', 'bigint'),
-                      ('min_ids', 'character varying')],
-    'utxo_byron_view': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('index', 'txindex'),
-        ('address', 'character varying'),
-        ('address_raw', 'bytea'),
-        ('address_has_script', 'boolean'),
-        ('payment_cred', 'hash28type'),
-        ('stake_address_id', 'bigint'),
-        ('value', 'lovelace'),
-        ('data_hash', 'hash32type'),
-        ('inline_datum_id', 'bigint'),
-        ('reference_script_id', 'bigint'),
-        ],
-    'utxo_view': [
-        ('id', 'bigint'),
-        ('tx_id', 'bigint'),
-        ('index', 'txindex'),
-        ('address', 'character varying'),
-        ('address_raw', 'bytea'),
-        ('address_has_script', 'boolean'),
-        ('payment_cred', 'hash28type'),
-        ('stake_address_id', 'bigint'),
-        ('value', 'lovelace'),
-        ('data_hash', 'hash32type'),
-        ('inline_datum_id', 'bigint'),
-        ('reference_script_id', 'bigint'),
-        ],
-    }
-
-EXPECTED_DB_INDEXES = {
-    'pool_metadata_ref': ['pool_metadata_ref_pkey',
-                          'unique_pool_metadata_ref'],
-    'pool_update': ['pool_update_pkey'],
-    'pool_owner': ['pool_owner_pkey'],
-    'pool_retire': ['pool_retire_pkey'],
-    'ada_pots': ['ada_pots_pkey'],
-    'pool_relay': ['pool_relay_pkey'],
-    'schema_version': ['schema_version_pkey'],
-    'pool_hash': ['pool_hash_pkey', 'unique_pool_hash'],
-    'slot_leader': ['slot_leader_pkey', 'unique_slot_leader'],
-    'block': ['block_pkey', 'unique_block'],
-    'tx': ['tx_pkey', 'unique_tx'],
-    'stake_address': ['stake_address_pkey', 'unique_stake_address'],
-    'tx_out': ['tx_out_pkey', 'unique_txout'],
-    'datum': ['datum_pkey', 'unique_datum'],
-    'redeemer': ['redeemer_pkey'],
-    'tx_in': ['tx_in_pkey'],
-    'collateral_tx_in': ['collateral_tx_in_pkey'],
-    'meta': ['meta_pkey', 'unique_meta'],
-    'epoch': ['epoch_pkey', 'unique_epoch'],
-    'stake_registration': ['stake_registration_pkey'],
-    'stake_deregistration': ['stake_deregistration_pkey'],
-    'tx_metadata': ['tx_metadata_pkey'],
-    'delegation': ['delegation_pkey'],
-    'reward': ['reward_pkey', 'unique_reward'],
-    'withdrawal': ['withdrawal_pkey'],
-    'epoch_stake': ['epoch_stake_pkey', 'unique_stake'],
-    'treasury': ['treasury_pkey'],
-    'reserve': ['reserve_pkey'],
-    'pot_transfer': ['pot_transfer_pkey'],
-    'epoch_sync_time': ['epoch_sync_time_pkey', 'unique_epoch_sync_time'
-                        ],
-    'ma_tx_mint': ['ma_tx_mint_pkey'],
-    'ma_tx_out': ['ma_tx_out_pkey'],
-    'script': ['script_pkey', 'unique_script'],
-    'cost_model': ['cost_model_pkey', 'unique_cost_model'],
-    'epoch_param': ['epoch_param_pkey'],
-    'pool_offline_data': ['pool_offline_data_pkey',
-                          'unique_pool_offline_data'],
-    'param_proposal': ['param_proposal_pkey'],
-    'pool_offline_fetch_error': ['pool_offline_fetch_error_pkey',
-                                 'unique_pool_offline_fetch_error'],
-    'multi_asset': ['multi_asset_pkey', 'unique_multi_asset'],
-    'delisted_pool': ['delisted_pool_pkey', 'unique_delisted_pool'],
-    'reserved_pool_ticker': ['reserved_pool_ticker_pkey',
-                             'unique_reserved_pool_ticker'],
-    'extra_key_witness': ['extra_key_witness_pkey'],
-    'collateral_tx_out': ['collateral_tx_out_pkey'],
-    'reference_tx_in': ['reference_tx_in_pkey'],
-    'redeemer_data': ['redeemer_data_pkey', 'unique_redeemer_data'],
-    'reverse_index': ['reverse_index_pkey'],
-    }

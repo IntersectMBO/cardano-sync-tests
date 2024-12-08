@@ -32,6 +32,7 @@ from sync_tests.utils.aws_db_utils import get_identifier_last_run_from_table, \
 
 TEST_RESULTS = f"db_sync_{ENVIRONMENT}_full_sync_test_results.json"
 CHART = f"full_sync_{ENVIRONMENT}_stats_chart.png"
+EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = load_json_files()
 
 def create_sync_stats_chart():
     os.chdir(ROOT_TEST_PATH)
