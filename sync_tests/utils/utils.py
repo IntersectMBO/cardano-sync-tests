@@ -103,23 +103,25 @@ def cli_has(command: str) -> bool:
     return not cmd_err.startswith("Invalid")
 
 
-def print_ok(message):
-    print(Fore.GREEN + f"{message}", Style.RESET_ALL, flush=True)
+def print_message(message: str, type: str = "info"):
+    """
+    Print a message to the logs with color coding.
 
-
-def print_info(message):
-    print(Fore.BLUE + f"{message}", Style.RESET_ALL, flush=True)
-
-
-def print_warn(message):
-    print(Fore.YELLOW + f"{message}", Style.RESET_ALL, flush=True)
-
-
-def print_info_warn(message):
-    print(Fore.LIGHTMAGENTA_EX + f"{message}", Style.RESET_ALL, flush=True)
-
-def print_error(message):
-    print(Fore.RED + f"{message}", Style.RESET_ALL, flush=True)
+    Attributes:
+        message (str): The message to print.
+        type (str): The message level. Options are:
+                     "ok", "info", "warn", "info_warn", "error".
+                     Default is "info".
+    """
+    colors = {
+        "ok": Fore.GREEN,
+        "info": Fore.BLUE,
+        "warn": Fore.YELLOW,
+        "info_warn": Fore.LIGHTMAGENTA_EX,
+        "error": Fore.RED
+    }
+    color = colors.get(type, Fore.BLUE)  # Default to 'info' if level is invalid
+    print(color + f"{message}", Style.RESET_ALL, flush=True)
 
 
 def date_diff_in_seconds(dt2, dt1):
@@ -212,3 +214,17 @@ def delete_file(file_path):
         file_path.unlink()
     except OSError as e:
         print_error(f"Error: {file_path} : {e.strerror}")
+
+
+def load_json_files():
+    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    schema_path = os.path.join(base_path, 'schemas', 'expected_db_schema.json')
+    indexes_path = os.path.join(base_path, 'schemas', 'expected_db_indexes.json')
+
+    with open(schema_path, 'r') as schema_file:
+        expected_db_schema = json.load(schema_file)
+
+    with open(indexes_path, 'r') as indexes_file:
+        expected_db_indexes = json.load(indexes_file)
+
+    return expected_db_schema, expected_db_indexes

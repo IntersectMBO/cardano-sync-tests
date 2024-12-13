@@ -1,3 +1,4 @@
+import os
 from git import Repo
 
 
@@ -12,3 +13,11 @@ def git_checkout(repo, rev):
     print(f"Checked out rev: {rev} of {repo}")
     repo.git.checkout(rev)
     return repo
+
+
+def clone_repo(repo_name, repo_branch):
+    location = os.getcwd() + f"/{repo_name}"
+    repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", location)
+    repo.git.checkout(repo_branch)
+    print(f"Repo: {repo_name} cloned to: {location}")
+    return location

@@ -163,7 +163,7 @@ jobs:
         env:
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          nix develop --accept-flake-config .#python --command python sync_tests/tests/node_sync_test.py \
+          nix develop --accept-flake-config .#python --command python -m sync_tests.tests.node_sync_test \
             -e ${{ matrix.env }} \
             -b ${{ github.event.inputs.build_mode }} \
             -t1 "${{ github.event.inputs.tag_no1 }}" \
@@ -183,7 +183,7 @@ jobs:
           AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
         run: |
-          nix develop --accept-flake-config .#python --command python sync_tests/tests/node_write_sync_values_to_db.py \
+          nix develop --accept-flake-config .#python --command python -m sync_tests.tests.node_write_sync_values_to_db \
             -e ${{ matrix.env }}
 
       - name: Prepare node logs
