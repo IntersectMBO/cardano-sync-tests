@@ -3,7 +3,6 @@ import os
 import platform
 import shutil
 import mmap
-import zipfile
 import subprocess
 import requests
 import urllib.request
@@ -17,11 +16,10 @@ from assertpy import assert_that
 from os.path import normpath, basename
 from pathlib import Path
 from psutil import process_iter
-from datetime import datetime
-from git import Repo
 
-import psutil
 import time
+
+import utils
 
 
 ONE_MINUTE = 60
@@ -69,30 +67,6 @@ def print_color_log(log_type, message):
     print(f"{log_type}{message}{sh_colors.ENDC}")
 
 
-def date_diff_in_seconds(dt2, dt1):
-    # dt1 and dt2 should be datetime types
-    timedelta = dt2 - dt1
-    return int(timedelta.days * 24 * 3600 + timedelta.seconds)
-
-
-def seconds_to_time(seconds_val):
-    mins, secs = divmod(seconds_val, 60)
-    hour, mins = divmod(mins, 60)
-    return "%d:%02d:%02d" % (hour, mins, secs)
-
-
-def get_os_type():
-    return [platform.system(), platform.release(), platform.version()]
-
-
-def get_no_of_cpu_cores():
-    return os.cpu_count()
-
-
-def get_total_ram_in_GB():
-    return int(psutil.virtual_memory().total / 1000000000)
-
-
 def get_machine_name():
     return platform.node()
 
@@ -107,6 +81,7 @@ def read_env_var(name):
 
 def wait(seconds):
     time.sleep(seconds)
+
 
 def make_tarfile(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:
@@ -249,19 +224,6 @@ def stop_process(proc_name):
             proc.kill()
 
 
-def show_percentage(part, whole):
-    return round(100 * float(part) / float(whole), 2)
-
-
-def get_current_date_time():
-    now = datetime.now()
-    return now.strftime("%d/%m/%Y %H:%M:%S")
-
-
-def get_file_creation_date(path_to_file):
-    return time.ctime(os.path.getmtime(path_to_file))
-
-
 def create_dir(dir_name, root='.'):
     Path(f"{root}/{dir_name}").mkdir(parents=True, exist_ok=True)
     return f"{root}/{dir_name}"
@@ -272,37 +234,6 @@ def remove_dir(dir_name):
         shutil.rmtree(dir_name)
     except OSError as e:
         print("Error: %s : %s" % (dir_name, e.strerror))
-
-
-def get_directory_size(start_path='.'):
-    total_size_in_bytes = 0
-    for dirpath, dirnames, filenames in os.walk(start_path):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size_in_bytes += os.path.getsize(fp)
-    return total_size_in_bytes
-
-
-def zip_file(archive_name, file_path):
-    with zipfile.ZipFile(archive_name, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zip:
-        file_name = basename(normpath(file_path))
-        zip.write(file_path, arcname=file_name)
-
-
-def unzip_file(file_name):
-    with zipfile.ZipFile(file_name, 'r') as zip:
-        zip.printdir()
-
-        print(f"Extracting all the files from {file_name}...")
-        zip.extractall()
-
-
-def delete_file(file_path):
-    # file_path => a Path (pathlib object)
-    try:
-        file_path.unlink()
-    except OSError as e:
-        print(f"Error: {file_path} : {e.strerror}")
 
 
 def get_file_sha_256_sum(filename):
@@ -435,10 +366,10 @@ def emergency_upload_artifacts(env):
     write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
     export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
 
-    zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
-    zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
-    zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
-    zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
+    utils.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
+    utils.zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
+    utils.zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
+    utils.zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
 
     upload_artifact(PERF_STATS_ARCHIVE_NAME)
     upload_artifact(SYNC_DATA_ARCHIVE_NAME)
@@ -589,7 +520,7 @@ def download_and_extract_node_snapshot(env):
     tf = tarfile.open(Path(current_directory) / archive_name)
     tf.extractall(Path(current_directory))
     os.rename(f"db-{env}","db")
-    delete_file(Path(current_directory) / archive_name)
+    utils.delete_file(Path(current_directory) / archive_name)
     print(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
@@ -963,6 +894,7 @@ def create_db_sync_snapshot_stage_1(env):
             )
         )
 
+
 def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
     os.chdir(ROOT_TEST_PATH / 'cardano-db-sync')
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
@@ -1081,7 +1013,7 @@ def wait_for_db_to_sync(env, sync_percentage = 99.9):
             print(f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, block: {node_block_no}, slot: {node_slot}, era: {node_era}", flush=True)
             epoch_no, block_no, slot_no = get_db_sync_tip(env)
             db_sync_progress = get_db_sync_progress(env)
-            sync_time_h_m_s = seconds_to_time(time.perf_counter() - start_sync)
+            sync_time_h_m_s = utils.seconds_to_time(time.perf_counter() - start_sync)
             print(f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, epoch: {epoch_no}, block: {block_no}, slot: {slot_no}", flush=True)
             print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
 

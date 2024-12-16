@@ -7,6 +7,7 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
+import sync_tests.utils.utils as utils
 import sync_tests.utils.aws_db_utils as aws_db_utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 import sync_tests.utils.gitpython_utils as git_utils
@@ -38,10 +39,10 @@ def upload_snapshot_restoration_results_to_aws(env):
 def main():
 
     print("--- Db-sync restoration from IOHK official snapshot")
-    platform_system, platform_release, platform_version = utils_db_sync.get_os_type()
+    platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils_db_sync.get_current_date_time()
+    start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
     env = utils_db_sync.get_environment(args)
@@ -112,7 +113,7 @@ def main():
     utils_db_sync.print_file(utils_db_sync.DB_SYNC_LOG_FILE, 30)
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
-    end_test_time = utils_db_sync.get_current_date_time()
+    end_test_time = utils.get_current_date_time()
     wait_time = 30
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
     utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
@@ -130,8 +131,8 @@ def main():
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
-    test_data["no_of_cpu_cores"] = utils_db_sync.get_no_of_cpu_cores()
-    test_data["total_ram_in_GB"] = utils_db_sync.get_total_ram_in_GB()
+    test_data["no_of_cpu_cores"] = utils.get_no_of_cpu_cores()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -145,9 +146,9 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["node_total_sync_time_in_sec"] = node_sync_time_in_secs
-    test_data["node_total_sync_time_in_h_m_s"] = utils_db_sync.seconds_to_time(int(node_sync_time_in_secs))
+    test_data["node_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(node_sync_time_in_secs))
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["db_total_sync_time_in_h_m_s"] = utils_db_sync.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["db_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
     test_data["snapshot_url"] = snapshot_url
     test_data["snapshot_name"] = snapshot_name
     test_data["snapshot_epoch_no"] = snapshot_epoch_no
@@ -170,10 +171,10 @@ def main():
     utils_db_sync.print_file(TEST_RESULTS)
 
     # compress artifacts
-    utils_db_sync.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
-    utils_db_sync.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
-    utils_db_sync.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
+    utils.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
+    utils.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
+    utils.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
+    utils.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
     utils_db_sync.upload_artifact(utils_db_sync.NODE_ARCHIVE_NAME)

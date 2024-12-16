@@ -213,7 +213,7 @@ def delete_file(file_path):
     try:
         file_path.unlink()
     except OSError as e:
-        print_error(f"Error: {file_path} : {e.strerror}")
+        print_message(type="error", message=f"Error: {file_path} : {e.strerror}")
 
 
 def load_json_files():
