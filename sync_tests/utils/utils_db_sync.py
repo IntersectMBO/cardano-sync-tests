@@ -19,7 +19,7 @@ from psutil import process_iter
 
 import time
 
-import utils
+import sync_tests.utils.utils as utils
 
 
 ONE_MINUTE = 60
