@@ -8,6 +8,7 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
+import sync_tests.utils.utils as utils
 import sync_tests.utils.aws_db_utils as aws_db_utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 
@@ -41,8 +42,8 @@ def main():
         return 0
 
     print("--- Db sync snapshot creation")
-    platform_system, platform_release, platform_version = utils_db_sync.get_os_type()
-    start_test_time = utils_db_sync.get_current_date_time()
+    platform_system, platform_release, platform_version = utils.get_os_type()
+    start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
     env = utils_db_sync.get_environment(args)
@@ -78,7 +79,7 @@ def main():
     snapshot_creation_time_seconds = int(end_snapshot_creation - start_snapshot_creation)
     print(f"Snapshot creation time [seconds]: {snapshot_creation_time_seconds}")
 
-    end_test_time = utils_db_sync.get_current_date_time()
+    end_test_time = utils.get_current_date_time()
     print(f"Test end time: {end_test_time}")
 
     # export test data as a json file
@@ -86,8 +87,8 @@ def main():
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
-    test_data["no_of_cpu_cores"] = utils_db_sync.get_no_of_cpu_cores()
-    test_data["total_ram_in_GB"] = utils_db_sync.get_total_ram_in_GB()
+    test_data["no_of_cpu_cores"] = utils.get_no_of_cpu_cores()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
     test_data["env"] = env
     test_data["db_sync_branch"] = db_branch
     test_data["db_version"] = db_sync_version_from_gh_action
@@ -96,7 +97,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["snapshot_creation_time_in_sec"] = snapshot_creation_time_seconds
-    test_data["snapshot_creation_time_in_h_m_s"] = utils_db_sync.seconds_to_time(int(snapshot_creation_time_seconds))
+    test_data["snapshot_creation_time_in_h_m_s"] = utils.seconds_to_time(int(snapshot_creation_time_seconds))
     test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
     test_data["stage_2_cmd"] = stage_2_cmd
     test_data["stage_2_result"] = stage_2_result

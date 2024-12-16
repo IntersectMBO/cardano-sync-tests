@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
+import sync_tests.utils.utils as utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 
 
@@ -22,10 +23,10 @@ def main():
     print("--- Db sync snapshot restoration")
 
     # system and software versions details
-    platform_system, platform_release, platform_version = utils_db_sync.get_os_type()
+    platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils_db_sync.get_current_date_time()
+    start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
     env = utils_db_sync.get_environment(args)
@@ -83,7 +84,7 @@ def main():
     utils_db_sync.wait(utils_db_sync.ONE_MINUTE)
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
-    end_test_time = utils_db_sync.get_current_date_time()
+    end_test_time = utils.get_current_date_time()
     wait_time = 20
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
     utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
@@ -102,8 +103,8 @@ def main():
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
-    test_data["no_of_cpu_cores"] = utils_db_sync.get_no_of_cpu_cores()
-    test_data["total_ram_in_GB"] = utils_db_sync.get_total_ram_in_GB()
+    test_data["no_of_cpu_cores"] = utils.get_no_of_cpu_cores()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -115,7 +116,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["db_total_sync_time_in_h_m_s"] = utils_db_sync.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["db_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
     test_data["snapshot_name"] = snapshot_file
     test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
     test_data["restoration_time"] = restoration_time
@@ -133,7 +134,7 @@ def main():
     utils_db_sync.print_file(TEST_RESULTS)
 
     # compress & upload artifacts
-    utils_db_sync.zip_file(DB_SYNC_RESTORATION_ARCHIVE, utils_db_sync.DB_SYNC_LOG_FILE)
+    utils.zip_file(DB_SYNC_RESTORATION_ARCHIVE, utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.upload_artifact(DB_SYNC_RESTORATION_ARCHIVE)
     utils_db_sync.upload_artifact(TEST_RESULTS)
 

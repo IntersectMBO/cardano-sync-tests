@@ -126,10 +126,10 @@ def main():
 
     # system and software versions details
     print("--- Sync from clean state - setup")
-    platform_system, platform_release, platform_version = utils_db_sync.get_os_type()
+    platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils_db_sync.get_current_date_time()
+    start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
     env = utils_db_sync.get_environment(args)
@@ -188,7 +188,7 @@ def main():
     db_schema = utils_db_sync.check_database(utils_db_sync.get_db_schema, 'DB schema is incorrect', EXPECTED_DB_SCHEMA)
     db_indexes = utils_db_sync.check_database(utils_db_sync.get_db_indexes, 'DB indexes are incorrect', EXPECTED_DB_INDEXES)
     epoch_no, block_no, slot_no = utils_db_sync.get_db_sync_tip(env)
-    end_test_time = utils_db_sync.get_current_date_time()
+    end_test_time = utils.get_current_date_time()
 
     print("--- Summary & Artifacts uploading")
     print(f"FINAL db-sync progress: {utils_db_sync.get_db_sync_progress(env)}, epoch: {epoch_no}, block: {block_no}")
@@ -203,8 +203,8 @@ def main():
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
-    test_data["no_of_cpu_cores"] = utils_db_sync.get_no_of_cpu_cores()
-    test_data["total_ram_in_GB"] = utils_db_sync.get_total_ram_in_GB()
+    test_data["no_of_cpu_cores"] = utils.get_no_of_cpu_cores()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -218,7 +218,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["total_sync_time_in_h_m_s"] = utils_db_sync.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
@@ -236,10 +236,10 @@ def main():
     utils_db_sync.print_file(TEST_RESULTS)
 
     # compress artifacts
-    utils_db_sync.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
-    utils_db_sync.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
-    utils_db_sync.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
+    utils.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
+    utils.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
+    utils.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
+    utils.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
     utils_db_sync.upload_artifact(utils_db_sync.NODE_ARCHIVE_NAME)
