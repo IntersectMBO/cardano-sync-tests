@@ -74,10 +74,6 @@ def get_machine_name():
 def export_env_var(name, value):
     os.environ[name] = str(value)
 
-    
-def read_env_var(name):
-    return os.environ[name]
-
 
 def wait(seconds):
     time.sleep(seconds)
@@ -158,23 +154,6 @@ def create_node_database_archive(env):
     os.chdir(current_directory)
     node_db_archive_path = node_directory + f"/{node_db_archive}"
     return node_db_archive_path
-
-
-def set_github_env_var(env_var, value):
-    env_file = os.getenv('GITHUB_ENV')
-    with open(env_file, "a") as my_env_file:
-        my_env_file.write(f"{env_var}={value}")
-
-
-def set_github_job_summary(value):
-    job_summary = os.getenv('GITHUB_STEP_SUMMARY')
-    with open(job_summary, "a") as job_summary:
-        job_summary.write(f"{value}")
-        job_summary.write(f"\n\n")
-
-
-def set_github_warning(warning_msg):
-  print(f"::warning::{warning_msg}")
 
         
 def set_buildkite_meta_data(key, value):
@@ -378,30 +357,6 @@ def emergency_upload_artifacts(env):
 
     stop_process('cardano-db-sync')
     stop_process('cardano-node')
-
-
-def get_and_extract_archive_files(archive_url):
-    current_directory = os.getcwd()
-    request = requests.get(archive_url, allow_redirects=True)
-    download_url = request.url
-    archive_name = download_url.split("/")[-1].strip()
-
-    print("Get and extract archive files:")
-    print(f" - current_directory: {current_directory}")
-    print(f" - download_url: {download_url}")
-    print(f" - archive name: {archive_name}")
-
-    urllib.request.urlretrieve(download_url, Path(current_directory) / archive_name)
-
-    print(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
-    tf = tarfile.open(Path(current_directory) / archive_name)
-    tf.extractall(Path(current_directory))
-    print(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
-
-
-def get_node_archive_url(node_pr):
-    cardano_node_pr=f"-pr-{node_pr}"
-    return f"https://hydra.iohk.io/job/Cardano/cardano-node{cardano_node_pr}/linux.musl.cardano-node-linux/latest-finished/download/1/"
 
 
 def get_node_config_files(env):
@@ -737,11 +692,6 @@ def copy_db_sync_executables(build_method="nix"):
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
         )
-
-
-def get_db_sync_archive_url(db_pr):
-    cardano_db_sync_pr=f"-pr-{db_pr}"
-    return f"https://hydra.iohk.io/job/Cardano/cardano-db-sync{cardano_db_sync_pr}/cardano-db-sync-linux/latest-finished/download/1/"
 
 
 def get_db_sync_version():

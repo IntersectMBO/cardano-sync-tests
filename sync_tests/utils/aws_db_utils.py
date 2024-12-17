@@ -1,8 +1,5 @@
 import os
-
 import pymysql.cursors
-import pandas as pd
-
 import sync_tests.utils.utils as utils
 
 
@@ -19,55 +16,6 @@ def create_connection():
         utils.print_message(type="error", message=f"!!! Database connection failed due to: {e}")
 
     return conn
-
-
-def create_table(table_sql_query):
-    conn = create_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(table_sql_query)
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to create table: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def create_table_based_on_another_table_structure(existing_table_name, new_table_name):
-    print(f"Creating new table - {new_table_name} based on the structure of existing table - {existing_table_name}")
-
-    conn = create_connection()
-    sql_query = f"CREATE TABLE {new_table_name} LIKE {existing_table_name};"
-    utils.print_message(type="info", message=sql_query)
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed create new table {new_table_name} based on {existing_table_name} --> {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def drop_table(table_name):
-    conn = create_connection()
-    sql_query = f"DROP TABLE {table_name};"
-    utils.print_message(type="info", message=sql_query)
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to drop table {table_name}: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
 
 
 def get_column_names_from_table(table_name):
@@ -227,96 +175,6 @@ def get_last_epoch_no_from_table(table_name):
                 conn.close()
 
 
-def get_column_values(table_name, column_name):
-    utils.print_message(type="info", message=f"Getting {column_name} column values from table {table_name}")
-
-    conn = create_connection()
-    sql_query = f"SELECT {column_name} FROM {table_name};"
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-        return [el[0] for el in cur.fetchall()]
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to get {column_name} column values from table {table_name} --> {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def delete_all_rows_from_table(table_name):
-    utils.print_message(type="info", message=f"Deleting all entries from table: {table_name}")
-    conn = create_connection()
-    sql_query = f"TRUNCATE TABLE {table_name}"
-    print(f"  -- sql_query: {sql_query}")
-    initial_rows_no = get_last_row_no(table_name)
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to delete all records from table {table_name} --> {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-    final_rows_no = get_last_row_no(table_name)
-    print(f"Successfully deleted {initial_rows_no - final_rows_no} rows from table {table_name}")
-
-
-def delete_record(table_name, column_name, delete_value):
-    utils.print_message(type="info", message=f"Deleting rows containing '{delete_value}' value inside the '{column_name}' column")
-    initial_rows_no = get_last_row_no(table_name)
-    utils.print_message(type="info", message=f"Deleting {column_name} = {delete_value} from {table_name} table")
-
-    conn = create_connection()
-    sql_query = f"DELETE from {table_name} where {column_name}=\"{delete_value}\""
-    print(f"  -- sql_query: {sql_query}")
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to delete record {column_name} = {delete_value} from {table_name} table: --> {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-    final_rows_no = get_last_row_no(table_name)
-    print(f"Successfully deleted {initial_rows_no - final_rows_no} rows from table {table_name}")
-
-
-def update_record(table_name, column_name, old_value, new_value):
-    utils.print_message(type="info", message=f"Updating {column_name} = {new_value} from {table_name} table")
-
-    conn = create_connection()
-    sql_query = f"UPDATE {table_name} SET {column_name}=\"{new_value}\" where {column_name}=\"{old_value}\""
-    print(f"  -- sql_query: {sql_query}")
-    try:
-        cur = conn.cursor()
-        cur.execute(sql_query)
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        utils.print_message(type="error", message=f"!!! ERROR: Failed to update record {column_name} = {new_value} from {table_name} table: --> {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def add_bulk_csv_to_table(table_name, csv_path):
-    df = pd.read_csv(csv_path)
-    # replace nan/empty values with "None"
-    df = df.where(pd.notnull(df), None)
-
-    col_to_insert = list(df.columns)
-    val_to_insert = df.values.tolist()
-    add_bulk_values_into_db(table_name, col_to_insert, val_to_insert)
-
-
 def add_single_row_into_db(table_name, col_names_list, col_values_list):
     print(f"Adding 1 new entry into {table_name} table")
     initial_rows_no = get_last_row_no(table_name)
@@ -363,15 +221,3 @@ def add_bulk_rows_into_db(table_name, col_names_list, col_values_list):
     final_rows_no = get_last_row_no(table_name)
     print(f"Successfully added {final_rows_no - initial_rows_no} rows into table {table_name}")
     return True
-
-# Delete specified identifiers
-# env = "testnet"
-# delete_strings = ["testnet_37"]
-# for del_str in delete_strings:
-#     delete_record(env, "identifier", del_str)
-#     delete_record(env + "_epoch_duration", "identifier", del_str)
-#     delete_record(env + "_logs", "identifier", del_str)
-
-# Update column values
-# env = "mainnet"
-# update_record(env, "alonzo_start_time", "1631483091", "2021-09-12T21:47:46Z")
