@@ -16,7 +16,7 @@ DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_rest
 
 
 def main():
-    if utils_db_sync.should_skip(args) == "true":
+    if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot restoration")
         return 0
 
@@ -29,22 +29,22 @@ def main():
     start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
-    env = utils_db_sync.get_environment(args)
+    env = utils.get_arg_value(args=args, key="environment")
     print(f"Environment: {env}")
 
-    node_pr = utils_db_sync.get_node_pr(args)
+    node_pr = utils.get_arg_value(args=args, key="node_pr", default="")
     print(f"Node PR number: {node_pr}")
 
-    node_branch = utils_db_sync.get_node_branch(args)
+    node_branch = utils.get_arg_value(args=args, key="node_branch", default="")
     print(f"Node branch: {node_branch}")
 
-    node_version_from_gh_action = utils_db_sync.get_node_version_from_gh_action(args)
+    node_version_from_gh_action = utils.get_arg_value(args=args, key="node_version_gh_action", default="")
     print(f"Node version: {node_version_from_gh_action}")
 
-    db_branch = utils_db_sync.get_db_sync_branch(args)
+    db_branch = utils.get_arg_value(args=args, key="db_sync_branch", default="")
     print(f"DB sync branch: {db_branch}")
 
-    db_sync_version_from_gh_action = utils_db_sync.get_db_sync_version_from_gh_action(args)
+    db_sync_version_from_gh_action = utils.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
     print(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # database setup

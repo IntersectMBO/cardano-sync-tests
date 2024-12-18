@@ -257,49 +257,6 @@ def get_last_perf_stats_point():
         last_perf_stats_point = db_sync_perf_stats[-1]
 
     return last_perf_stats_point
-    
-
-def should_skip(args):
-    return vars(args)["run_only_sync_test"]
-
-    
-def get_environment(args):
-    return vars(args)["environment"]
-
-
-def get_node_pr(args):
-    return str(vars(args)["node_pr"]).strip()
-
-
-def get_node_branch(args):
-    return str(vars(args)["node_branch"]).strip()
-
-
-def get_node_version_from_gh_action(args):
-    return str(vars(args)["node_version_gh_action"]).strip()
-
-
-def get_db_pr(args):
-    return str(vars(args)["db_sync_pr"]).strip()
-
-
-def get_db_sync_branch(args):
-    return str(vars(args)["db_sync_branch"]).strip()
-
-
-def get_db_sync_start_options(args):
-    options = str(vars(args)["db_sync_start_options"]).strip()
-    if options == "--none":
-        return ''
-    return options
-
-
-def get_snapshot_url(args):
-    return str(vars(args)["snapshot_url"]).strip()
-
-
-def get_db_sync_version_from_gh_action(args):
-    return str(vars(args)["db_sync_version_gh_action"]).strip()    
 
 
 def get_testnet_value(env):

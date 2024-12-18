@@ -121,3 +121,12 @@ def load_json_files():
         expected_db_indexes = json.load(indexes_file)
 
     return expected_db_schema, expected_db_indexes
+
+
+def get_arg_value(args, key, default=None):
+    value = vars(args).get(key, default)
+    if isinstance(value, str):
+        value = value.strip()
+    if key == "db_sync_start_options" and value == "--none":
+        return ''
+    return value

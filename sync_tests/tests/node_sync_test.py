@@ -221,7 +221,7 @@ def set_node_socket_path_env_var():
 
 
 def get_epoch_no_d_zero():
-    env = vars(args)['environment']
+    env = utils.get_arg_value(args=args, key="environment")
     if env == 'mainnet':
         return 257
     elif env == 'testnet':
@@ -235,7 +235,7 @@ def get_epoch_no_d_zero():
 
 
 def get_start_slot_no_d_zero():
-    env = vars(args)['environment']
+    env = utils.get_arg_value(args=args, key="environment")
     if env == 'mainnet':
         return 25661009
     elif env == 'testnet':
@@ -249,7 +249,7 @@ def get_start_slot_no_d_zero():
 
 
 def get_testnet_value():
-    env = vars(args)['environment']
+    env = utils.get_arg_value(args=args, key="environment")
     if env == 'mainnet':
         return '--mainnet'
     elif env == 'testnet':
@@ -783,16 +783,16 @@ def main():
     start_test_time = utils.get_current_date_time()
     utils.print_message(type="info", message=f"Test start time: {start_test_time}")
     utils.print_message(type="warn", message='Test parameters:')
-    env = vars(args)['environment']
-    node_build_mode = str(vars(args)['build_mode']).strip()
-    node_rev1 = str(vars(args)['node_rev1']).strip()
-    node_rev2 = str(vars(args)['node_rev2']).strip()
-    tag_no1 = str(vars(args)['tag_no1']).strip()
-    tag_no2 = str(vars(args)['tag_no2']).strip()
-    node_topology_type1 = str(vars(args)['node_topology1']).strip()
-    node_topology_type2 = str(vars(args)['node_topology2']).strip()
-    node_start_arguments1 = vars(args)['node_start_arguments1']
-    node_start_arguments2 = vars(args)['node_start_arguments2']
+    env = utils.get_arg_value(args=args, key="environment")
+    node_build_mode = utils.get_arg_value(args=args, key="build_mode")
+    node_rev1 =  utils.get_arg_value(args=args, key="node_rev1")
+    node_rev2 =  utils.get_arg_value(args=args, key="node_rev2")
+    tag_no1 =  utils.get_arg_value(args=args, key="tag_no1")
+    tag_no2 =  utils.get_arg_value(args=args, key="tag_no2")
+    node_topology_type1 = utils.get_arg_value(args=args, key="node_topology1")
+    node_topology_type2 = utils.get_arg_value(args=args, key="node_topology2")
+    node_start_arguments1 = utils.get_arg_value(args=args, key="node_start_arguments1")
+    node_start_arguments2 = utils.get_arg_value(args=args, key="node_start_arguments2")
     repository = None
     print(f"- env: {env}")
     print(f"- node_build_mode: {node_build_mode}")
