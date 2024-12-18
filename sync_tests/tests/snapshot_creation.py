@@ -37,7 +37,7 @@ def upload_snapshot_creation_results_to_aws(env):
 
 
 def main():
-    if utils_db_sync.should_skip(args) == "true":
+    if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot creation")
         return 0
 
@@ -46,20 +46,20 @@ def main():
     start_test_time = utils.get_current_date_time()
     print(f"Test start time: {start_test_time}")
 
-    env = utils_db_sync.get_environment(args)
+    env = utils.get_arg_value(args=args, key="environment")
     print(f"Environment: {env}")
 
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     print(f"DB-Sync version: {db_sync_version}")
     print(f"DB-Sync revision: {db_sync_git_rev}")
 
-    db_sync_pr = utils_db_sync.get_db_pr(args)
+    db_sync_pr = utils.get_arg_value(args=args, key="db_sync_pr", default="")
     print(f"DB-Sync PR: {db_sync_pr}")
 
-    db_branch = utils_db_sync.get_db_sync_branch(args)
+    db_branch = utils.get_arg_value(args=args, key="db_sync_branch", default="")
     print(f"DB sync branch: {db_branch}")
 
-    db_sync_version_from_gh_action = utils_db_sync.get_db_sync_version_from_gh_action(args)
+    db_sync_version_from_gh_action = utils.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
     print(f"DB sync GH version: {db_sync_version_from_gh_action}")
 
 

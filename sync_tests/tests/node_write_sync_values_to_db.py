@@ -13,7 +13,7 @@ RESULTS_FILE_NAME = r"sync_results.json"
 
 
 def main():
-    env = vars(args)["environment"]
+    env = utils.get_arg_value(args=args, key="environment")
     if "-" in env:
         env = f"`{env}`"
     utils.print_message(type="info", message=f"Environment: {env}")
