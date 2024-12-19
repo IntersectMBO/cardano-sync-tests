@@ -91,8 +91,12 @@ def check_string_format(input_string):
 
 def delete_node_files():
     for p in Path("..").glob("cardano-*"):
-        utils.print_message(type="info_warn", message=f"deleting file: {p}")
-        p.unlink(missing_ok=True)
+        if p.is_dir():
+            utils.print_message(type="info_warn", message=f"deleting directory: {p}")
+            shutil.rmtree(p)  # Use shutil.rmtree to delete directories
+        else:
+            utils.print_message(type="info_warn", message=f"deleting file: {p}")
+            p.unlink(missing_ok=True)
 
 
 def update_config(file_name: str, updates: dict) -> None:
