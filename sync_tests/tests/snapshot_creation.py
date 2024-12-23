@@ -87,7 +87,7 @@ def main():
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
-    test_data["no_of_cpu_cores"] = utils.get_no_of_cpu_cores()
+    test_data["no_of_cpu_cores"] = os.cpu_count()
     test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
     test_data["env"] = env
     test_data["db_sync_branch"] = db_branch

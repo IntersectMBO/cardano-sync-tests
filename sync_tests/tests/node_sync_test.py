@@ -607,7 +607,7 @@ def get_data_from_logs(log_file):
             slot_no = line.split(" at slot ")[1]
             tip_details_dict[timestamp] = slot_no
 
-    no_of_cpu_cores = utils.get_no_of_cpu_cores()
+    no_of_cpu_cores = os.cpu_count()
     timestamps_list = list(centi_cpu_dict.keys())
     for timestamp1 in timestamps_list[1:]:
         # %CPU = dValue / dt for 1 core
@@ -961,7 +961,7 @@ def main():
     test_values_dict['chain_size_bytes'] = chain_size
     test_values_dict['sync_duration_per_epoch'] = json.dumps(epoch_details)
     test_values_dict['eras_in_test'] = json.dumps(list(era_details_dict1.keys()))
-    test_values_dict['no_of_cpu_cores'] = utils.get_no_of_cpu_cores()
+    test_values_dict['no_of_cpu_cores'] = os.cpu_count()
     test_values_dict['total_ram_in_GB'] = utils.get_total_ram_in_GB()
     test_values_dict['epoch_no_d_zero'] = get_epoch_no_d_zero()
     test_values_dict['start_slot_no_d_zero'] = get_start_slot_no_d_zero()

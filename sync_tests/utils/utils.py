@@ -53,10 +53,6 @@ def get_os_type():
     return [platform.system(), platform.release(), platform.version()]
 
 
-def get_no_of_cpu_cores():
-    return os.cpu_count()
-
-
 def get_total_ram_in_GB():
     return int(psutil.virtual_memory().total / 1000000000)
 
