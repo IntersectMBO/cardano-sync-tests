@@ -23,7 +23,7 @@ from psutil import process_iter
 sys.path.append(os.getcwd())
 
 from sync_tests.utils.explorer_utils import get_epoch_start_datetime_from_explorer
-from sync_tests.utils.blockfrost_utils import get_epoch_start_datetime_from_blockfrost
+from sync_tests.utils.blockfrost_utils import get_epoch_start_datetime
 from sync_tests.utils.gitpython_utils import git_clone_iohk_repo, git_checkout
 
 import sync_tests.utils.utils as utils
@@ -458,7 +458,7 @@ def wait_for_node_to_sync(env):
             if actual_era not in era_details_dict:
                 current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
                 if env == 'mainnet':
-                    actual_era_start_time = get_epoch_start_datetime_from_blockfrost(actual_epoch)
+                    actual_era_start_time = get_epoch_start_datetime(actual_epoch)
                 else:
                     actual_era_start_time = get_epoch_start_datetime_from_explorer(env,
                                                                                    actual_epoch)
@@ -486,7 +486,7 @@ def wait_for_node_to_sync(env):
             if actual_era not in era_details_dict:
                 current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
                 if env == 'mainnet':
-                    actual_era_start_time = get_epoch_start_datetime_from_blockfrost(actual_epoch)
+                    actual_era_start_time = get_epoch_start_datetime(actual_epoch)
                 else:
                     actual_era_start_time = get_epoch_start_datetime_from_explorer(env,
                                                                                    actual_epoch)
