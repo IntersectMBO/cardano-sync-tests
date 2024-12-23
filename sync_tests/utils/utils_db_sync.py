@@ -674,7 +674,7 @@ def get_db_sync_version():
 
 
 def get_latest_snapshot_url(env, args):
-    github_snapshot_url = get_snapshot_url(args)
+    github_snapshot_url = utils.get_arg_value(args=args, key="snapshot_url")
     if github_snapshot_url != "latest":
         return github_snapshot_url
 
