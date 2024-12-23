@@ -7,7 +7,7 @@ import sync_tests.utils.blockfrost_utils as blockfrost_utils
 
 def update_mainnet_tx_count_per_epoch():
     env, table_name = 'mainnet', 'mainnet_tx_count'
-    current_epoch_no = blockfrost_utils.get_current_epoch_no_from_blockfrost()
+    current_epoch_no = blockfrost_utils.get_current_epoch_no()
     print(f"current_epoch_no   : {current_epoch_no}")
 
     last_added_epoch_no = int(aws_db_utils.get_last_epoch_no_from_table(table_name))
@@ -20,7 +20,7 @@ def update_mainnet_tx_count_per_epoch():
         # adding values into the db only for missing full epochs (ignoring the current/incomplete epoch)
         for epoch_no in range(last_added_epoch_no + 1, current_epoch_no):
             utils.print_message(type="info", message=f"Getting values for epoch {epoch_no}")
-            tx_count = blockfrost_utils.get_tx_count_per_epoch_from_blockfrost(epoch_no)
+            tx_count = blockfrost_utils.get_tx_count_per_epoch(epoch_no)
             print(f"  - tx_count: {tx_count}")
             new_row_data = {'epoch_no': epoch_no, 'tx_count': tx_count}
             new_row = pd.DataFrame([new_row_data])
