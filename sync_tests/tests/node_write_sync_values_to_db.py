@@ -60,7 +60,7 @@ def main():
                     aws_db_utils.add_column_to_table(env, column_name, "VARCHAR(255)")
 
     sync_test_results_dict["identifier"] = sync_test_results_dict["env"] + "_" + str(
-        int(aws_db_utils.get_identifier_last_run_from_table(env).split("_")[-1]) + 1)
+        int(aws_db_utils.get_last_identifier(env).split("_")[-1]) + 1)
     
     print(f"--- Write test values into the {env} DB table")
 
@@ -72,7 +72,7 @@ def main():
 
     col_to_insert = list(test_results_dict.keys())
     val_to_insert = list(test_results_dict.values())
-    if not aws_db_utils.add_single_value_into_db(env, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(env, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -97,7 +97,7 @@ def main():
             
     col_to_insert = list(df1.columns)
     val_to_insert = df1.values.tolist()
-    if not aws_db_utils.add_bulk_values_into_db(env + '_logs', col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(env + '_logs', col_to_insert, val_to_insert, True):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -120,7 +120,7 @@ def main():
 
     col_to_insert = list(df2.columns)
     val_to_insert = df2.values.tolist()
-    if not aws_db_utils.add_bulk_values_into_db(env + '_epoch_duration', col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(env + '_epoch_duration', col_to_insert, val_to_insert, True):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)

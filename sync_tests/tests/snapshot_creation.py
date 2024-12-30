@@ -22,7 +22,7 @@ def upload_snapshot_creation_results_to_aws(env):
         db_snapshot_creation_test_results_dict = json.load(json_file)
 
     db_snapshot_creation_test_summary_table = env + '_db_sync_snapshot_creation'
-    test_id = str(int(aws_db_utils.get_identifier_last_run_from_table(db_snapshot_creation_test_summary_table).split("_")[-1]) + 1)
+    test_id = str(int(aws_db_utils.get_last_identifier(db_snapshot_creation_test_summary_table).split("_")[-1]) + 1)
     identifier = env + "_" + test_id
     db_snapshot_creation_test_results_dict["identifier"] = identifier
 

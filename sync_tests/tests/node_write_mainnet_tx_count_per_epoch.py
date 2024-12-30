@@ -10,7 +10,7 @@ def update_mainnet_tx_count_per_epoch():
     current_epoch_no = blockfrost_utils.get_current_epoch_no()
     print(f"current_epoch_no   : {current_epoch_no}")
 
-    last_added_epoch_no = int(aws_db_utils.get_last_epoch_no_from_table(table_name))
+    last_added_epoch_no = int(aws_db_utils.get_max_epoch(table_name))
     print(f"last_added_epoch_no: {last_added_epoch_no}")
 
     df_column_names = ['epoch_no', 'tx_count']
@@ -28,7 +28,7 @@ def update_mainnet_tx_count_per_epoch():
 
         col_to_insert = list(df.columns)
         val_to_insert = df.values.tolist()
-        if not aws_db_utils.add_bulk_values_into_db(table_name, col_to_insert, val_to_insert):
+        if not aws_db_utils.insert_values_into_db(table_name, col_to_insert, val_to_insert, True):
             print(f"col_to_insert: {col_to_insert}")
             print(f"val_to_insert: {val_to_insert}")
     else:
