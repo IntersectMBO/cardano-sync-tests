@@ -1,3 +1,4 @@
+import json
 import time
 import requests
 import logging
@@ -25,24 +26,32 @@ def get_epoch_start_datetime_from_explorer(env, epoch_no):
     """
     Fetches the start datetime of a specific epoch from the Cardano explorer."""
     headers = {'Content-type': 'application/json'}
-    payload = (
-        f'''{{"query":"query searchForEpochByNumber($number: Int!) {{\n'''
-        f'''  epochs(where: {{number: {{_eq: $number}}}}) {{\n'''
-        f'''    ...EpochOverview\n'''
-        f'''  }}\n'''
-        f'''}}\n\n'''
-        f'''fragment EpochOverview on Epoch {{\n'''
-        f'''  blocks(limit: 1) {{\n'''
-        f'''    protocolVersion\n'''
-        f'''  }}\n'''
-        f'''  blocksCount\n'''
-        f'''  lastBlockTime\n'''
-        f'''  number\n'''
-        f'''  startedAt\n'''
-        f'''  output\n'''
-        f'''  transactionsCount\n'''
-        f'''}}\n", "variables":{{"number":{epoch_no}}}}'''
-    )
+    query = """
+    query searchForEpochByNumber($number: Int!) {
+      epochs(where: {number: {_eq: $number}}) {
+        ...EpochOverview
+      }
+    }
+
+    fragment EpochOverview on Epoch {
+      blocks(limit: 1) {
+        protocolVersion
+      }
+      blocksCount
+      lastBlockTime
+      number
+      startedAt
+      output
+      transactionsCount
+    }
+    """
+
+    variables = {"number": epoch_no}
+
+    payload = json.dumps({
+        "query": query,
+        "variables": variables
+    })
 
     url = EXPLORER_URLS.get(env)
 
