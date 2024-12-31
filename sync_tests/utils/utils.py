@@ -6,10 +6,12 @@ from datetime import datetime
 from typing import NamedTuple
 
 import psutil
+import logging
 
 from colorama import Fore, Style
 
-
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class CLIOut(NamedTuple):
     stdout: bytes
@@ -17,15 +19,7 @@ class CLIOut(NamedTuple):
 
 
 def print_message(message: str, type: str = "info"):
-    """
-    Print a message to the logs with color coding.
-
-    Attributes:
-        message (str): The message to print.
-        type (str): The message level. Options are:
-                     "ok", "info", "warn", "info_warn", "error".
-                     Default is "info".
-    """
+    """Print a message to the logs with color coding."""
     colors = {
         "ok": Fore.GREEN,
         "info": Fore.BLUE,
@@ -38,42 +32,48 @@ def print_message(message: str, type: str = "info"):
 
 
 def date_diff_in_seconds(dt2, dt1):
-    # dt1 and dt2 should be datetime types
+    """Calculate the difference in seconds between two datetime objects."""
     timedelta = dt2 - dt1
-    return int(timedelta.days * 24 * 3600 + timedelta.seconds)
+    return int(timedelta.total_seconds())
 
 
 def seconds_to_time(seconds_val):
+    """Convert seconds into a formatted time string (HH:MM:SS)."""
     mins, secs = divmod(seconds_val, 60)
     hour, mins = divmod(mins, 60)
-    return "%d:%02d:%02d" % (hour, mins, secs)
+    return f"{hour}:{mins:02}:{secs:02}"
 
 
 def get_os_type():
+    """Retrieve the operating system type, release, and version."""
     return [platform.system(), platform.release(), platform.version()]
 
 
 def get_total_ram_in_GB():
-    return int(psutil.virtual_memory().total / 1000000000)
+    """Get the total RAM size in gigabytes."""
+    return int(psutil.virtual_memory().total / 1_000_000_000)
 
 
 def get_current_date_time():
+    """Get the current date and time as a formatted string."""
     now = datetime.now()
     return now.strftime("%d/%m/%Y %H:%M:%S")
 
 
 def print_file_content(file_name: str) -> None:
+    """Print the content of a file."""
     try:
         with open(file_name, 'r') as file:
             content = file.read()
             print(content)
     except FileNotFoundError:
-        print(f"File '{file_name}' not found.")
+        logging.error(f"File '{file_name}' not found.")
     except Exception as e:
-        print(f"An error occurred while reading the file: {e}")
+        logging.error(f"An error occurred while reading the file: {e}")
 
 
 def list_absolute_file_paths(directory):
+    """List all absolute file paths in a given directory."""
     files_paths = []
     for dirpath,_,filenames in os.walk(directory):
         for f in filenames:
@@ -83,6 +83,7 @@ def list_absolute_file_paths(directory):
 
 
 def get_directory_size(start_path='.'):
+    """Calculate the total size of all files in a directory."""
     # returns directory size in bytes
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(start_path):
@@ -93,19 +94,26 @@ def get_directory_size(start_path='.'):
 
 
 def zip_file(archive_name, file_name):
-    with zipfile.ZipFile(archive_name, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zip:
-        zip.write(file_name)
+    """Compress a file into a zip archive."""
+    try:
+        with zipfile.ZipFile(archive_name, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zip:
+            zip.write(file_name)
+        logging.info(f"File '{file_name}' successfully zipped as '{archive_name}'.")
+    except Exception as e:
+        logging.error(f"Error while zipping file: {e}")
 
 
 def delete_file(file_path):
-    # file_path should be a Path (pathlib object)
+    """Delete a file from the file system."""
     try:
         file_path.unlink()
+        logging.info(f"File '{file_path}' deleted successfully.")
     except OSError as e:
-        print_message(type="error", message=f"Error: {file_path} : {e.strerror}")
+        logging.error(f"Error deleting file '{file_path}': {e.strerror}")
 
 
 def load_json_files():
+    """Load JSON files for database schema and indexes."""
     base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     schema_path = os.path.join(base_path, 'schemas', 'expected_db_schema.json')
     indexes_path = os.path.join(base_path, 'schemas', 'expected_db_indexes.json')
@@ -120,6 +128,7 @@ def load_json_files():
 
 
 def get_arg_value(args, key, default=None):
+    """Retrieve the value of a specific argument from an arguments object."""
     value = vars(args).get(key, default)
     if isinstance(value, str):
         value = value.strip()
