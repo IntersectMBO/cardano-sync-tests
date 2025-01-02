@@ -753,7 +753,7 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
     p = subprocess.Popen(["scripts/postgresql-setup.sh", "--restore-snapshot", f"{snapshot_file}", f"{ledger_dir}"], stdout=subprocess.PIPE)
     try:     
         outs, errs = p.communicate(timeout=36000)
-        logging.info = outs.decode("utf-8")
+        output = outs.decode("utf-8")
         print(f"Restore database: {output}")
         if errs:
             errors = errs.decode("utf-8")
