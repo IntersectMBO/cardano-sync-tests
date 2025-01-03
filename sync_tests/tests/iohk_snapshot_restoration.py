@@ -122,8 +122,8 @@ def main():
 
     # shut down services
     print("--- Stop cardano services")
-    utils_db_sync.stop_process('cardano-db-sync')
-    utils_db_sync.stop_process('cardano-node')
+    utils_db_sync.manage_process(proc_name="cardano-db-sync", action="terminate")
+    utils_db_sync.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
     print("--- Gathering end results")
