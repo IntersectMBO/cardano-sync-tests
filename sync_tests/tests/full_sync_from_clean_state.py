@@ -195,8 +195,8 @@ def main():
     print(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
 
     # shut down services
-    utils_db_sync.stop_process('cardano-db-sync')
-    utils_db_sync.stop_process('cardano-node')
+    utils_db_sync.manage_process(proc_name="cardano-db-sync", action="terminate")
+    utils_db_sync.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
     test_data = OrderedDict()
