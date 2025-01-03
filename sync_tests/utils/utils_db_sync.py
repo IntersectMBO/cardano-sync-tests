@@ -197,24 +197,6 @@ def print_n_last_lines_from_file(n, file_name):
     logs = subprocess.run(["tail", "-n", f"{n}", f"{file_name}"], stdout=subprocess.PIPE).stdout.decode("utf-8").strip().rstrip().splitlines()
     for line in logs:
         logging.info(line)
-
-    
-def execute_command(command):
-    """Executes a shell command and logs its output and errors."""
-    logging.info(f"--- Execute command {command}")
-    try:
-        cmd = shlex.split(command)
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
-        outs, errors = process.communicate(timeout=3600)               
-        if errors:
-            logging.info(f"Warnings or Errors: {errors}")
-        logging.info(f"Output of command: {command} : {outs}")
-        exit_code = process.returncode
-        if (exit_code != 0):
-            logging.error(f"Command {command} returned exit code: {exit_code}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        logging.error(f"Command {command} returned exception: {e}")
-        raise
     
   
 def get_last_perf_stats_point():

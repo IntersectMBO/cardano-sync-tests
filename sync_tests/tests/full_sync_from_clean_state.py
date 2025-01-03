@@ -155,8 +155,8 @@ def main():
     # cardano-node setup
     NODE_DIR=git_utils.clone_repo('cardano-node', node_version_from_gh_action)
     os.chdir(NODE_DIR)
-    utils_db_sync.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-    utils_db_sync.execute_command("nix-build -v -A cardano-cli -o cardano-cli-bin")
+    utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
+    utils.execute_command("nix-build -v -A cardano-cli -o cardano-cli-bin")
 
     print("--- Node setup")
     utils_db_sync.copy_node_executables(build_method="nix")
@@ -176,8 +176,8 @@ def main():
     utils_db_sync.setup_postgres() # To login use: psql -h /path/to/postgres -p 5432 -e postgres
     utils_db_sync.create_pgpass_file(env)
     utils_db_sync.create_database()
-    utils_db_sync.execute_command("nix build -v .#cardano-db-sync -o db-sync-node")
-    utils_db_sync.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool")
+    utils.execute_command("nix build -v .#cardano-db-sync -o db-sync-node")
+    utils.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool")
     utils_db_sync.copy_db_sync_executables(build_method="nix")
     print("--- Db sync startup", flush=True)
     utils_db_sync.start_db_sync(env, start_args=db_start_options)
