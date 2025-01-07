@@ -4,6 +4,7 @@ import json
 import argparse
 
 from collections import OrderedDict
+from datetime import timedelta
 
 sys.path.append(os.getcwd())
 
@@ -12,6 +13,8 @@ import sync_tests.utils.aws_db_utils as aws_db_utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 import sync_tests.utils.gitpython_utils as git_utils
 
+from datetime import datetime
+from datetime import timedelta
 
 TEST_RESULTS = 'db_sync_iohk_snapshot_restoration_test_results.json'
 
@@ -42,7 +45,7 @@ def main():
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils.get_current_date_time()
+    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -113,7 +116,7 @@ def main():
     utils_db_sync.print_file(utils_db_sync.DB_SYNC_LOG_FILE, 30)
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
-    end_test_time = utils.get_current_date_time()
+    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 30
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
     utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
@@ -146,9 +149,9 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["node_total_sync_time_in_sec"] = node_sync_time_in_secs
-    test_data["node_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(node_sync_time_in_secs))
+    test_data["node_total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(node_sync_time_in_secs)))
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["db_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["db_total_sync_time_in_h_m_s"] = str(timedelta(seconds=db_full_sync_time_in_secs))
     test_data["snapshot_url"] = snapshot_url
     test_data["snapshot_name"] = snapshot_name
     test_data["snapshot_epoch_no"] = snapshot_epoch_no

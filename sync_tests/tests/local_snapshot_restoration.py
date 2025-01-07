@@ -3,6 +3,8 @@ import sys
 import argparse
 
 from collections import OrderedDict
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.append(os.getcwd())
@@ -26,7 +28,7 @@ def main():
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils.get_current_date_time()
+    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -84,7 +86,7 @@ def main():
     utils_db_sync.wait(utils_db_sync.ONE_MINUTE)
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
-    end_test_time = utils.get_current_date_time()
+    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
     utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
@@ -116,7 +118,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["db_total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["db_total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(db_full_sync_time_in_secs)))
     test_data["snapshot_name"] = snapshot_file
     test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
     test_data["restoration_time"] = restoration_time

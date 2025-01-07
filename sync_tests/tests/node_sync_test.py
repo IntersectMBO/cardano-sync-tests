@@ -4,7 +4,6 @@ import os
 import platform
 import random
 import re
-import shlex
 import shutil
 import signal
 import fileinput
@@ -16,6 +15,7 @@ import time
 import urllib.request
 from collections import OrderedDict
 from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 from psutil import process_iter
@@ -288,7 +288,7 @@ def get_current_tip(timeout_minutes=10):
             return epoch, block, hash_value, slot, era, sync_progress
         except subprocess.CalledProcessError as e:
             print(
-                f" === {utils.get_current_date_time()} - Waiting 60s before retrying to get the tip again - {i}")
+                f" === {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Waiting 60s before retrying to get the tip again - {i}")
             utils.print_message(type="error", message=
                 f"     !!! ERROR: command {e.cmd} returned with error (code {e.returncode}): {' '.join(str(e.output.decode('utf-8')).split())}")
             if "Invalid argument" in str(e.output):
@@ -417,8 +417,8 @@ def get_calculated_slot_no(env):
         byron_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
         shelley_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
 
-    last_slot_no = int(utils.date_diff_in_seconds(shelley_start_time, byron_start_time) / 20 +
-                       utils.date_diff_in_seconds(current_time, shelley_start_time))
+    last_slot_no = int((shelley_start_time - byron_start_time).total_seconds() / 20 +
+                       (current_time - shelley_start_time).total_seconds())
     return last_slot_no
 
 
@@ -434,7 +434,7 @@ def wait_for_node_to_sync(env):
     if syncProgress is not None:
         while syncProgress < 100:
             if count % 60 == 0:
-                utils.print_message(type="warn", message=f"{utils.get_current_date_time()} - actual_era  : {actual_era} "
+                utils.print_message(type="warn", message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
                            f" - actual_epoch: {actual_epoch} "
                            f" - actual_block: {actual_block} "
                            f" - actual_slot : {actual_slot} "
@@ -462,7 +462,7 @@ def wait_for_node_to_sync(env):
     else:
         while actual_slot <= last_slot_no:
             if count % 60 == 0:
-                utils.print_message(type="warn", message=f"{utils.get_current_date_time()} - actual_era  : {actual_era} "
+                utils.print_message(type="warn", message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
                            f" - actual_epoch: {actual_epoch} "
                            f" - actual_block: {actual_block} "
                            f" - actual_slot : {actual_slot} "
@@ -516,9 +516,11 @@ def wait_for_node_to_sync(env):
             era_details_dict[eras_list[eras_list.index(era)]]['start_epoch']) + 1
         actual_era_dict['slots_in_era'] = get_no_of_slots_in_era(env, era, no_of_epochs_in_era)
 
-        actual_era_dict['sync_duration_secs'] = utils.date_diff_in_seconds(
-            datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ"),
-            datetime.strptime(actual_era_dict['start_sync_time'], "%Y-%m-%dT%H:%M:%SZ"))
+        actual_era_dict['sync_duration_secs'] = int(
+            (datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ") -
+             datetime.strptime(actual_era_dict['start_sync_time'], "%Y-%m-%dT%H:%M:%SZ"))
+            .total_seconds()
+        )
 
         actual_era_dict['sync_speed_sps'] = int(
             actual_era_dict['slots_in_era'] / actual_era_dict['sync_duration_secs'])
@@ -535,9 +537,11 @@ def wait_for_node_to_sync(env):
                 'start_sync_time']
         actual_epoch_dict = epoch_details_dict[epoch]
         actual_epoch_dict['end_sync_time'] = epoch_end_sync_time
-        actual_epoch_dict['sync_duration_secs'] = utils.date_diff_in_seconds(
-            datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ"),
-            datetime.strptime(actual_epoch_dict['start_sync_time'], "%Y-%m-%dT%H:%M:%SZ"))
+        actual_epoch_dict['sync_duration_secs'] = int(
+            (datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ") -
+             datetime.strptime(actual_epoch_dict['start_sync_time'], "%Y-%m-%dT%H:%M:%SZ"))
+            .total_seconds()
+        )
         epoch_details_dict[epoch] = actual_epoch_dict
     return sync_time_seconds, last_slot_no, latest_chunk_no, era_details_dict, epoch_details_dict
 
@@ -602,8 +606,8 @@ def get_data_from_logs(log_file):
         previous_value = float(
             centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1) - 1]])
         current_value = float(centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1)]])
-        cpu_load_percent = (current_value - previous_value) / utils.date_diff_in_seconds(
-            current_timestamp, previous_timestamp)
+        cpu_load_percent = (current_value - previous_value) / int(
+            current_timestamp - previous_timestamp).total_seconds()
         cpu_details_dict[timestamp1] = cpu_load_percent / no_of_cpu_cores
 
     all_timestamps_list = set(list(tip_details_dict.keys()) + list(heap_ram_details_dict.keys()) +
@@ -629,7 +633,12 @@ def get_data_from_logs(log_file):
 
 
 def get_cabal_build_files():
-    node_build_files = utils.list_absolute_file_paths('dist-newstyle/build')
+    node_build_files = []
+
+    for dirpath,_,filenames in os.walk('dist-newstyle/build'):
+        for f in filenames:
+            abs_filepath = os.path.abspath(os.path.join(dirpath, f))
+            node_build_files.append(abs_filepath)
     return node_build_files
 
 
@@ -768,7 +777,7 @@ def main():
     set_node_socket_path_env_var()
 
     print('--- Test data information', flush=True)
-    start_test_time = utils.get_current_date_time()
+    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     utils.print_message(type="info", message=f"Test start time: {start_test_time}")
     utils.print_message(type="warn", message='Test parameters:')
     env = utils.get_arg_value(args=args, key="environment")
@@ -798,7 +807,7 @@ def main():
 
     print('--- Get the cardano-node files', flush=True)
     utils.print_message(type="info", message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}")
-    start_build_time = utils.get_current_date_time()
+    start_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     if 'windows' not in platform_system.lower():
         repository = get_node_files(node_rev1)
     elif 'windows' in platform_system.lower():
@@ -807,7 +816,7 @@ def main():
         utils.print_message(type="error", message=
             f"ERROR: method not implemented yet!!! Only building with NIX is supported at this moment - {node_build_mode}")
         exit(1)
-    end_build_time = utils.get_current_date_time()
+    end_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     utils.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
     utils.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
 
@@ -830,14 +839,14 @@ def main():
     utils.print_message(type="ok", message=f"================== Start node sync test using node_rev1: {node_rev1} =============")
     utils.print_message(type="ok", message="===================================================================================")
     print('')
-    start_sync_time1 = utils.get_current_date_time()
+    start_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     secs_to_start1 = start_node(NODE, tag_no1, node_start_arguments1, timeout_minutes=10)
 
     utils.print_message(type="info", message=' - waiting for the node to sync')
     sync_time_seconds1, last_slot_no1, latest_chunk_no1, era_details_dict1, epoch_details_dict1 = wait_for_node_to_sync(
         env)
 
-    end_sync_time1 = utils.get_current_date_time()
+    end_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"secs_to_start1: {secs_to_start1}")
     print(f"start_sync_time1: {start_sync_time1}")
     print(f"end_sync_time1: {end_sync_time1}")
@@ -886,13 +895,13 @@ def main():
         print(f" - cardano_cli_git_rev2: {cli_git_rev2}")
         print('')
         print(f"================ Start node using node_rev2: {node_rev2} ====================")
-        start_sync_time2 = utils.get_current_date_time()
+        start_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         secs_to_start2 = start_node(NODE, tag_no2, node_start_arguments2)
 
         utils.print_message(type="info", message=f" - waiting for the node to sync - using node_rev2: {node_rev2}")
         sync_time_seconds2, last_slot_no2, latest_chunk_no2, era_details_dict2, epoch_details_dict2 = wait_for_node_to_sync(
             env)
-        end_sync_time2 = utils.get_current_date_time()
+        end_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         utils.print_message(type="warn", message=f"Stop node for: {node_rev2}")
         stop_node(platform_system)
         stop_node(platform_system)
@@ -934,9 +943,9 @@ def main():
     test_values_dict['start_node_secs1'] = secs_to_start1
     test_values_dict['start_node_secs2'] = secs_to_start2
     test_values_dict['sync_time_seconds1'] = sync_time_seconds1
-    test_values_dict['sync_time1'] = utils.seconds_to_time(int(sync_time_seconds1))
+    test_values_dict['sync_time1'] = str(timedelta(seconds=int(sync_time_seconds1)))
     test_values_dict['sync_time_seconds2'] = sync_time_seconds2
-    test_values_dict['sync_time2'] = utils.seconds_to_time(int(sync_time_seconds2))
+    test_values_dict['sync_time2'] = str(timedelta(seconds=int(sync_time_seconds2)))
     test_values_dict['total_chunks1'] = latest_chunk_no1
     test_values_dict['total_chunks2'] = latest_chunk_no2
     test_values_dict['platform_system'] = platform_system

@@ -6,12 +6,13 @@ import re
 import shutil
 import mmap
 import subprocess
+from datetime import timedelta
+
 import requests
 import urllib.request
 import tarfile
 import xmltodict
 import json
-import shlex
 import psycopg2
 from assertpy import assert_that
 
@@ -899,7 +900,7 @@ def wait_for_db_to_sync(env, sync_percentage = 99.9):
             logging.info(f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, block: {node_block_no}, slot: {node_slot}, era: {node_era}")
             epoch_no, block_no, slot_no = get_db_sync_tip(env)
             db_sync_progress = get_db_sync_progress(env)
-            sync_time_h_m_s = utils.seconds_to_time(time.perf_counter() - start_sync)
+            sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
             logging.info(f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, epoch: {epoch_no}, block: {block_no}, slot: {slot_no}")
             print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
 
