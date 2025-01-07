@@ -12,6 +12,8 @@ import sync_tests.utils.utils as utils
 import sync_tests.utils.aws_db_utils as aws_db_utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 
+from datetime import datetime
+from datetime import timedelta
 
 TEST_RESULTS = f"snapshot_creation_{utils_db_sync.ENVIRONMENT}_test_results.json"
 
@@ -43,7 +45,7 @@ def main():
 
     print("--- Db sync snapshot creation")
     platform_system, platform_release, platform_version = utils.get_os_type()
-    start_test_time = utils.get_current_date_time()
+    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -79,7 +81,7 @@ def main():
     snapshot_creation_time_seconds = int(end_snapshot_creation - start_snapshot_creation)
     print(f"Snapshot creation time [seconds]: {snapshot_creation_time_seconds}")
 
-    end_test_time = utils.get_current_date_time()
+    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test end time: {end_test_time}")
 
     # export test data as a json file
@@ -97,7 +99,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["snapshot_creation_time_in_sec"] = snapshot_creation_time_seconds
-    test_data["snapshot_creation_time_in_h_m_s"] = utils.seconds_to_time(int(snapshot_creation_time_seconds))
+    test_data["snapshot_creation_time_in_h_m_s"] = str(timedelta(seconds=int(snapshot_creation_time_seconds)))
     test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
     test_data["stage_2_cmd"] = stage_2_cmd
     test_data["stage_2_result"] = stage_2_result

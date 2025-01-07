@@ -11,6 +11,9 @@ import sync_tests.utils.utils as utils
 import sync_tests.utils.utils_db_sync as utils_db_sync
 import sync_tests.utils.gitpython_utils as git_utils
 
+from datetime import datetime
+from datetime import timedelta
+
 sys.path.append(os.getcwd())
 
 TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_full_sync_test_results.json"
@@ -129,7 +132,7 @@ def main():
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = utils.get_current_date_time()
+    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -188,7 +191,7 @@ def main():
     db_schema = utils_db_sync.check_database(utils_db_sync.get_db_schema, 'DB schema is incorrect', EXPECTED_DB_SCHEMA)
     db_indexes = utils_db_sync.check_database(utils_db_sync.get_db_indexes, 'DB indexes are incorrect', EXPECTED_DB_INDEXES)
     epoch_no, block_no, slot_no = utils_db_sync.get_db_sync_tip(env)
-    end_test_time = utils.get_current_date_time()
+    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     print("--- Summary & Artifacts uploading")
     print(f"FINAL db-sync progress: {utils_db_sync.get_db_sync_progress(env)}, epoch: {epoch_no}, block: {block_no}")
@@ -218,7 +221,7 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["total_sync_time_in_h_m_s"] = utils.seconds_to_time(int(db_full_sync_time_in_secs))
+    test_data["total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(db_full_sync_time_in_secs)))
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
