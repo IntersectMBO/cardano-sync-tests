@@ -44,22 +44,6 @@ def set_repo_paths():
     print(f"ROOT_TEST_PATH: {ROOT_TEST_PATH}")
 
 
-def execute_command(command):
-    utils.print_message(type="info", message=f"Execute command: {command}")
-    try:
-        cmd = shlex.split(command)
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   encoding='utf-8')
-        outs, errors = process.communicate(timeout=7200)
-        if errors:
-            utils.print_message(type="warn", message=f"Warnings or Errors --> {errors}")
-        if outs:
-            utils.print_message(type="ok", message=f"Output of command: {command} --> {outs}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        utils.print_message(type="error", message=f"Command {command} returned exception: {e}")
-        raise
-
-
 def git_get_last_closed_pr_cardano_node():
     global jData
     url = f"https://api.github.com/repos/input-output-hk/cardano-node/pulls?state=closed"
@@ -405,7 +389,7 @@ def copy_log_file_artifact(old_name, new_name):
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
-    execute_command(f"cp {old_name} {new_name}")
+    utils.execute_command(f"cp {old_name} {new_name}")
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
 
 
@@ -729,8 +713,8 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
         os.chdir(node_repo_dir)
         Path('cardano-node-bin').unlink(missing_ok=True)
         Path('cardano-cli-bin').unlink(missing_ok=True)
-        execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-        execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
+        utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
+        utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
         copy_node_executables(node_repo_dir, test_directory, "nix")
 
     elif build_tool == 'cabal':
@@ -752,8 +736,8 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
         shutil.rmtree('dist-newstyle', ignore_errors=True)
         for line in fileinput.input("cabal.project", inplace=True):
             print(line.replace("tests: True", "tests: False"), end="")
-        execute_command("cabal update")
-        execute_command("cabal build cardano-cli")
+        utils.execute_command("cabal update")
+        utils.execute_command("cabal build cardano-cli")
         copy_node_executables(cli_repo_dir, test_directory, "cabal")
         git_checkout(repo, 'cabal.project')
 
@@ -764,8 +748,8 @@ def get_node_files(node_rev, repository=None, build_tool='nix'):
         shutil.rmtree('dist-newstyle', ignore_errors=True)
         for line in fileinput.input("cabal.project", inplace=True):
             print(line.replace("tests: True", "tests: False"), end="")
-        execute_command("cabal update")
-        execute_command("cabal build cardano-node")
+        utils.execute_command("cabal update")
+        utils.execute_command("cabal build cardano-node")
         copy_node_executables(node_repo_dir, test_directory, "cabal")
         git_checkout(repo, 'cabal.project')
 

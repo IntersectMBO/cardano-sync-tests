@@ -1,6 +1,8 @@
 import json
 import os
 import platform
+import shlex
+import subprocess
 import zipfile
 from datetime import datetime
 from typing import NamedTuple
@@ -135,3 +137,24 @@ def get_arg_value(args, key, default=None):
     if key == "db_sync_start_options" and value == "--none":
         return ''
     return value
+
+
+def execute_command(command):
+    """Executes a shell command and logs its output and errors."""
+    logging.info(f"--- Execute command {command}")
+    try:
+        cmd = shlex.split(command)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+        outs, errors = process.communicate(timeout=3600)
+
+        if errors:
+            logging.info(f"Warnings or Errors: {errors}")
+
+        logging.info(f"Output of command: {command} : {outs}")
+        exit_code = process.returncode
+
+        if exit_code != 0:
+            logging.error(f"Command {command} returned exit code: {exit_code}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        logging.error(f"Command {command} returned exception: {e}")
+        raise
