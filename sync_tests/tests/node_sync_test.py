@@ -22,11 +22,11 @@ from psutil import process_iter
 
 sys.path.append(os.getcwd())
 
-from sync_tests.utils.explorer_utils import get_epoch_start_datetime_from_explorer
-from sync_tests.utils.blockfrost_utils import get_epoch_start_datetime
-from sync_tests.utils.gitpython_utils import git_clone_iohk_repo, git_checkout
+from sync_tests.utils.explorer import get_epoch_start_datetime_from_explorer
+from sync_tests.utils.blockfrost import get_epoch_start_datetime
+from sync_tests.utils.gitpython import git_clone_iohk_repo, git_checkout
 
-import sync_tests.utils.utils as utils
+import sync_tests.utils.helpers as utils
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = './cardano-node'

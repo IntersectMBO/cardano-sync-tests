@@ -8,10 +8,10 @@ from datetime import timedelta
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.utils as utils
-import sync_tests.utils.aws_db_utils as aws_db_utils
-import sync_tests.utils.utils_db_sync as utils_db_sync
-import sync_tests.utils.gitpython_utils as git_utils
+import sync_tests.utils.helpers as utils
+import sync_tests.utils.aws_db as aws_db_utils
+import sync_tests.utils.db_sync as utils_db_sync
+import sync_tests.utils.gitpython as git_utils
 
 from datetime import datetime
 from datetime import timedelta

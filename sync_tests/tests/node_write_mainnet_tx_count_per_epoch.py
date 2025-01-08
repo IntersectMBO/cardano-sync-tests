@@ -1,8 +1,8 @@
 import pandas as pd
 
-import sync_tests.utils.aws_db_utils as aws_db_utils
-import sync_tests.utils.utils as utils
-import sync_tests.utils.blockfrost_utils as blockfrost_utils
+import sync_tests.utils.aws_db as aws_db_utils
+import sync_tests.utils.helpers as utils
+import sync_tests.utils.blockfrost as blockfrost_utils
 
 
 def update_mainnet_tx_count_per_epoch():

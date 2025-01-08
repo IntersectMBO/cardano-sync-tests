@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.utils as utils
-import sync_tests.utils.utils_db_sync as utils_db_sync
+import sync_tests.utils.helpers as utils
+import sync_tests.utils.db_sync as utils_db_sync
 
 
 TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
