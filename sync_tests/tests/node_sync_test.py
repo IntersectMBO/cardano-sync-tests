@@ -44,35 +44,6 @@ def set_repo_paths():
     print(f"ROOT_TEST_PATH: {ROOT_TEST_PATH}")
 
 
-def git_get_last_closed_pr_cardano_node():
-    global jData
-    url = f"https://api.github.com/repos/input-output-hk/cardano-node/pulls?state=closed"
-    response = requests.get(url)
-
-    # there is a rate limit for the provided url that we want to overpass with the below loop
-    count = 0
-    while not response.ok:
-        time.sleep(random.randint(30, 240))
-        count += 1
-        response = requests.get(url)
-        if count > 10:
-            utils.print_message(type="error", message=
-                f"!!!! ERROR: Could not get the number of the last closed PR after {count} retries")
-            response.raise_for_status()
-    jData = json.loads(response.content)
-    print(f" -- last closed PR no is: {jData[0].get('url').split('/pulls/')[1].strip()}")
-    return jData[0].get('url').split("/pulls/")[1].strip()
-
-
-def check_string_format(input_string):
-    if len(input_string) > 38:
-        return 'commit_sha_format'
-    elif input_string.strip().isdigit():
-        return 'eval_url'
-    else:
-        return 'tag_format'
-
-
 def delete_node_files():
     for p in Path("..").glob("cardano-*"):
         if p.is_dir():
