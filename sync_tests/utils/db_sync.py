@@ -22,7 +22,7 @@ from psutil import process_iter
 
 import time
 
-import sync_tests.utils.utils as utils
+import sync_tests.utils.helpers as utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

@@ -6,8 +6,8 @@ import pandas as pd
 from pathlib import Path
 import argparse
 
-import sync_tests.utils.aws_db_utils as aws_db_utils
-import sync_tests.utils.utils as utils
+import sync_tests.utils.aws_db as aws_db_utils
+import sync_tests.utils.helpers as utils
 
 RESULTS_FILE_NAME = r"sync_results.json"
 
