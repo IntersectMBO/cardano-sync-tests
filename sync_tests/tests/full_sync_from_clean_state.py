@@ -10,6 +10,7 @@ import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.helpers as utils
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.gitpython as git_utils
+from sync_tests.utils import node
 
 from datetime import datetime
 from datetime import timedelta
@@ -69,7 +70,7 @@ def upload_sync_results_to_aws(env):
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
-    if not aws_db_utils.add_single_row_into_db(test_summary_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -82,7 +83,7 @@ def upload_sync_results_to_aws(env):
     col_to_insert = ['identifier', 'epoch_no', 'sync_duration_secs']
     val_to_insert = [ (identifier, e['no'], e['seconds']) for e in epoch_sync_times ]
 
-    if not aws_db_utils.add_bulk_rows_into_db(epoch_duration_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(epoch_duration_table, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -95,7 +96,7 @@ def upload_sync_results_to_aws(env):
     col_to_insert = ['identifier', 'time', 'slot_no', 'cpu_percent_usage', 'rss_mem_usage']
     val_to_insert = [ (identifier, e['time'], e['slot_no'], e['cpu_percent_usage'], e['rss_mem_usage']) for e in db_sync_performance_stats ]
 
-    if not aws_db_utils.add_bulk_rows_into_db(db_sync_performance_stats_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(db_sync_performance_stats_table, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -162,11 +163,11 @@ def main():
     utils.execute_command("nix-build -v -A cardano-cli -o cardano-cli-bin")
 
     print("--- Node setup")
-    utils_db_sync.copy_node_executables(build_method="nix")
-    utils_db_sync.get_node_config_files(env)
+    node.copy_node_executables(build_method="nix")
+    node.get_node_config_files(env)
     utils_db_sync.set_node_socket_path_env_var_in_cwd()
-    cli_version, cli_git_rev = utils_db_sync.get_node_version()
-    utils_db_sync.start_node_in_cwd(env)
+    cli_version, cli_git_rev = node.get_cli_version()
+    node.start_node(env)
     print("--- Node startup", flush=True)
     utils_db_sync.print_file(utils_db_sync.NODE_LOG_FILE, 80)
 

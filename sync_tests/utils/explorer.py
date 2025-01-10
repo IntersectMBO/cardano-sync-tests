@@ -22,7 +22,7 @@ EXPLORER_URLS = {
     "preview": PREVIEW_EXPLORER_URL
 }
 
-def get_epoch_start_datetime_from_explorer(env, epoch_no):
+def get_epoch_start_datetime(env, epoch_no):
     """
     Fetches the start datetime of a specific epoch from the Cardano explorer."""
     headers = {'Content-type': 'application/json'}

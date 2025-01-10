@@ -12,6 +12,8 @@ sys.path.append(os.getcwd())
 import sync_tests.utils.helpers as utils
 import sync_tests.utils.db_sync as utils_db_sync
 
+from sync_tests.utils import node
+
 
 TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"
@@ -72,9 +74,9 @@ def main():
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
     os.chdir(Path.cwd() / 'cardano-node')
     utils_db_sync.set_node_socket_path_env_var_in_cwd()
-    utils_db_sync. start_node_in_cwd(env)
+    node.start_node(env)
     utils_db_sync.print_file(utils_db_sync.NODE_LOG_FILE, 80)
-    utils_db_sync.wait_for_node_to_sync(env)
+    node.wait_for_node_to_sync(env)
 
     #start db-sync
     print("--- Db-sync startup after snapshot restoration")

@@ -16,6 +16,8 @@ import sync_tests.utils.gitpython as git_utils
 from datetime import datetime
 from datetime import timedelta
 
+from sync_tests.utils import node
+
 TEST_RESULTS = 'db_sync_iohk_snapshot_restoration_test_results.json'
 
 
@@ -75,15 +77,15 @@ def main():
     utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
     utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
     print("--- Node setup")
-    utils_db_sync.copy_node_executables(build_method="nix")
-    utils_db_sync.get_node_config_files(env)
+    node.copy_node_executables(build_method="nix")
+    node.get_node_config_files(env)
     utils_db_sync.set_node_socket_path_env_var_in_cwd()
-    cli_version, cli_git_rev = utils_db_sync.get_node_version()
+    cli_version, cli_git_rev = node.get_cli_version()
     utils_db_sync.download_and_extract_node_snapshot(env)
-    utils_db_sync.start_node_in_cwd(env)
+    node.start_node(env)
     print("--- Node startup", flush=True)
     utils_db_sync.print_file(utils_db_sync.NODE_LOG_FILE, 80)
-    node_sync_time_in_secs = utils_db_sync.wait_for_node_to_sync(env)
+    node_sync_time_in_secs = node.wait_for_node_to_sync(env)
 
     # cardano-db sync setup
     print("--- Db sync setup")
