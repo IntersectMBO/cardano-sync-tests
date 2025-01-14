@@ -69,7 +69,11 @@ def upload_sync_results_to_aws(env):
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
-    if not aws_db_utils.add_single_row_into_db(test_summary_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(
+            table_name=test_summary_table,
+            col_names_list=col_to_insert,
+            col_values_list=val_to_insert
+    ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -82,7 +86,12 @@ def upload_sync_results_to_aws(env):
     col_to_insert = ['identifier', 'epoch_no', 'sync_duration_secs']
     val_to_insert = [ (identifier, e['no'], e['seconds']) for e in epoch_sync_times ]
 
-    if not aws_db_utils.add_bulk_rows_into_db(epoch_duration_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(
+        table_name=epoch_duration_table,
+        col_names_list=col_to_insert,
+        col_values_list=val_to_insert,
+        bulk=True
+    ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
@@ -95,7 +104,12 @@ def upload_sync_results_to_aws(env):
     col_to_insert = ['identifier', 'time', 'slot_no', 'cpu_percent_usage', 'rss_mem_usage']
     val_to_insert = [ (identifier, e['time'], e['slot_no'], e['cpu_percent_usage'], e['rss_mem_usage']) for e in db_sync_performance_stats ]
 
-    if not aws_db_utils.add_bulk_rows_into_db(db_sync_performance_stats_table, col_to_insert, val_to_insert):
+    if not aws_db_utils.insert_values_into_db(
+        table_name=db_sync_performance_stats_table,
+        col_names_list=col_to_insert,
+        col_values_list=val_to_insert,
+        bulk=True
+    ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         exit(1)
