@@ -577,8 +577,9 @@ def get_data_from_logs(log_file):
         previous_value = float(
             centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1) - 1]])
         current_value = float(centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1)]])
-        cpu_load_percent = (current_value - previous_value) / int(
-            current_timestamp - previous_timestamp).total_seconds()
+        cpu_load_percent = (current_value - previous_value) / (
+                    current_timestamp - previous_timestamp).total_seconds()
+
         cpu_details_dict[timestamp1] = cpu_load_percent / no_of_cpu_cores
 
     all_timestamps_list = set(list(tip_details_dict.keys()) + list(heap_ram_details_dict.keys()) +
