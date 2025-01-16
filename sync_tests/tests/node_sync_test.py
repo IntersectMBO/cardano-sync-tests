@@ -838,7 +838,7 @@ def main():
      sync_time_after_restart_seconds, cli_version2, cli_git_rev2, last_slot_no2, latest_chunk_no2,
      sync_time_seconds2
      ) = (None, None, None, None, None, None, None, None, None, None, None, None, None, None, 0)
-    if tag_no2 != 'None':
+    if tag_no2 and tag_no2 != 'None':
         delete_node_files()
         print('')
         utils.print_message(type="ok", message="==============================================================================")
