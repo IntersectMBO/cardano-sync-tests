@@ -87,6 +87,16 @@ def disable_p2p_node_config():
     update_config('config.json', updates)
 
 
+def enable_genesis_mode():
+    os.chdir(Path(ROOT_TEST_PATH))
+    current_directory = Path.cwd()
+    print(f"current_directory: {current_directory}")
+    print(f" - listdir current_directory: {os.listdir(current_directory)}")
+
+    update_config(file_name="config.json", updates={"ConsensusMode": "GenesisMode"})
+    update_config(file_name="topology.json", updates={"peerSnapshotFile": "/path/to/snapshot.json"})
+
+
 def rm_node_config_files() -> None:
     utils.print_message(type="info_warn", message='Removing existing config files')
     os.chdir(Path(ROOT_TEST_PATH))
@@ -103,7 +113,7 @@ def download_config_file(env: str, file_name: str, save_as: str = None) -> None:
     urllib.request.urlretrieve(url, save_as)
 
 
-def get_node_config_files(env, node_topology_type):
+def get_node_config_files(env, node_topology_type, use_genesis_mode=False):
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
@@ -120,6 +130,10 @@ def get_node_config_files(env, node_topology_type):
         disable_p2p_node_config()
     else:
         download_config_file(env, 'topology.json')
+
+    if use_genesis_mode:
+        enable_genesis_mode()
+
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
     utils.print_message(type="info_warn", message=" Config File Content: ")
     utils.print_file_content('config.json')
@@ -753,7 +767,7 @@ def main():
     utils.print_message(type="info", message=f"Test start time: {start_test_time}")
     utils.print_message(type="warn", message='Test parameters:')
     env = utils.get_arg_value(args=args, key="environment")
-    node_build_mode = utils.get_arg_value(args=args, key="build_mode")
+    node_build_mode = "nix"
     node_rev1 =  utils.get_arg_value(args=args, key="node_rev1")
     node_rev2 =  utils.get_arg_value(args=args, key="node_rev2")
     tag_no1 =  utils.get_arg_value(args=args, key="tag_no1")
@@ -762,6 +776,7 @@ def main():
     node_topology_type2 = utils.get_arg_value(args=args, key="node_topology2")
     node_start_arguments1 = utils.get_arg_value(args=args, key="node_start_arguments1")
     node_start_arguments2 = utils.get_arg_value(args=args, key="node_start_arguments2")
+    use_genesis_mode = utils.get_arg_value(args=args, key="use_genesis_mode")
     repository = None
     print(f"- env: {env}")
     print(f"- node_build_mode: {node_build_mode}")
@@ -773,6 +788,7 @@ def main():
     print(f"- node_topology_type2: {node_topology_type2}")
     print(f"- node_start_arguments1: {node_start_arguments1}")
     print(f"- node_start_arguments2: {node_start_arguments2}")
+    print(f"- use_genesis_mode: {use_genesis_mode}")
 
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"- platform: {platform_system, platform_release, platform_version}")
@@ -800,7 +816,7 @@ def main():
     print('--- Get the node configuration files')
     rm_node_config_files()
     # TO DO: change the default to P2P when full P2P will be supported on Mainnet
-    get_node_config_files(env, node_topology_type1)
+    get_node_config_files(env, node_topology_type1, use_genesis_mode)
 
     print('Enabling the desired cardano node tracers')
     enable_cardano_node_resources_monitoring('config.json')
