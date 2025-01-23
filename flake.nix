@@ -20,17 +20,16 @@
         {
           devShells = rec {
             base = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; [ bash nix gnugrep gnumake gnutar coreutils git xz ];
+              nativeBuildInputs = with pkgs; [ bash nix gnugrep gnutar coreutils git xz ];
             };
 
             python = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; with python39Packages; [ python39Full virtualenv pip matplotlib pandas requests xmltodict psutil GitPython pymysql postgresql_14 wget curl psycopg2 assertpy colorama];
+              nativeBuildInputs = with pkgs; with python311Packages; [ python311Full virtualenv pip postgresql_14 wget curl ];
               shellHook = ''
                 echo "Setting up Python environment..."
                 python3 -m venv .venv || true
                 source .venv/bin/activate
-                .venv/bin/python -m pip install --upgrade pip
-                .venv/bin/pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib
+                .venv/bin/pip install -e .
                 echo "Python environment ready."
               '';
             };
