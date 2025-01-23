@@ -2,29 +2,28 @@
   description = "Sync tests for cardano-node and db-sync";
 
   inputs = {
-    cardano-node = {
-      url = "github:input-output-hk/cardano-node";
-    };
-    nixpkgs.follows = "cardano-node/nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, cardano-node }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem
       (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          py3Pkgs = pkgs.python311Packages;
+          py3Full = pkgs.python311Full;
         in
         {
           devShells = rec {
             base = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; [ bash nix gnugrep gnutar coreutils git xz ];
+              nativeBuildInputs = with pkgs; [ bash gnugrep gnutar coreutils git xz ];
             };
 
             python = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; with python311Packages; [ python311Full virtualenv pip postgresql_14 wget curl ];
+              nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl ];
               shellHook = ''
                 echo "Setting up Python environment..."
                 python3 -m venv .venv || true
