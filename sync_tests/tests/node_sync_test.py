@@ -19,6 +19,8 @@ from psutil import process_iter
 
 sys.path.append(os.getcwd())
 
+from typing import Optional
+
 import sync_tests.utils.helpers as utils
 from sync_tests.utils.blockfrost import get_epoch_start_datetime
 from sync_tests.utils.explorer import get_epoch_start_datetime_from_explorer
@@ -90,7 +92,7 @@ def rm_node_config_files() -> None:
         Path(f).unlink(missing_ok=True)
 
 
-def download_config_file(env: str, file_name: str, save_as: str = None) -> None:
+def download_config_file(env: str, file_name: str, save_as: Optional[str] = None) -> None:
     save_as = save_as or file_name
     url = f"{CONFIGS_BASE_URL}/{env}/{file_name}"
     print(f"Downloading {file_name} from {url} and saving as {save_as}...")
@@ -272,9 +274,9 @@ def get_current_tip(timeout_minutes=10):
             )
             if "Invalid argument" in str(e.output):
                 print(f" -- exiting on - {e.output.decode('utf-8')}")
-                exit(1)
+                sys.exit(1)
         time.sleep(ONE_MINUTE)
-    exit(1)
+    sys.exit(1)
 
 
 def get_node_version():
@@ -289,10 +291,13 @@ def get_node_version():
         cardano_cli_git_rev = output.split("git rev ")[1].strip()
         return str(cardano_cli_version), str(cardano_cli_git_rev)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -324,7 +329,7 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
 
     try:
-        p = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
         utils.print_message(type="info", message="waiting for db folder to be created")
         count = 0
         count_timeout = 299
@@ -336,7 +341,7 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
                     type="error",
                     message=f"ERROR: waited {count_timeout} seconds and the DB folder was not created yet",
                 )
-                exit(1)
+                sys.exit(1)
 
         utils.print_message(
             type="ok", message=f"DB folder was created after {count} seconds"
@@ -346,10 +351,13 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
         print(f" - listdir db: {os.listdir(current_directory / 'db')}")
         return secs_to_start
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -727,6 +735,7 @@ def get_node_executable_path_built_with_cabal():
             global NODE
             NODE = f
             return f
+    return None
 
 
 def get_cli_executable_path_built_with_cabal():
@@ -740,6 +749,7 @@ def get_cli_executable_path_built_with_cabal():
             global CLI
             CLI = f
             return f
+    return None
 
 
 def copy_node_executables(src_location, dst_location, build_mode):
@@ -770,7 +780,7 @@ def copy_node_executables(src_location, dst_location, build_mode):
                 type="error",
                 message=f" !!! ERROR - could not copy the cardano-node file - {e}",
             )
-            exit(1)
+            sys.exit(1)
         try:
             shutil.copy2(
                 Path(src_location) / cli_binary_location / "cardano-cli",
@@ -781,7 +791,7 @@ def copy_node_executables(src_location, dst_location, build_mode):
                 type="error",
                 message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
             )
-            exit(1)
+            sys.exit(1)
         time.sleep(5)
 
     if build_mode == "cabal":
@@ -922,7 +932,7 @@ def main():
             type="error",
             message=f"ERROR: method not implemented yet!!! Only building with NIX is supported at this moment - {node_build_mode}",
         )
-        exit(1)
+        sys.exit(1)
     end_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     utils.print_message(
         type="info", message=f"  - start_build_time: {start_build_time}"
@@ -987,16 +997,16 @@ def main():
 
     print(f"--- Start node using tag_no2: {tag_no2}")
     (
-        cardano_cli_version2,
-        cardano_cli_git_rev2,
-        shelley_sync_time_seconds2,
-        total_chunks2,
-        latest_block_no2,
-        latest_slot_no2,
+        _cardano_cli_version2,
+        _cardano_cli_git_rev2,
+        _shelley_sync_time_seconds2,
+        _total_chunks2,
+        _latest_block_no2,
+        _latest_slot_no2,
         start_sync_time2,
         end_sync_time2,
-        start_sync_time3,
-        sync_time_after_restart_seconds,
+        _start_sync_time3,
+        _sync_time_after_restart_seconds,
         cli_version2,
         cli_git_rev2,
         last_slot_no2,
@@ -1045,7 +1055,7 @@ def main():
                 type="error",
                 message=f"ERROR: method not implemented yet!!! Only building with NIX is supported at this moment - {node_build_mode}",
             )
-            exit(1)
+            sys.exit(1)
 
         if env == "mainnet" and (node_topology_type1 != node_topology_type2):
             utils.print_message(type="warn", message="remove the previous topology")

@@ -6,7 +6,7 @@ import sync_tests.utils.helpers as utils
 
 
 def update_mainnet_tx_count_per_epoch():
-    env, table_name = "mainnet", "mainnet_tx_count"
+    _env, table_name = "mainnet", "mainnet_tx_count"
     current_epoch_no = blockfrost_utils.get_current_epoch_no()
     print(f"current_epoch_no   : {current_epoch_no}")
 

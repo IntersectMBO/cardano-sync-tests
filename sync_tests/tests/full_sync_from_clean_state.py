@@ -79,7 +79,7 @@ def upload_sync_results_to_aws(env):
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
     with open(utils_db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
@@ -97,7 +97,7 @@ def upload_sync_results_to_aws(env):
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
     with open(utils_db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
         db_sync_performance_stats = json.load(json_perf_stats_file)
@@ -132,7 +132,7 @@ def upload_sync_results_to_aws(env):
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
 
 def print_report(db_schema, db_indexes):

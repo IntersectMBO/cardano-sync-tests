@@ -190,6 +190,7 @@ def main():
         utils_db_sync.sh_colors.WARNING,
         f"Are corrupted ledger files present: {corrupted_ledger_files}",
     )
+    return None
 
 
 if __name__ == "__main__":

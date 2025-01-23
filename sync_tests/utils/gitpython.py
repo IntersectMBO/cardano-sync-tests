@@ -40,7 +40,7 @@ def git_checkout(repo, rev):
 
 
 def clone_repo(repo_name, repo_branch):
-    """Clones a repository and checks out a specific branch"""
+    """Clones a repository and checks out a specific branch."""
     location = os.path.join(os.getcwd(), repo_name)
     try:
         repo = Repo.clone_from(

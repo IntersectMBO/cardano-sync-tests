@@ -2,6 +2,7 @@ import argparse
 import ast
 import json
 import os
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -99,7 +100,7 @@ def main():
     if not aws_db_utils.insert_values_into_db(env, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
     utils.print_message(
         type="info",
@@ -140,7 +141,7 @@ def main():
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
     utils.print_message(
         type="info",
@@ -171,7 +172,7 @@ def main():
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

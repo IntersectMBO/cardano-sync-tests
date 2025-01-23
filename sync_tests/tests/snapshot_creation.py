@@ -46,7 +46,7 @@ def upload_snapshot_creation_results_to_aws(env):
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
 
 def main():
@@ -141,6 +141,7 @@ def main():
         utils_db_sync.sh_colors.WARNING,
         f"Snapshot creation script result: {snapsot_creation_outcome}",
     )
+    return None
 
 
 if __name__ == "__main__":

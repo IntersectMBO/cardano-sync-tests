@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import time
 import urllib.request
@@ -106,7 +107,7 @@ def make_tarfile(output_filename, source_dir):
 
 def upload_artifact(file, destination="auto", s3_path=None):
     """Uploads an artifact to either S3 or Buildkite based on the specified destination."""
-    if destination == "buildkite" or destination == "auto":
+    if destination in ("buildkite", "auto"):
         try:
             cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
             subprocess.run(cmd, check=True)
@@ -115,9 +116,10 @@ def upload_artifact(file, destination="auto", s3_path=None):
         except (subprocess.CalledProcessError, FileNotFoundError):
             logging.warning("Buildkite agent not available. Falling back to S3.")
 
-    if destination == "s3" or destination == "auto":
+    if destination in ("s3", "auto"):
         if not s3_path:
-            raise ValueError("S3 path must be specified for S3 uploads.")
+            msg = "S3 path must be specified for S3 uploads."
+            raise ValueError(msg)
         try:
             cmd = ["aws", "s3", "cp", f"{file}", f"s3://{s3_path}"]
             subprocess.run(cmd, check=True)
@@ -188,7 +190,8 @@ def manage_process(proc_name, action):
                     )
                     proc.kill()
             else:
-                raise ValueError("Action must be 'get' or 'terminate'")
+                msg = "Action must be 'get' or 'terminate'"
+                raise ValueError(msg)
     return None
 
 
@@ -202,7 +205,8 @@ def manage_directory(dir_name, action, root="."):
         if path.exists():
             shutil.rmtree(path)
         return None
-    raise ValueError("Action must be either 'create' or 'remove'.")
+    msg = "Action must be either 'create' or 'remove'."
+    raise ValueError(msg)
 
 
 def get_file_sha_256_sum(filepath):
@@ -336,10 +340,11 @@ def get_node_config_files(env):
             urllib.request.urlretrieve(url, filename)
             # Check if the file exists after download
             if not os.path.isfile(filename):
-                raise FileNotFoundError(f"Downloaded file '{filename}' does not exist.")
+                msg = f"Downloaded file '{filename}' does not exist."
+                raise FileNotFoundError(msg)
         except Exception as e:
             logging.exception(f"Error downloading {url}: {e}")
-            exit(1)
+            sys.exit(1)
 
 
 def copy_node_executables(build_method="nix"):
@@ -347,7 +352,7 @@ def copy_node_executables(build_method="nix"):
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     node_dir = Path.cwd() / "cardano-node"
-    node_bin_dir = node_dir / "cardano-node-bin/"
+    node_dir / "cardano-node-bin/"
     os.chdir(node_dir)
     logging.info(f"current_directory: {os.getcwd()}")
 
@@ -402,15 +407,18 @@ def copy_node_executables(build_method="nix"):
         os.chdir(current_directory)
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
         )
+        raise RuntimeError(
+            msg
+        )
 
 
 def get_node_version():
-    """Get node version"""
+    """Get node version."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-node")
     try:
@@ -425,10 +433,13 @@ def get_node_version():
         os.chdir(current_directory)
         return str(cardano_cli_version), str(cardano_cli_git_rev)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -470,9 +481,10 @@ def set_node_socket_path_env_var_in_cwd():
     """Sets the node socket path environment variable in the current working directory."""
     os.chdir(ROOT_TEST_PATH / "cardano-node")
     current_directory = os.getcwd()
-    if not basename(normpath(current_directory)) == "cardano-node":
+    if basename(normpath(current_directory)) != "cardano-node":
+        msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
         raise Exception(
-            f"You're not inside 'cardano-node' directory but in: {current_directory}"
+            msg
         )
     socket_path = "db/node.socket"
     export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
@@ -527,10 +539,10 @@ def get_node_tip(env, timeout_minutes=20):
             )
             if "Invalid argument" in str(e.output):
                 emergency_upload_artifacts(env)
-                exit(1)
+                sys.exit(1)
         time.sleep(ONE_MINUTE)
     emergency_upload_artifacts(env)
-    exit(1)
+    sys.exit(1)
 
 
 def wait_for_node_to_start(env):
@@ -584,9 +596,10 @@ def start_node_in_cwd(env):
     """Starts the Cardano node in the current working directory."""
     os.chdir(ROOT_TEST_PATH / "cardano-node")
     current_directory = os.getcwd()
-    if not basename(normpath(current_directory)) == "cardano-node":
+    if basename(normpath(current_directory)) != "cardano-node":
+        msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
         raise Exception(
-            f"You're not inside 'cardano-node' directory but in: {current_directory}"
+            msg
         )
 
     logging.info(f"current_directory: {current_directory}")
@@ -601,7 +614,7 @@ def start_node_in_cwd(env):
     logging.info(f"start node cmd: {cmd}")
 
     try:
-        p = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
         logging.info("waiting for db folder to be created")
         counter = 0
         timeout_counter = 1 * ONE_MINUTE
@@ -615,7 +628,7 @@ def start_node_in_cwd(env):
                 )
                 node_startup_error = print_file(NODE_LOG_FILE)
                 print_color_log(sh_colors.FAIL, f"Error: {node_startup_error}")
-                exit(1)
+                sys.exit(1)
 
         logging.info(f"DB folder was created after {counter} seconds")
         secs_to_start = wait_for_node_to_start(env)
@@ -623,10 +636,13 @@ def start_node_in_cwd(env):
         logging.info(f" - listdir db: {os.listdir(node_db_dir)}")
         return secs_to_start
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -663,13 +679,17 @@ def create_database():
         )
         logging.info(f"Create database script output: {output}")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
         )
+        raise RuntimeError(
+            msg
+        )
     if "All good!" not in output:
-        raise RuntimeError("Create database has not ended successfully")
+        msg = "Create database has not ended successfully"
+        raise RuntimeError(msg)
 
 
 def copy_db_sync_executables(build_method="nix"):
@@ -727,10 +747,13 @@ def copy_db_sync_executables(build_method="nix"):
         shutil.copy2(output_find_db_tool_cmd, "_cardano-db-tool")
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -750,10 +773,13 @@ def get_db_sync_version():
         os.chdir(current_directory)
         return str(cardano_db_sync_version), str(cardano_db_sync_git_revision)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -766,8 +792,9 @@ def get_latest_snapshot_url(env, args):
     if env == "mainnet":
         general_snapshot_url = "https://update-cardano-mainnet.iohk.io/?list-type=2&delimiter=/&prefix=cardano-db-sync/&max-keys=50&cachestamp=459588"
     else:
+        msg = "Snapshot are currently available only for mainnet environment"
         raise ValueError(
-            "Snapshot are currently available only for mainnet environment"
+            msg
         )
 
     headers = {"Content-type": "application/json"}
@@ -784,8 +811,9 @@ def get_latest_snapshot_url(env, args):
     if env == "mainnet":
         latest_snapshots_list_url = f"https://update-cardano-mainnet.iohk.io/?list-type=2&delimiter=/&prefix={db_sync_latest_version_prefix}&max-keys=50&cachestamp=462903"
     else:
+        msg = "Snapshot are currently available only for mainnet environment"
         raise ValueError(
-            "Snapshot are currently available only for mainnet environment"
+            msg
         )
 
     res_snapshots_list = requests.get(latest_snapshots_list_url, headers=headers)
@@ -797,8 +825,9 @@ def get_latest_snapshot_url(env, args):
             f"https://update-cardano-mainnet.iohk.io/{latest_snapshot}"
         )
     else:
+        msg = "Snapshot are currently available only for mainnet environment"
         raise ValueError(
-            "Snapshot are currently available only for mainnet environment"
+            msg
         )
 
     return latest_snapshot_url
@@ -828,6 +857,7 @@ def get_snapshot_sha_256_sum(snapshot_url):
     snapshot_sha_256_sum_url = snapshot_url + ".sha256sum"
     for line in requests.get(snapshot_sha_256_sum_url):
         return line.decode("utf-8").split(" ")[0]
+    return None
 
 
 def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
@@ -869,10 +899,13 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
             logging.error(f"Error during restoration: {errors}")
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
     except subprocess.TimeoutExpired as e:
         p.kill()
@@ -882,7 +915,8 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
         export_env_var("TMPDIR", "/tmp")
 
     if "All good!" not in outs.decode("utf-8"):
-        raise RuntimeError("Restoration has not ended successfully")
+        msg = "Restoration has not ended successfully"
+        raise RuntimeError(msg)
 
     end_restoration = time.perf_counter()
     return int(end_restoration - start_restoration)
@@ -914,10 +948,13 @@ def create_db_sync_snapshot_stage_1(env):
         return final_line_with_script_cmd
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 
@@ -953,9 +990,11 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
 
         return snapshot_path
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Snapshot creation timed out.")
+        msg = "Snapshot creation timed out."
+        raise RuntimeError(msg)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Command '{e.cmd}' failed with error: {e.stderr}")
+        msg = f"Command '{e.cmd}' failed with error: {e.stderr}"
+        raise RuntimeError(msg)
 
 
 def get_db_sync_tip(env):
@@ -1001,6 +1040,7 @@ def get_db_sync_tip(env):
             logging.exception(e)
             logging.exception(errs)
             time.sleep(ONE_MINUTE)
+    return None
 
 
 def get_db_sync_progress(env):
@@ -1041,6 +1081,7 @@ def get_db_sync_progress(env):
             )
             counter += 1
             time.sleep(ONE_MINUTE)
+    return None
 
 
 def wait_for_db_to_sync(env, sync_percentage=99.9):
@@ -1060,8 +1101,9 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
         sync_time_in_sec = time.perf_counter() - start_sync
         if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
             emergency_upload_artifacts(env)
+            msg = "Emergency uploading artifacts before buid timeout exception..."
             raise Exception(
-                "Emergency uploading artifacts before buid timeout exception..."
+                msg
             )
         if counter % 5 == 0:
             current_progress = get_db_sync_progress(env)
@@ -1087,7 +1129,8 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
                     "Shutting down all services and emergency uploading artifacts"
                 )
                 emergency_upload_artifacts(env)
-                raise Exception("Rollback taking too long. Shutting down...")
+                msg = "Rollback taking too long. Shutting down..."
+                raise Exception(msg)
         if counter % log_frequency == 0:
             (
                 node_epoch_no,
@@ -1180,13 +1223,16 @@ def start_db_sync(env, start_args="", first_start="True"):
 
     try:
         cmd = "./sync_tests/scripts/db-sync-start.sh"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
     not_found = True
@@ -1197,7 +1243,7 @@ def start_db_sync(env, start_args="", first_start="True"):
             logging.error(
                 f"ERROR: waited {counter} seconds and the db-sync was not started"
             )
-            exit(1)
+            sys.exit(1)
 
         for proc in process_iter():
             if "cardano-db-sync" in proc.name():
@@ -1262,10 +1308,13 @@ def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port="5432"):
         logging.info(f"Setup postgres script output: {output}")
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
+        msg = (
             "command '{}' return with error (code {}): {}".format(
                 e.cmd, e.returncode, " ".join(str(e.output).split())
             )
+        )
+        raise RuntimeError(
+            msg
         )
 
 

@@ -38,7 +38,7 @@ def upload_snapshot_restoration_results_to_aws(env):
     ):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
 
 def main():

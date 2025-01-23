@@ -48,7 +48,7 @@ def get_column_names_from_table(table_name):
 
     try:
         query = f"SELECT * FROM `{table_name}` LIMIT 1"
-        result = execute_query(conn, query, fetch_one=True)
+        execute_query(conn, query, fetch_one=True)
         return [desc[0] for desc in conn.cursor().description]
     finally:
         conn.close()

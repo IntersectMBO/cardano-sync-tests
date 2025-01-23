@@ -14,7 +14,8 @@ def get_blockfrost_api():
     """Initialize and return the BlockFrost API client."""
     project_id = os.environ.get("BLOCKFROST_API_KEY")
     if not project_id:
-        raise ValueError("BLOCKFROST_API_KEY is not set.")
+        msg = "BLOCKFROST_API_KEY is not set."
+        raise ValueError(msg)
     return BlockFrostApi(project_id=project_id)
 
 
