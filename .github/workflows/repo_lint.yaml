@@ -3,7 +3,7 @@ name: repo_lint
 on:
   pull_request:
     branches:
-    - master
+    - main
 
 env:
   PY_COLORS: "1"
@@ -22,6 +22,11 @@ jobs:
       with:
         python-version: '3.11'
     - name: Install dependencies
-      run: pip install -r requirements-dev.txt
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        .venv/bin/pip install -r requirements-dev.txt
     - name: Run lint
-      run: pre-commit run -a || { git diff; false; }
+      run: |
+        source .venv/bin/activate
+        pre-commit run -a || { git diff; false; }
