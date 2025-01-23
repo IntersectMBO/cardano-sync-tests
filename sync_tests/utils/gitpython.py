@@ -5,17 +5,13 @@ from git import Repo
 from git.exc import GitCommandError
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def git_clone_iohk_repo(repo_name, repo_dir, repo_branch):
     """Clones an IOHK repository and checks out a specific branch."""
     try:
-        repo = Repo.clone_from(
-            f"https://github.com/input-output-hk/{repo_name}.git", repo_dir
-        )
+        repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", repo_dir)
         repo.git.checkout(repo_branch)
         logging.info(
             f"Repository {repo_name} successfully cloned to {repo_dir} and branch {repo_branch} checked out."
@@ -43,9 +39,7 @@ def clone_repo(repo_name, repo_branch):
     """Clones a repository and checks out a specific branch."""
     location = os.path.join(os.getcwd(), repo_name)
     try:
-        repo = Repo.clone_from(
-            f"https://github.com/input-output-hk/{repo_name}.git", location
-        )
+        repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", location)
         repo.git.checkout(repo_branch)
         logging.info(
             f"Repository {repo_name} successfully cloned to {location} and branch {repo_branch} checked out."

@@ -5,9 +5,7 @@ import time
 import requests
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 MAINNET_EXPLORER_URL = "https://explorer.cardano.org/graphql"
 STAGING_EXPLORER_URL = "https://explorer.staging.cardano.org/graphql"

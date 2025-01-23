@@ -26,18 +26,14 @@ def upload_snapshot_creation_results_to_aws(env):
     db_snapshot_creation_test_summary_table = env + "_db_sync_snapshot_creation"
     test_id = str(
         int(
-            aws_db_utils.get_last_identifier(
-                db_snapshot_creation_test_summary_table
-            ).split("_")[-1]
+            aws_db_utils.get_last_identifier(db_snapshot_creation_test_summary_table).split("_")[-1]
         )
         + 1
     )
     identifier = env + "_" + test_id
     db_snapshot_creation_test_results_dict["identifier"] = identifier
 
-    print(
-        f"  ==== Write test values into the {db_snapshot_creation_test_summary_table} DB table:"
-    )
+    print(f"  ==== Write test values into the {db_snapshot_creation_test_summary_table} DB table:")
     col_to_insert = list(db_snapshot_creation_test_results_dict.keys())
     val_to_insert = list(db_snapshot_creation_test_results_dict.values())
 
@@ -50,10 +46,7 @@ def upload_snapshot_creation_results_to_aws(env):
 
 
 def main():
-    if (
-        utils.get_arg_value(args=args, key="run_only_sync_test", default=False)
-        == "true"
-    ):
+    if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot creation")
         return 0
 
@@ -93,9 +86,7 @@ def main():
     utils_db_sync.set_buildkite_meta_data("snapshot_file", snapshot_file)
     print(f"Snapshot file name: {snapshot_file}")
 
-    snapshot_creation_time_seconds = int(
-        end_snapshot_creation - start_snapshot_creation
-    )
+    snapshot_creation_time_seconds = int(end_snapshot_creation - start_snapshot_creation)
     print(f"Snapshot creation time [seconds]: {snapshot_creation_time_seconds}")
 
     end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -159,9 +150,7 @@ if __name__ == "__main__":
         "--environment",
         help="the environment on which to run the tests - shelley_qa, testnet, staging or mainnet.",
     )
-    parser.add_argument(
-        "-rosc", "--run_only_sync_test", help="should run only sync test ?"
-    )
+    parser.add_argument("-rosc", "--run_only_sync_test", help="should run only sync test ?")
 
     args = parser.parse_args()
 

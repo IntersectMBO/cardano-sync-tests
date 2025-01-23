@@ -5,17 +5,23 @@ on:
     branches:
     - master
 
+env:
+  PY_COLORS: "1"
+
 jobs:
   lint:
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - uses: actions/setup-python@v2
+    - name: Check out repository
+      uses: actions/checkout@v4
+    - name: Set up Python
+      id: setup-python
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.8
+        python-version: '3.11'
     - name: Install dependencies
-      run: make install
+      run: pip install -r requirements-dev.txt
     - name: Run lint
-      run: make lint || { git diff; false; }
+      run: pre-commit run -a || { git diff; false; }

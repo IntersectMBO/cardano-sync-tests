@@ -19,9 +19,7 @@ def update_mainnet_tx_count_per_epoch():
     if current_epoch_no > last_added_epoch_no + 1:
         # adding values into the db only for missing full epochs (ignoring the current/incomplete epoch)
         for epoch_no in range(last_added_epoch_no + 1, current_epoch_no):
-            utils.print_message(
-                type="info", message=f"Getting values for epoch {epoch_no}"
-            )
+            utils.print_message(type="info", message=f"Getting values for epoch {epoch_no}")
             tx_count = blockfrost_utils.get_tx_count_per_epoch(epoch_no)
             print(f"  - tx_count: {tx_count}")
             new_row_data = {"epoch_no": epoch_no, "tx_count": tx_count}
@@ -30,15 +28,11 @@ def update_mainnet_tx_count_per_epoch():
 
         col_to_insert = list(df.columns)
         val_to_insert = df.values.tolist()
-        if not aws_db_utils.insert_values_into_db(
-            table_name, col_to_insert, val_to_insert, True
-        ):
+        if not aws_db_utils.insert_values_into_db(table_name, col_to_insert, val_to_insert, True):
             print(f"col_to_insert: {col_to_insert}")
             print(f"val_to_insert: {val_to_insert}")
     else:
-        utils.print_message(
-            type="warn", message="There are no new finalized epochs to be added"
-        )
+        utils.print_message(type="warn", message="There are no new finalized epochs to be added")
 
 
 if __name__ == "__main__":

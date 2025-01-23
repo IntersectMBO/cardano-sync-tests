@@ -5,9 +5,7 @@ from datetime import datetime
 from blockfrost import BlockFrostApi
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def get_blockfrost_api():
@@ -37,9 +35,7 @@ def get_tx_count_per_epoch(epoch_no):
         try:
             return api.epoch(number=epoch_no).tx_count
         except Exception as e:
-            logging.exception(
-                f"Error fetching transaction count for epoch {epoch_no}: {e}"
-            )
+            logging.exception(f"Error fetching transaction count for epoch {epoch_no}: {e}")
             return None
     else:
         logging.error("Blockfrost API is unhealthy.")
@@ -68,13 +64,9 @@ def get_epoch_start_datetime(epoch_no):
     if is_blockfrost_healthy(api):
         try:
             epoch_data = api.epoch(number=epoch_no)
-            return datetime.utcfromtimestamp(epoch_data.start_time).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            return datetime.utcfromtimestamp(epoch_data.start_time).strftime("%Y-%m-%dT%H:%M:%SZ")
         except Exception as e:
-            logging.exception(
-                f"Error fetching start datetime for epoch {epoch_no}: {e}"
-            )
+            logging.exception(f"Error fetching start datetime for epoch {epoch_no}: {e}")
             return None
     else:
         logging.error("Blockfrost API is unhealthy.")

@@ -11,19 +11,12 @@ sys.path.append(os.getcwd())
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.helpers as utils
 
-TEST_RESULTS = (
-    f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
-)
-DB_SYNC_RESTORATION_ARCHIVE = (
-    f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"
-)
+TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
+DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"
 
 
 def main():
-    if (
-        utils.get_arg_value(args=args, key="run_only_sync_test", default=False)
-        == "true"
-    ):
+    if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot restoration")
         return 0
 
@@ -72,9 +65,7 @@ def main():
     print(f"Snapshot file from key-store: {snapshot_file}")
     restoration_time = utils_db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
     print(f"Restoration time [sec]: {restoration_time}")
-    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = (
-        utils_db_sync.get_db_sync_tip(env)
-    )
+    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = utils_db_sync.get_db_sync_tip(env)
     print(
         f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, block: {snapshot_block_no}, slot: {snapshot_slot_no}"
     )
@@ -161,16 +152,12 @@ def main():
     # search db-sync log for issues
     print("--- Summary: Rollbacks, errors and other isssues")
 
-    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
     )
 
-    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}"
     )
@@ -224,9 +211,7 @@ if __name__ == "__main__":
         "--environment",
         help="the environment on which to run the tests - shelley_qa, testnet, staging or mainnet.",
     )
-    parser.add_argument(
-        "-rosc", "--run_only_sync_test", help="should run only sync test ?"
-    )
+    parser.add_argument("-rosc", "--run_only_sync_test", help="should run only sync test ?")
 
     args = parser.parse_args()
 

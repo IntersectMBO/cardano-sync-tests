@@ -25,9 +25,7 @@ from psutil import process_iter
 import sync_tests.utils.helpers as utils
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 ONE_MINUTE = 60
 ROOT_TEST_PATH = Path.cwd()
@@ -43,9 +41,7 @@ DB_SYNC_VERSION = os.getenv("db_sync_version")
 # System Information
 POSTGRES_DIR = ROOT_TEST_PATH.parents[0]
 POSTGRES_USER = (
-    subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False)
-    .stdout.decode("utf-8")
-    .strip()
+    subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False).stdout.decode("utf-8").strip()
 )
 
 # Log and Stats Paths
@@ -55,9 +51,7 @@ DB_SYNC_PERF_STATS_FILE = (
 )
 NODE_LOG_FILE = ROOT_TEST_PATH / f"cardano-node/node_{ENVIRONMENT}_logfile.log"
 DB_SYNC_LOG_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
-EPOCH_SYNC_TIMES_FILE = (
-    ROOT_TEST_PATH / f"cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
-)
+EPOCH_SYNC_TIMES_FILE = ROOT_TEST_PATH / f"cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
 
 # Archive Names
 NODE_ARCHIVE_NAME = f"cardano_node_{ENVIRONMENT}_logs.zip"
@@ -100,9 +94,7 @@ def wait(seconds):
 
 def make_tarfile(output_filename, source_dir):
     """Creates a tar.gz archive of the specified source directory."""
-    shutil.make_archive(
-        base_name=output_filename[:-7], format="gztar", root_dir=source_dir
-    )
+    shutil.make_archive(base_name=output_filename[:-7], format="gztar", root_dir=source_dir)
 
 
 def upload_artifact(file, destination="auto", s3_path=None):
@@ -179,9 +171,7 @@ def manage_process(proc_name, action):
             if action == "get":
                 return proc
             if action == "terminate":
-                logging.info(
-                    f"Attempting to terminate the {proc_name} process - {proc}"
-                )
+                logging.info(f"Attempting to terminate the {proc_name} process - {proc}")
                 proc.terminate()
                 proc.wait(timeout=30)  # Wait for the process to terminate
                 if proc.is_running():
@@ -217,9 +207,7 @@ def get_file_sha_256_sum(filepath):
 def print_n_last_lines_from_file(n, file_name):
     """Prints the last n lines from the specified file."""
     logs = (
-        subprocess.run(
-            ["tail", "-n", f"{n}", f"{file_name}"], stdout=subprocess.PIPE, check=False
-        )
+        subprocess.run(["tail", "-n", f"{n}", f"{file_name}"], stdout=subprocess.PIPE, check=False)
         .stdout.decode("utf-8")
         .strip()
         .rstrip()
@@ -356,9 +344,7 @@ def copy_node_executables(build_method="nix"):
     os.chdir(node_dir)
     logging.info(f"current_directory: {os.getcwd()}")
 
-    result = subprocess.run(
-        ["nix", "--version"], stdout=subprocess.PIPE, text=True, check=True
-    )
+    result = subprocess.run(["nix", "--version"], stdout=subprocess.PIPE, text=True, check=True)
     logging.info(f"Nix version: {result.stdout.strip()}")
 
     if build_method == "nix":
@@ -407,14 +393,10 @@ def copy_node_executables(build_method="nix"):
         os.chdir(current_directory)
 
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def get_node_version():
@@ -433,14 +415,10 @@ def get_node_version():
         os.chdir(current_directory)
         return str(cardano_cli_version), str(cardano_cli_git_rev)
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def download_and_extract_node_snapshot(env):
@@ -465,16 +443,12 @@ def download_and_extract_node_snapshot(env):
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-    logging.info(
-        f" ------ listdir (before archive extraction): {os.listdir(current_directory)}"
-    )
+    logging.info(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
     tf = tarfile.open(Path(current_directory) / archive_name)
     tf.extractall(Path(current_directory))
     os.rename(f"db-{env}", "db")
     utils.delete_file(Path(current_directory) / archive_name)
-    logging.info(
-        f" ------ listdir (after archive extraction): {os.listdir(current_directory)}"
-    )
+    logging.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
 def set_node_socket_path_env_var_in_cwd():
@@ -483,9 +457,7 @@ def set_node_socket_path_env_var_in_cwd():
     current_directory = os.getcwd()
     if basename(normpath(current_directory)) != "cardano-node":
         msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
-        raise Exception(
-            msg
-        )
+        raise Exception(msg)
     socket_path = "db/node.socket"
     export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
 
@@ -531,9 +503,7 @@ def get_node_tip(env, timeout_minutes=20):
                 output_json["syncProgress"],
             )
         except subprocess.CalledProcessError as e:
-            logging.exception(
-                f" === Waiting 60s before retrying to get the tip again - {i}"
-            )
+            logging.exception(f" === Waiting 60s before retrying to get the tip again - {i}")
             logging.exception(
                 f"     !!!ERROR: command {e.cmd} return with error (code {e.returncode}): {' '.join(str(e.output).split())}"
             )
@@ -598,9 +568,7 @@ def start_node_in_cwd(env):
     current_directory = os.getcwd()
     if basename(normpath(current_directory)) != "cardano-node":
         msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
-        raise Exception(
-            msg
-        )
+        raise Exception(msg)
 
     logging.info(f"current_directory: {current_directory}")
     cmd = (
@@ -636,14 +604,10 @@ def start_node_in_cwd(env):
         logging.info(f" - listdir db: {os.listdir(node_db_dir)}")
         return secs_to_start
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def create_pgpass_file(env):
@@ -672,21 +636,13 @@ def create_database():
 
     try:
         cmd = ["scripts/postgresql-setup.sh", "--createdb"]
-        output = (
-            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            .decode("utf-8")
-            .strip()
-        )
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
         logging.info(f"Create database script output: {output}")
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
     if "All good!" not in output:
         msg = "Create database has not ended successfully"
         raise RuntimeError(msg)
@@ -736,9 +692,7 @@ def copy_db_sync_executables(build_method="nix"):
             "f",
         ]
         output_find_db_tool_cmd = (
-            subprocess.check_output(
-                find_db_tool_cmd, stderr=subprocess.STDOUT, timeout=15
-            )
+            subprocess.check_output(find_db_tool_cmd, stderr=subprocess.STDOUT, timeout=15)
             .decode("utf-8")
             .strip()
         )
@@ -747,14 +701,10 @@ def copy_db_sync_executables(build_method="nix"):
         shutil.copy2(output_find_db_tool_cmd, "_cardano-db-tool")
 
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def get_db_sync_version():
@@ -773,14 +723,10 @@ def get_db_sync_version():
         os.chdir(current_directory)
         return str(cardano_db_sync_version), str(cardano_db_sync_git_revision)
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def get_latest_snapshot_url(env, args):
@@ -793,42 +739,30 @@ def get_latest_snapshot_url(env, args):
         general_snapshot_url = "https://update-cardano-mainnet.iohk.io/?list-type=2&delimiter=/&prefix=cardano-db-sync/&max-keys=50&cachestamp=459588"
     else:
         msg = "Snapshot are currently available only for mainnet environment"
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     headers = {"Content-type": "application/json"}
-    res_with_latest_db_sync_version = requests.get(
-        general_snapshot_url, headers=headers
-    )
-    dict_with_latest_db_sync_version = xmltodict.parse(
-        res_with_latest_db_sync_version.content
-    )
-    db_sync_latest_version_prefix = dict_with_latest_db_sync_version[
-        "ListBucketResult"
-    ]["CommonPrefixes"]["Prefix"]
+    res_with_latest_db_sync_version = requests.get(general_snapshot_url, headers=headers)
+    dict_with_latest_db_sync_version = xmltodict.parse(res_with_latest_db_sync_version.content)
+    db_sync_latest_version_prefix = dict_with_latest_db_sync_version["ListBucketResult"][
+        "CommonPrefixes"
+    ]["Prefix"]
 
     if env == "mainnet":
         latest_snapshots_list_url = f"https://update-cardano-mainnet.iohk.io/?list-type=2&delimiter=/&prefix={db_sync_latest_version_prefix}&max-keys=50&cachestamp=462903"
     else:
         msg = "Snapshot are currently available only for mainnet environment"
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     res_snapshots_list = requests.get(latest_snapshots_list_url, headers=headers)
     dict_snapshots_list = xmltodict.parse(res_snapshots_list.content)
     latest_snapshot = dict_snapshots_list["ListBucketResult"]["Contents"][-2]["Key"]
 
     if env == "mainnet":
-        latest_snapshot_url = (
-            f"https://update-cardano-mainnet.iohk.io/{latest_snapshot}"
-        )
+        latest_snapshot_url = f"https://update-cardano-mainnet.iohk.io/{latest_snapshot}"
     else:
         msg = "Snapshot are currently available only for mainnet environment"
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     return latest_snapshot_url
 
@@ -899,14 +833,10 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
             logging.error(f"Error during restoration: {errors}")
 
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
     except subprocess.TimeoutExpired as e:
         p.kill()
         logging.exception(e)
@@ -942,20 +872,14 @@ def create_db_sync_snapshot_stage_1(env):
         if errs:
             logging.error(f"Warnings or Errors: {errs}")
         final_line_with_script_cmd = outs.split("\n")[2].lstrip()
-        logging.info(
-            f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}"
-        )
+        logging.info(f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}")
         return final_line_with_script_cmd
 
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
@@ -983,9 +907,7 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
             "Snapshot creation output not found.",
         )
         snapshot_path = (
-            snapshot_line.split()[1]
-            if "Created" in snapshot_line
-            else "Snapshot path unknown"
+            snapshot_line.split()[1] if "Created" in snapshot_line else "Snapshot path unknown"
         )
 
         return snapshot_path
@@ -1022,9 +944,7 @@ def get_db_sync_tip(env):
         try:
             outs, errs = p.communicate(timeout=180)
             output_string = outs.decode("utf-8")
-            epoch_no, block_no, slot_no = [
-                e.strip() for e in outs.decode("utf-8").split("|")
-            ]
+            epoch_no, block_no, slot_no = [e.strip() for e in outs.decode("utf-8").split("|")]
             return epoch_no, block_no, slot_no
         except Exception as e:
             if counter > 5:
@@ -1102,9 +1022,7 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
         if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
             emergency_upload_artifacts(env)
             msg = "Emergency uploading artifacts before buid timeout exception..."
-            raise Exception(
-                msg
-            )
+            raise Exception(msg)
         if counter % 5 == 0:
             current_progress = get_db_sync_progress(env)
             if current_progress < db_sync_progress and db_sync_progress > 3:
@@ -1122,12 +1040,8 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
                 rollback_counter += 1
                 logging.info(f"Rollback counter: {rollback_counter} out of 15")
             if rollback_counter > 15:
-                logging.info(
-                    f"Progress decreasing for {rollback_counter * counter} minutes."
-                )
-                logging.exception(
-                    "Shutting down all services and emergency uploading artifacts"
-                )
+                logging.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
+                logging.exception("Shutting down all services and emergency uploading artifacts")
                 emergency_upload_artifacts(env)
                 msg = "Rollback taking too long. Shutting down..."
                 raise Exception(msg)
@@ -1197,9 +1111,7 @@ def get_total_db_size(env):
         f"SELECT pg_size_pretty( pg_database_size('{env}') );",
     ]
     try:
-        p = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
-        )
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         outs, errs = p.communicate(timeout=60)
         if errs:
             logging.error(f"Error in get database size: {errs}")
@@ -1226,23 +1138,17 @@ def start_db_sync(env, start_args="", first_start="True"):
         subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
     not_found = True
     counter = 0
 
     while not_found:
         if counter > 10 * ONE_MINUTE:
-            logging.error(
-                f"ERROR: waited {counter} seconds and the db-sync was not started"
-            )
+            logging.error(f"ERROR: waited {counter} seconds and the db-sync was not started")
             sys.exit(1)
 
         for proc in process_iter():
@@ -1300,30 +1206,20 @@ def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port="5432"):
 
     try:
         cmd = ["./sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
-        output = (
-            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            .decode("utf-8")
-            .strip()
-        )
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
         logging.info(f"Setup postgres script output: {output}")
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def list_databases():
     """Lists all databases available in the PostgreSQL instance."""
     cmd = ["psql", "-U", f"{POSTGRES_USER}", "-l"]
-    p = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
-    )
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
 
     try:
         outs, errs = p.communicate(timeout=60)
@@ -1340,7 +1236,9 @@ def get_db_schema():
     try:
         conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
         cursor = conn.cursor()
-        get_all_tables = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+        get_all_tables = (
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+        )
         cursor.execute(get_all_tables)
         tabels = cursor.fetchall()
 

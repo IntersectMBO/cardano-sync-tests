@@ -6,7 +6,7 @@ on:
       environment:
         description: "Environment on which Buildkite agent will run tests"
         type: choice
-        options: 
+        options:
         - mainnet
         - preprod
         - preview
@@ -15,7 +15,7 @@ on:
       build_mode:
         description: "build-mode"
         type: choice
-        options: 
+        options:
         - nix
         default: nix
       tag_no1:
@@ -29,7 +29,7 @@ on:
       node_topology1:
         description: "Initial sync - cardano-node topology"
         type: choice
-        options: 
+        options:
         - non-bootstrap-peers
         - bootstrap-peers
         default: legacy
@@ -48,7 +48,7 @@ on:
       node_topology2:
         description: "Upgrade node - cardano-node topology"
         type: choice
-        options: 
+        options:
         - legacy
         - p2p
         default: legacy
@@ -79,12 +79,12 @@ jobs:
             latest_name=$(curl -s $node_release_url | jq .name -r)
             latest_url=$(curl -s $node_release_url | jq .html_url -r)
             latest_archive=$(curl -s $node_release_url | jq .assets[0].browser_download_url -r)
-          
+
             echo "Latest Release Name: $latest_name"
             echo "Release URL: $latest_url"
             echo "Download Archive URL: $latest_archive"
           fi
-          
+
 
       - name: Trigger the Buildkite pipeline - run sync tests on Mainnet
         uses: 'buildkite/trigger-pipeline-action@v1.5.0'
@@ -102,7 +102,7 @@ jobs:
           "env":"${{ github.event.inputs.environment }}",
           "build_mode":"${{ github.event.inputs.build_mode }}",
           "node_rev1":"${{ steps.get_tag.outputs.node_rev1 }}",
-          "node_rev2":"${{ github.event.inputs.node_rev2 }}",          
+          "node_rev2":"${{ github.event.inputs.node_rev2 }}",
           "tag_no1":"${{ github.event.inputs.tag_no1 }}",
           "tag_no2":"${{ github.event.inputs.tag_no2 }}",
           "node_topology1":"${{ github.event.inputs.node_topology1 }}",

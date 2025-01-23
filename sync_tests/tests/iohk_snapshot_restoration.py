@@ -23,9 +23,7 @@ def upload_snapshot_restoration_results_to_aws(env):
         sync_test_results_dict = json.load(json_file)
 
     test_summary_table = env + "_db_sync_snapshot_restoration"
-    test_id = str(
-        int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1
-    )
+    test_id = str(int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1)
     identifier = env + "_restoration_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
@@ -33,9 +31,7 @@ def upload_snapshot_restoration_results_to_aws(env):
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
-    if not aws_db_utils.add_single_row_into_db(
-        test_summary_table, col_to_insert, val_to_insert
-    ):
+    if not aws_db_utils.add_single_row_into_db(test_summary_table, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         sys.exit(1)
@@ -106,9 +102,7 @@ def main():
     snapshot_name = utils_db_sync.download_db_sync_snapshot(snapshot_url)
     expected_snapshot_sha_256_sum = utils_db_sync.get_snapshot_sha_256_sum(snapshot_url)
     actual_snapshot_sha_256_sum = utils_db_sync.get_file_sha_256_sum(snapshot_name)
-    assert expected_snapshot_sha_256_sum == actual_snapshot_sha_256_sum, (
-        "Incorrect sha 256 sum"
-    )
+    assert expected_snapshot_sha_256_sum == actual_snapshot_sha_256_sum, "Incorrect sha 256 sum"
 
     # restore snapshot
     print("--- Snapshot restoration")
@@ -116,9 +110,7 @@ def main():
         env, snapshot_name, remove_ledger_dir="no"
     )
     print(f"Restoration time [sec]: {restoration_time}")
-    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = (
-        utils_db_sync.get_db_sync_tip(env)
-    )
+    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = utils_db_sync.get_db_sync_tip(env)
     print(
         f"db-sync tip after restoration: epoch: {snapshot_epoch_no}, block: {snapshot_block_no}, slot: {snapshot_slot_no}"
     )
@@ -162,13 +154,9 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["node_total_sync_time_in_sec"] = node_sync_time_in_secs
-    test_data["node_total_sync_time_in_h_m_s"] = str(
-        timedelta(seconds=int(node_sync_time_in_secs))
-    )
+    test_data["node_total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(node_sync_time_in_secs)))
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["db_total_sync_time_in_h_m_s"] = str(
-        timedelta(seconds=db_full_sync_time_in_secs)
-    )
+    test_data["db_total_sync_time_in_h_m_s"] = str(timedelta(seconds=db_full_sync_time_in_secs))
     test_data["snapshot_url"] = snapshot_url
     test_data["snapshot_name"] = snapshot_name
     test_data["snapshot_epoch_no"] = snapshot_epoch_no
@@ -179,9 +167,7 @@ def main():
     test_data["last_synced_slot_no"] = slot_no
     last_perf_stats_data_point = utils_db_sync.get_last_perf_stats_point()
     test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
-    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point[
-        "rss_mem_usage"
-    ]
+    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = utils_db_sync.get_total_db_size(env)
     test_data["rollbacks"] = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
         utils_db_sync.DB_SYNC_LOG_FILE
@@ -203,12 +189,8 @@ def main():
     # compress artifacts
     utils.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
     utils.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
-    utils.zip_file(
-        utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE
-    )
-    utils.zip_file(
-        utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE
-    )
+    utils.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
+    utils.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
     utils_db_sync.upload_artifact(utils_db_sync.NODE_ARCHIVE_NAME)
@@ -223,16 +205,12 @@ def main():
     # search db-sync log for issues
     print("--- Summary: Rollbacks, errors and other isssues")
 
-    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
     )
 
-    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}"
     )

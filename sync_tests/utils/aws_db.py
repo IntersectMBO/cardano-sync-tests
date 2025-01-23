@@ -4,9 +4,7 @@ import os
 import pymysql.cursors
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def create_connection():
@@ -56,9 +54,7 @@ def get_column_names_from_table(table_name):
 
 def add_column_to_table(table_name, column_name, column_type):
     """Adds a new column to the specified table."""
-    logging.info(
-        f"Adding column {column_name} of type {column_type} to table {table_name}"
-    )
+    logging.info(f"Adding column {column_name} of type {column_type} to table {table_name}")
     conn = create_connection()
     if not conn:
         return False

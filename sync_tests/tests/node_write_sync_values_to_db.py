@@ -38,9 +38,7 @@ def main():
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
 
-    utils.print_message(
-        type="info", message="Check if there are DB columns for all the eras"
-    )
+    utils.print_message(type="info", message="Check if there are DB columns for all the eras")
     print("Get the list of the existing eras in test")
     eras_in_test = (
         sync_test_results_dict["eras_in_test"]
@@ -51,9 +49,7 @@ def main():
     )
     print(f"eras_in_test: {eras_in_test}")
 
-    utils.print_message(
-        type="info", message=f"Get the column names inside the {env} DB tables"
-    )
+    utils.print_message(type="info", message=f"Get the column names inside the {env} DB tables")
     table_column_names = aws_db_utils.get_column_names_from_table(env)
     print(f"  -- table_column_names: {table_column_names}")
 
@@ -118,9 +114,7 @@ def main():
     ]
     df1 = pd.DataFrame(columns=df1_column_names)
 
-    utils.print_message(
-        type="info", message="    ==== Creating the dataframe with the test values"
-    )
+    utils.print_message(type="info", message="    ==== Creating the dataframe with the test values")
     for key, val in log_values_dict.items():
         new_row_data = {
             "identifier": sync_test_results_dict["identifier"],
@@ -136,9 +130,7 @@ def main():
 
     col_to_insert = list(df1.columns)
     val_to_insert = df1.values.tolist()
-    if not aws_db_utils.insert_values_into_db(
-        env + "_logs", col_to_insert, val_to_insert, True
-    ):
+    if not aws_db_utils.insert_values_into_db(env + "_logs", col_to_insert, val_to_insert, True):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
         sys.exit(1)
@@ -176,9 +168,7 @@ def main():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Add sync test values into database\n\n"
-    )
+    parser = argparse.ArgumentParser(description="Add sync test values into database\n\n")
 
     parser.add_argument(
         "-e",

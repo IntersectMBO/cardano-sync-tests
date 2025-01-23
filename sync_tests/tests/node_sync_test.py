@@ -110,9 +110,7 @@ def get_node_config_files(env, node_topology_type):
     download_config_file(env, "conway-genesis.json")
 
     if env == "mainnet" and node_topology_type == "non-bootstrap-peers":
-        download_config_file(
-            env, "topology-non-bootstrap-peers.json", save_as="topology.json"
-        )
+        download_config_file(env, "topology-non-bootstrap-peers.json", save_as="topology.json")
     elif env == "mainnet" and node_topology_type == "legacy":
         download_config_file(env, "topology-legacy.json", save_as="topology.json")
         disable_p2p_node_config()
@@ -126,9 +124,7 @@ def get_node_config_files(env, node_topology_type):
 
 
 def enable_cardano_node_resources_monitoring(node_config_filepath):
-    utils.print_message(
-        type="warn", message="- Enable cardano node resource monitoring:"
-    )
+    utils.print_message(type="warn", message="- Enable cardano node resource monitoring:")
     utils.print_message(
         type="info",
         message='  node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]',
@@ -177,9 +173,7 @@ def set_node_socket_path_env_var():
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
-        socket_path = (
-            (Path(ROOT_TEST_PATH) / "db" / "node.socket").expanduser().absolute()
-        )
+        socket_path = (Path(ROOT_TEST_PATH) / "db" / "node.socket").expanduser().absolute()
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
@@ -291,14 +285,10 @@ def get_node_version():
         cardano_cli_git_rev = output.split("git rev ")[1].strip()
         return str(cardano_cli_version), str(cardano_cli_git_rev)
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
@@ -343,22 +333,16 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
                 )
                 sys.exit(1)
 
-        utils.print_message(
-            type="ok", message=f"DB folder was created after {count} seconds"
-        )
+        utils.print_message(type="ok", message=f"DB folder was created after {count} seconds")
         secs_to_start = wait_for_node_to_start(timeout_minutes)
         print(f" - listdir current_directory: {os.listdir(current_directory)}")
         print(f" - listdir db: {os.listdir(current_directory / 'db')}")
         return secs_to_start
     except subprocess.CalledProcessError as e:
-        msg = (
-            "command '{}' return with error (code {}): {}".format(
-                e.cmd, e.returncode, " ".join(str(e.output).split())
-            )
+        msg = "command '{}' return with error (code {}): {}".format(
+            e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(
-            msg
-        )
+        raise RuntimeError(msg)
 
 
 def stop_node(platform_system):
@@ -394,35 +378,23 @@ def get_calculated_slot_no(env):
 
     if env == "testnet":
         byron_start_time = datetime.strptime("2019-07-24 20:20:16", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2020-07-28 20:20:16", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2020-07-28 20:20:16", "%Y-%m-%d %H:%M:%S")
     elif env == "staging":
         byron_start_time = datetime.strptime("2017-09-26 18:23:33", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2020-08-01 18:23:33", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2020-08-01 18:23:33", "%Y-%m-%d %H:%M:%S")
     elif env == "mainnet":
         byron_start_time = datetime.strptime("2017-09-23 21:44:51", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2020-07-29 21:44:51", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2020-07-29 21:44:51", "%Y-%m-%d %H:%M:%S")
     elif env == "shelley-qa":
         byron_start_time = datetime.strptime("2020-08-17 13:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2020-08-17 17:00:00", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2020-08-17 17:00:00", "%Y-%m-%d %H:%M:%S")
     elif env == "preprod":
         byron_start_time = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2022-06-21 00:00:00", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2022-06-21 00:00:00", "%Y-%m-%d %H:%M:%S")
     elif env == "preview":
         # this env was started directly in Alonzo
         byron_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime(
-            "2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S"
-        )
+        shelley_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     last_slot_no = int(
         (shelley_start_time - byron_start_time).total_seconds() / 20
@@ -531,9 +503,7 @@ def wait_for_node_to_sync(env):
     chunk_files = sorted(os.listdir(os.getcwd()), key=os.path.getmtime)
     latest_chunk_no = chunk_files[-1].split(".")[0]
     os.chdir(Path(ROOT_TEST_PATH))
-    utils.print_message(
-        type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}"
-    )
+    utils.print_message(type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}")
 
     # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
     # for the last/current era, "end_sync_time" = current_utc_time / end_of_sync_time
@@ -543,14 +513,9 @@ def wait_for_node_to_sync(env):
             end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             last_epoch = actual_epoch
         else:
-            end_sync_time = era_details_dict[eras_list[eras_list.index(era) + 1]][
-                "start_sync_time"
-            ]
+            end_sync_time = era_details_dict[eras_list[eras_list.index(era) + 1]]["start_sync_time"]
             last_epoch = (
-                int(
-                    era_details_dict[eras_list[eras_list.index(era) + 1]]["start_epoch"]
-                )
-                - 1
+                int(era_details_dict[eras_list[eras_list.index(era) + 1]]["start_epoch"]) - 1
             )
 
         actual_era_dict = era_details_dict[era]
@@ -562,16 +527,12 @@ def wait_for_node_to_sync(env):
             - int(era_details_dict[eras_list[eras_list.index(era)]]["start_epoch"])
             + 1
         )
-        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(
-            env, era, no_of_epochs_in_era
-        )
+        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(env, era, no_of_epochs_in_era)
 
         actual_era_dict["sync_duration_secs"] = int(
             (
                 datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(
-                    actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-                )
+                - datetime.strptime(actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
             ).total_seconds()
         )
 
@@ -587,17 +548,15 @@ def wait_for_node_to_sync(env):
         if epoch == epoch_list[-1]:
             epoch_end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         else:
-            epoch_end_sync_time = epoch_details_dict[
-                epoch_list[epoch_list.index(epoch) + 1]
-            ]["start_sync_time"]
+            epoch_end_sync_time = epoch_details_dict[epoch_list[epoch_list.index(epoch) + 1]][
+                "start_sync_time"
+            ]
         actual_epoch_dict = epoch_details_dict[epoch]
         actual_epoch_dict["end_sync_time"] = epoch_end_sync_time
         actual_epoch_dict["sync_duration_secs"] = int(
             (
                 datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(
-                    actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-                )
+                - datetime.strptime(actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
             ).total_seconds()
         )
         epoch_details_dict[epoch] = actual_epoch_dict
@@ -642,15 +601,11 @@ def get_data_from_logs(log_file):
 
     for line in log_file_lines:
         if "cardano.node.resources" in line:
-            timestamp = re.findall(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}", line)[
-                0
-            ]
+            timestamp = re.findall(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}", line)[0]
             heap_ram_value = re.findall(
                 r'"Heap",Number [-+]?[\d]+\.?[\d]*[Ee](?:[-+]?[\d]+)?', line
             )
-            rss_ram_value = re.findall(
-                r'"RSS",Number [-+]?[\d]+\.?[\d]*[Ee](?:[-+]?[\d]+)?', line
-            )
+            rss_ram_value = re.findall(r'"RSS",Number [-+]?[\d]+\.?[\d]*[Ee](?:[-+]?[\d]+)?', line)
             if len(heap_ram_value) > 0:
                 heap_ram_details_dict[timestamp] = heap_ram_value[0].split(" ")[1]
             if len(rss_ram_value) > 0:
@@ -660,9 +615,7 @@ def get_data_from_logs(log_file):
             if len(centi_cpu) > 0:
                 centi_cpu_dict[timestamp] = centi_cpu[0].split(" ")[1]
         if "new tip" in line:
-            timestamp = re.findall(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}", line)[
-                0
-            ]
+            timestamp = re.findall(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}", line)[0]
             slot_no = line.split(" at slot ")[1]
             tip_details_dict[timestamp] = slot_no
 
@@ -679,9 +632,7 @@ def get_data_from_logs(log_file):
         previous_value = float(
             centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1) - 1]]
         )
-        current_value = float(
-            centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1)]]
-        )
+        current_value = float(centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1)]])
         cpu_load_percent = (current_value - previous_value) / (
             current_timestamp - previous_timestamp
         ).total_seconds()
@@ -726,11 +677,7 @@ def get_cabal_build_files():
 
 def get_node_executable_path_built_with_cabal():
     for f in get_cabal_build_files():
-        if (
-            "\\x\\cardano-node\\build\\" in f
-            and "cardano-node-tmp" not in f
-            and "autogen" not in f
-        ):
+        if "\\x\\cardano-node\\build\\" in f and "cardano-node-tmp" not in f and "autogen" not in f:
             utils.print_message(type="info", message=f"Found node executable: {f}")
             global NODE
             NODE = f
@@ -740,11 +687,7 @@ def get_node_executable_path_built_with_cabal():
 
 def get_cli_executable_path_built_with_cabal():
     for f in get_cabal_build_files():
-        if (
-            "\\x\\cardano-cli\\build\\" in f
-            and "cardano-cli-tmp" not in f
-            and "autogen" not in f
-        ):
+        if "\\x\\cardano-cli\\build\\" in f and "cardano-cli-tmp" not in f and "autogen" not in f:
             utils.print_message(type="info", message=f"Found node-cli executable: {f}")
             global CLI
             CLI = f
@@ -934,9 +877,7 @@ def main():
         )
         sys.exit(1)
     end_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    utils.print_message(
-        type="info", message=f"  - start_build_time: {start_build_time}"
-    )
+    utils.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
     utils.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
 
     utils.print_message(type="warn", message="--- node version ")
@@ -968,9 +909,7 @@ def main():
     )
     print()
     start_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    secs_to_start1 = start_node(
-        NODE, tag_no1, node_start_arguments1, timeout_minutes=10
-    )
+    secs_to_start1 = start_node(NODE, tag_no1, node_start_arguments1, timeout_minutes=10)
 
     utils.print_message(type="info", message=" - waiting for the node to sync")
     (
@@ -1068,9 +1007,7 @@ def main():
         print(f" - cardano_cli_version2: {cli_version2}")
         print(f" - cardano_cli_git_rev2: {cli_git_rev2}")
         print()
-        print(
-            f"================ Start node using node_rev2: {node_rev2} ===================="
-        )
+        print(f"================ Start node using node_rev2: {node_rev2} ====================")
         start_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         secs_to_start2 = start_node(NODE, tag_no2, node_start_arguments2)
 
@@ -1093,33 +1030,19 @@ def main():
     chain_size = utils.get_directory_size(Path(ROOT_TEST_PATH) / "db")
 
     print("--- Node sync test completed")
-    print(
-        "Node sync test ended; Creating the `test_values_dict` dict with the test values"
-    )
+    print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
     print("++++++++++++++++++++++++++++++++++++++++++++++")
     for era in era_details_dict1:
         print(f"  *** {era} --> {era_details_dict1[era]}")
-        test_values_dict[str(era + "_start_time")] = era_details_dict1[era][
-            "start_time"
-        ]
-        test_values_dict[str(era + "_start_epoch")] = era_details_dict1[era][
-            "start_epoch"
-        ]
-        test_values_dict[str(era + "_slots_in_era")] = era_details_dict1[era][
-            "slots_in_era"
-        ]
-        test_values_dict[str(era + "_start_sync_time")] = era_details_dict1[era][
-            "start_sync_time"
-        ]
-        test_values_dict[str(era + "_end_sync_time")] = era_details_dict1[era][
-            "end_sync_time"
-        ]
+        test_values_dict[str(era + "_start_time")] = era_details_dict1[era]["start_time"]
+        test_values_dict[str(era + "_start_epoch")] = era_details_dict1[era]["start_epoch"]
+        test_values_dict[str(era + "_slots_in_era")] = era_details_dict1[era]["slots_in_era"]
+        test_values_dict[str(era + "_start_sync_time")] = era_details_dict1[era]["start_sync_time"]
+        test_values_dict[str(era + "_end_sync_time")] = era_details_dict1[era]["end_sync_time"]
         test_values_dict[str(era + "_sync_duration_secs")] = era_details_dict1[era][
             "sync_duration_secs"
         ]
-        test_values_dict[str(era + "_sync_speed_sps")] = era_details_dict1[era][
-            "sync_speed_sps"
-        ]
+        test_values_dict[str(era + "_sync_speed_sps")] = era_details_dict1[era]["sync_speed_sps"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
     epoch_details = OrderedDict()
     for epoch in epoch_details_dict1:

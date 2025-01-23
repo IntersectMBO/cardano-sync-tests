@@ -21,7 +21,7 @@ CHART = f"full_sync_{utils_db_sync.ENVIRONMENT}_stats_chart.png"
 EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = utils.load_json_files()
 
 
-def create_sync_stats_chart():
+def create_sync_stats_chart() -> None:
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-db-sync")
     fig = plt.figure(figsize=(14, 10))
@@ -62,9 +62,7 @@ def upload_sync_results_to_aws(env):
         sync_test_results_dict = json.load(json_file)
 
     test_summary_table = env + "_db_sync"
-    test_id = str(
-        int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1
-    )
+    test_id = str(int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1)
     identifier = env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
@@ -103,9 +101,7 @@ def upload_sync_results_to_aws(env):
         db_sync_performance_stats = json.load(json_perf_stats_file)
 
     db_sync_performance_stats_table = env + "_performance_stats_db_sync"
-    print(
-        f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:"
-    )
+    print(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
     col_to_insert = [
         "identifier",
         "time",
@@ -136,16 +132,12 @@ def upload_sync_results_to_aws(env):
 
 
 def print_report(db_schema, db_indexes):
-    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
     )
 
-    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}"
     )
@@ -171,17 +163,13 @@ def print_report(db_schema, db_indexes):
             utils_db_sync.sh_colors.WARNING, f"Db schema issues: {db_schema}"
         )
     else:
-        utils_db_sync.print_color_log(
-            utils_db_sync.sh_colors.WARNING, "NO Db schema issues"
-        )
+        utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, "NO Db schema issues")
     if db_indexes:
         utils_db_sync.print_color_log(
             utils_db_sync.sh_colors.WARNING, f"Db indexes issues: {db_indexes}"
         )
     else:
-        utils_db_sync.print_color_log(
-            utils_db_sync.sh_colors.WARNING, "NO Db indexes issues"
-        )
+        utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, "NO Db indexes issues")
 
 
 def main():
@@ -210,9 +198,7 @@ def main():
     db_branch = utils.get_arg_value(args=args, key="db_sync_branch", default="")
     print(f"DB sync branch: {db_branch}")
 
-    db_start_options = utils.get_arg_value(
-        args=args, key="db_sync_start_options", default=""
-    )
+    db_start_options = utils.get_arg_value(args=args, key="db_sync_start_options", default="")
 
     db_sync_version_from_gh_action = (
         utils.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
@@ -238,9 +224,7 @@ def main():
 
     # cardano-db sync setup
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    DB_SYNC_DIR = git_utils.clone_repo(
-        "cardano-db-sync", db_sync_version_from_gh_action.rstrip()
-    )
+    DB_SYNC_DIR = git_utils.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
     os.chdir(DB_SYNC_DIR)
     print("--- Db sync setup")
     utils_db_sync.setup_postgres()  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
@@ -294,17 +278,13 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["total_sync_time_in_h_m_s"] = str(
-        timedelta(seconds=int(db_full_sync_time_in_secs))
-    )
+    test_data["total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(db_full_sync_time_in_secs)))
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
     last_perf_stats_data_point = utils_db_sync.get_last_perf_stats_point()
     test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
-    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point[
-        "rss_mem_usage"
-    ]
+    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = utils_db_sync.get_total_db_size(env)
     test_data["rollbacks"] = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
         utils_db_sync.DB_SYNC_LOG_FILE
@@ -317,21 +297,15 @@ def main():
     utils_db_sync.write_data_as_json_to_file(
         utils_db_sync.DB_SYNC_PERF_STATS_FILE, utils_db_sync.db_sync_perf_stats
     )
-    utils_db_sync.export_epoch_sync_times_from_db(
-        env, utils_db_sync.EPOCH_SYNC_TIMES_FILE
-    )
+    utils_db_sync.export_epoch_sync_times_from_db(env, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
 
     utils_db_sync.print_file(TEST_RESULTS)
 
     # compress artifacts
     utils.zip_file(utils_db_sync.NODE_ARCHIVE_NAME, utils_db_sync.NODE_LOG_FILE)
     utils.zip_file(utils_db_sync.DB_SYNC_ARCHIVE_NAME, utils_db_sync.DB_SYNC_LOG_FILE)
-    utils.zip_file(
-        utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE
-    )
-    utils.zip_file(
-        utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE
-    )
+    utils.zip_file(utils_db_sync.SYNC_DATA_ARCHIVE_NAME, utils_db_sync.EPOCH_SYNC_TIMES_FILE)
+    utils.zip_file(utils_db_sync.PERF_STATS_ARCHIVE_NAME, utils_db_sync.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
     utils_db_sync.upload_artifact(utils_db_sync.NODE_ARCHIVE_NAME)
