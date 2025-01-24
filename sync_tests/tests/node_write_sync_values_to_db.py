@@ -13,7 +13,7 @@ import sync_tests.utils.helpers as utils
 RESULTS_FILE_NAME = r"sync_results.json"
 
 
-def main():
+def main() -> None:
     env = utils.get_arg_value(args=args, key="environment")
     if "-" in env:
         env = f"`{env}`"
@@ -70,10 +70,11 @@ def main():
                 if column_name not in table_column_names:
                     aws_db_utils.add_column_to_table(env, column_name, "VARCHAR(255)")
 
+    last_identifier = aws_db_utils.get_last_identifier(env)
+    assert last_identifier is not None  # TODO: refactor
+
     sync_test_results_dict["identifier"] = (
-        sync_test_results_dict["env"]
-        + "_"
-        + str(int(aws_db_utils.get_last_identifier(env).split("_")[-1]) + 1)
+        sync_test_results_dict["env"] + "_" + str(int(last_identifier.split("_")[-1]) + 1)
     )
 
     print(f"--- Write test values into the {env} DB table")
@@ -173,7 +174,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e",
         "--environment",
-        help="The environment on which to run the tests - shelley-qa, testnet, staging, mainnet, preprod, preview",
+        help="The environment on which to run the tests - mainnet, preprod, preview",
     )
 
     args = parser.parse_args()

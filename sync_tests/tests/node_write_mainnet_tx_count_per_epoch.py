@@ -5,19 +5,24 @@ import sync_tests.utils.blockfrost as blockfrost_utils
 import sync_tests.utils.helpers as utils
 
 
-def update_mainnet_tx_count_per_epoch():
+def update_mainnet_tx_count_per_epoch() -> None:
     _env, table_name = "mainnet", "mainnet_tx_count"
     current_epoch_no = blockfrost_utils.get_current_epoch_no()
+    assert current_epoch_no is not None  # TODO: refactor
     print(f"current_epoch_no   : {current_epoch_no}")
 
-    last_added_epoch_no = int(aws_db_utils.get_max_epoch(table_name))
+    max_epoch = aws_db_utils.get_max_epoch(table_name)
+    assert max_epoch is not None  # TODO: refactor
+
+    last_added_epoch_no = int(max_epoch)
     print(f"last_added_epoch_no: {last_added_epoch_no}")
 
     df_column_names = ["epoch_no", "tx_count"]
     df = pd.DataFrame(columns=df_column_names)
 
     if current_epoch_no > last_added_epoch_no + 1:
-        # adding values into the db only for missing full epochs (ignoring the current/incomplete epoch)
+        # adding values into the db only for missing full epochs
+        # (ignoring the current/incomplete epoch)
         for epoch_no in range(last_added_epoch_no + 1, current_epoch_no):
             utils.print_message(type="info", message=f"Getting values for epoch {epoch_no}")
             tx_count = blockfrost_utils.get_tx_count_per_epoch(epoch_no)

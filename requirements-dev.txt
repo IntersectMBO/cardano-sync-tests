@@ -4,3 +4,4 @@
 mypy
 pre-commit
 types-requests
+types-PyMySQL

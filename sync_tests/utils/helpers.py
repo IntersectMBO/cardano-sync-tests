@@ -4,8 +4,9 @@ import os
 import platform
 import shlex
 import subprocess
+import typing as tp
 import zipfile
-from typing import NamedTuple
+from pathlib import Path
 
 import psutil
 from colorama import Fore
@@ -15,12 +16,7 @@ from colorama import Style
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-class CLIOut(NamedTuple):
-    stdout: bytes
-    stderr: bytes
-
-
-def print_message(message: str, type: str = "info"):
+def print_message(message: str, type: str = "info") -> None:
     """Print a message to the logs with color coding."""
     colors = {
         "ok": Fore.GREEN,
@@ -33,12 +29,12 @@ def print_message(message: str, type: str = "info"):
     print(color + f"{message}", Style.RESET_ALL, flush=True)
 
 
-def get_os_type():
+def get_os_type() -> list[str]:
     """Retrieve the operating system type, release, and version."""
     return [platform.system(), platform.release(), platform.version()]
 
 
-def get_total_ram_in_GB():
+def get_total_ram_in_gb() -> int:
     """Get the total RAM size in gigabytes."""
     return int(psutil.virtual_memory().total / 1_000_000_000)
 
@@ -51,11 +47,11 @@ def print_file_content(file_name: str) -> None:
             print(content)
     except FileNotFoundError:
         logging.exception(f"File '{file_name}' not found.")
-    except Exception as e:
-        logging.exception(f"An error occurred while reading the file: {e}")
+    except Exception:
+        logging.exception("An error occurred while reading the file")
 
 
-def get_directory_size(start_path="."):
+def get_directory_size(start_path: str | Path = ".") -> int:
     """Calculate the total size of all files in a directory."""
     # returns directory size in bytes
     total_size = 0
@@ -66,7 +62,7 @@ def get_directory_size(start_path="."):
     return total_size
 
 
-def zip_file(archive_name, file_name):
+def zip_file(archive_name: str, file_name: str | Path) -> None:
     """Compress a file into a zip archive."""
     try:
         with zipfile.ZipFile(
@@ -74,11 +70,11 @@ def zip_file(archive_name, file_name):
         ) as zip:
             zip.write(file_name)
         logging.info(f"File '{file_name}' successfully zipped as '{archive_name}'.")
-    except Exception as e:
-        logging.exception(f"Error while zipping file: {e}")
+    except Exception:
+        logging.exception("Error while zipping file")
 
 
-def delete_file(file_path):
+def delete_file(file_path: Path) -> None:
     """Delete a file from the file system."""
     try:
         file_path.unlink()
@@ -87,7 +83,7 @@ def delete_file(file_path):
         logging.exception(f"Error deleting file '{file_path}': {e.strerror}")
 
 
-def load_json_files():
+def load_json_files() -> tuple[dict, dict]:
     """Load JSON files for database schema and indexes."""
     base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     schema_path = os.path.join(base_path, "schemas", "expected_db_schema.json")
@@ -102,7 +98,7 @@ def load_json_files():
     return expected_db_schema, expected_db_indexes
 
 
-def get_arg_value(args, key, default=None):
+def get_arg_value(args: tp.Any, key: str, default: tp.Any | None = None) -> tp.Any:
     """Retrieve the value of a specific argument from an arguments object."""
     value = vars(args).get(key, default)
     if isinstance(value, str):
@@ -112,8 +108,8 @@ def get_arg_value(args, key, default=None):
     return value
 
 
-def execute_command(command):
-    """Executes a shell command and logs its output and errors."""
+def execute_command(command: str) -> None:
+    """Execute a shell command and logs its output and errors."""
     logging.info(f"--- Execute command {command}")
     try:
         cmd = shlex.split(command)
@@ -130,6 +126,6 @@ def execute_command(command):
 
         if exit_code != 0:
             logging.error(f"Command {command} returned exit code: {exit_code}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        logging.exception(f"Command {command} returned exception: {e}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        logging.exception("Command {command} returned exception")
         raise
