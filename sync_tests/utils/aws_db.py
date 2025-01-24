@@ -1,10 +1,10 @@
-import os
-import pymysql.cursors
 import logging
+import os
 
+import pymysql.cursors
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def create_connection():
@@ -14,11 +14,11 @@ def create_connection():
             host=os.environ.get("AWS_DB_HOSTNAME"),
             user=os.environ.get("AWS_DB_USERNAME"),
             password=os.environ.get("AWS_DB_PASS"),
-            db=os.environ.get("AWS_DB_NAME")
+            db=os.environ.get("AWS_DB_NAME"),
         )
         return conn
     except Exception as e:
-        logging.error(f"Database connection failed: {e}")
+        logging.exception(f"Database connection failed: {e}")
         return None
 
 
@@ -33,7 +33,7 @@ def execute_query(conn, query, params=None, fetch_one=False, fetch_all=False):
                 return cur.fetchall()
             conn.commit()
     except Exception as e:
-        logging.error(f"Query execution failed: {query} -> {e}")
+        logging.exception(f"Query execution failed: {query} -> {e}")
         return None
 
 
@@ -46,7 +46,7 @@ def get_column_names_from_table(table_name):
 
     try:
         query = f"SELECT * FROM `{table_name}` LIMIT 1"
-        result = execute_query(conn, query, fetch_one=True)
+        execute_query(conn, query, fetch_one=True)
         return [desc[0] for desc in conn.cursor().description]
     finally:
         conn.close()
@@ -71,7 +71,9 @@ def add_column_to_table(table_name, column_name, column_type):
 def insert_values_into_db(table_name, col_names_list, col_values_list, bulk=False):
     """Inserts values into the database table."""
     action = "bulk" if bulk else "single"
-    logging.info(f"Adding {len(col_values_list) if bulk else 1} {action} entry/entries into {table_name}")
+    logging.info(
+        f"Adding {len(col_values_list) if bulk else 1} {action} entry/entries into {table_name}"
+    )
 
     col_names = ", ".join([f"`{col}`" for col in col_names_list])
     placeholders = ", ".join(["%s"] * len(col_names_list))
@@ -91,7 +93,7 @@ def insert_values_into_db(table_name, col_names_list, col_values_list, bulk=Fals
         logging.info(f"Successfully added {cur.rowcount} rows to table {table_name}")
         return True
     except Exception as e:
-        logging.error(f"Failed to insert data into {table_name}: {e}")
+        logging.exception(f"Failed to insert data into {table_name}: {e}")
         return False
     finally:
         conn.close()
@@ -151,4 +153,3 @@ def get_max_epoch(table_name):
         return result[0] if result else 0
     finally:
         conn.close()
-

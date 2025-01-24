@@ -1,30 +1,28 @@
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
-
 from collections import OrderedDict
 from datetime import timedelta
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.helpers as utils
+from datetime import datetime
+
 import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.gitpython as git_utils
+import sync_tests.utils.helpers as utils
 
-from datetime import datetime
-from datetime import timedelta
-
-TEST_RESULTS = 'db_sync_iohk_snapshot_restoration_test_results.json'
+TEST_RESULTS = "db_sync_iohk_snapshot_restoration_test_results.json"
 
 
 def upload_snapshot_restoration_results_to_aws(env):
     print("--- Write IOHK snapshot restoration results to AWS Database")
-    with open(TEST_RESULTS, "r") as json_file:
+    with open(TEST_RESULTS) as json_file:
         sync_test_results_dict = json.load(json_file)
 
-    test_summary_table = env + '_db_sync_snapshot_restoration'
+    test_summary_table = env + "_db_sync_snapshot_restoration"
     test_id = str(int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1)
     identifier = env + "_restoration_" + test_id
     sync_test_results_dict["identifier"] = identifier
@@ -36,11 +34,10 @@ def upload_snapshot_restoration_results_to_aws(env):
     if not aws_db_utils.add_single_row_into_db(test_summary_table, col_to_insert, val_to_insert):
         print(f"col_to_insert: {col_to_insert}")
         print(f"val_to_insert: {val_to_insert}")
-        exit(1)
+        sys.exit(1)
 
 
 def main():
-
     print("--- Db-sync restoration from IOHK official snapshot")
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
@@ -57,20 +54,24 @@ def main():
     node_branch = utils.get_arg_value(args=args, key="node_branch", default="")
     print(f"Node branch: {node_branch}")
 
-    node_version_from_gh_action = utils.get_arg_value(args=args, key="node_version_gh_action", default="")
+    node_version_from_gh_action = utils.get_arg_value(
+        args=args, key="node_version_gh_action", default=""
+    )
     print(f"Node version: {node_version_from_gh_action}")
 
     db_branch = utils.get_arg_value(args=args, key="db_sync_branch", default="")
     print(f"DB sync branch: {db_branch}")
 
-    db_sync_version_from_gh_action = utils.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
+    db_sync_version_from_gh_action = utils.get_arg_value(
+        args=args, key="db_sync_version_gh_action", default=""
+    )
     print(f"DB sync version: {db_sync_version_from_gh_action}")
 
     snapshot_url = utils_db_sync.get_latest_snapshot_url(env, args)
     print(f"Snapshot url: {snapshot_url}")
 
     # cardano-node setup
-    NODE_DIR=git_utils.clone_repo('cardano-node', node_branch)
+    NODE_DIR = git_utils.clone_repo("cardano-node", node_branch)
     os.chdir(NODE_DIR)
     utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
     utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
@@ -88,7 +89,7 @@ def main():
     # cardano-db sync setup
     print("--- Db sync setup")
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    DB_SYNC_DIR = git_utils.clone_repo('cardano-db-sync', db_branch)
+    DB_SYNC_DIR = git_utils.clone_repo("cardano-db-sync", db_branch)
     os.chdir(DB_SYNC_DIR)
     utils_db_sync.setup_postgres()
     utils_db_sync.create_pgpass_file(env)
@@ -105,10 +106,14 @@ def main():
 
     # restore snapshot
     print("--- Snapshot restoration")
-    restoration_time = utils_db_sync.restore_db_sync_from_snapshot(env, snapshot_name, remove_ledger_dir="no")
+    restoration_time = utils_db_sync.restore_db_sync_from_snapshot(
+        env, snapshot_name, remove_ledger_dir="no"
+    )
     print(f"Restoration time [sec]: {restoration_time}")
     snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = utils_db_sync.get_db_sync_tip(env)
-    print(f"db-sync tip after restoration: epoch: {snapshot_epoch_no}, block: {snapshot_block_no}, slot: {snapshot_slot_no}")
+    print(
+        f"db-sync tip after restoration: epoch: {snapshot_epoch_no}, block: {snapshot_block_no}, slot: {snapshot_slot_no}"
+    )
 
     # start db-sync
     print("--- Db sync start")
@@ -164,12 +169,20 @@ def main():
     test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
     test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = utils_db_sync.get_total_db_size(env)
-    test_data["rollbacks"] = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
-    test_data["errors"] = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
+    test_data["rollbacks"] = utils_db_sync.are_rollbacks_present_in_db_sync_logs(
+        utils_db_sync.DB_SYNC_LOG_FILE
+    )
+    test_data["errors"] = utils_db_sync.are_errors_present_in_db_sync_logs(
+        utils_db_sync.DB_SYNC_LOG_FILE
+    )
 
     utils_db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    utils_db_sync.write_data_as_json_to_file(utils_db_sync.DB_SYNC_PERF_STATS_FILE, utils_db_sync.db_sync_perf_stats)
-    utils_db_sync.export_epoch_sync_times_from_db(env, utils_db_sync.EPOCH_SYNC_TIMES_FILE, snapshot_epoch_no)
+    utils_db_sync.write_data_as_json_to_file(
+        utils_db_sync.DB_SYNC_PERF_STATS_FILE, utils_db_sync.db_sync_perf_stats
+    )
+    utils_db_sync.export_epoch_sync_times_from_db(
+        env, utils_db_sync.EPOCH_SYNC_TIMES_FILE, snapshot_epoch_no
+    )
 
     utils_db_sync.print_file(TEST_RESULTS)
 
@@ -193,39 +206,49 @@ def main():
     print("--- Summary: Rollbacks, errors and other isssues")
 
     log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
+    utils_db_sync.print_color_log(
+        utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
+    )
 
     rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
+    utils_db_sync.print_color_log(
+        utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}"
+    )
 
-    failed_rollbacks = utils_db_sync.is_string_present_in_file(utils_db_sync.DB_SYNC_LOG_FILE, "Rollback failed")
-    utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, f"Are failed rollbacks present: {failed_rollbacks}")
+    failed_rollbacks = utils_db_sync.is_string_present_in_file(
+        utils_db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
+    )
+    utils_db_sync.print_color_log(
+        utils_db_sync.sh_colors.WARNING,
+        f"Are failed rollbacks present: {failed_rollbacks}",
+    )
 
-    corrupted_ledger_files = utils_db_sync.is_string_present_in_file(utils_db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state")
-    utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, f"Are corrupted ledger files present: {corrupted_ledger_files}")
+    corrupted_ledger_files = utils_db_sync.is_string_present_in_file(
+        utils_db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
+    )
+    utils_db_sync.print_color_log(
+        utils_db_sync.sh_colors.WARNING,
+        f"Are corrupted ledger files present: {corrupted_ledger_files}",
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Execute basic sync test\n\n")
 
+    parser.add_argument("-npr", "--node_pr", help="node pr number")
+    parser.add_argument("-nbr", "--node_branch", help="node branch or tag")
     parser.add_argument(
-        "-npr", "--node_pr", help="node pr number"
+        "-nv",
+        "--node_version_gh_action",
+        help="node version - 1.33.0-rc2 (tag number) or 1.33.0 (release number - for released versions) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version)",
     )
+    parser.add_argument("-dbr", "--db_sync_branch", help="db-sync branch")
     parser.add_argument(
-        "-nbr", "--node_branch", help="node branch or tag"
+        "-dv",
+        "--db_sync_version_gh_action",
+        help="db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 (release number - for released versions) or 12.0.2_PR2124 (for not released and not tagged runs with a specific db_sync PR/version)",
     )
-    parser.add_argument(
-        "-nv", "--node_version_gh_action", help="node version - 1.33.0-rc2 (tag number) or 1.33.0 (release number - for released versions) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version)"
-    )
-    parser.add_argument(
-        "-dbr", "--db_sync_branch", help="db-sync branch"
-    )
-    parser.add_argument(
-        "-dv", "--db_sync_version_gh_action", help="db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 (release number - for released versions) or 12.0.2_PR2124 (for not released and not tagged runs with a specific db_sync PR/version)"
-    )
-    parser.add_argument(
-        "-surl", "--snapshot_url", help="snapshot download url"
-    )
+    parser.add_argument("-surl", "--snapshot_url", help="snapshot download url")
     parser.add_argument(
         "-e",
         "--environment",

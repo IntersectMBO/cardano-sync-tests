@@ -2,35 +2,33 @@
   description = "Sync tests for cardano-node and db-sync";
 
   inputs = {
-    cardano-node = {
-      url = "github:input-output-hk/cardano-node";
-    };
-    nixpkgs.follows = "cardano-node/nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, cardano-node }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem
       (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          py3Pkgs = pkgs.python311Packages;
+          py3Full = pkgs.python311Full;
         in
         {
           devShells = rec {
             base = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; [ bash nix gnugrep gnumake gnutar coreutils git xz ];
+              nativeBuildInputs = with pkgs; [ bash gnugrep gnutar coreutils git xz ];
             };
 
             python = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; with python39Packages; [ python39Full virtualenv pip matplotlib pandas requests xmltodict psutil GitPython pymysql postgresql_14 wget curl psycopg2 assertpy colorama];
+              nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl ];
               shellHook = ''
                 echo "Setting up Python environment..."
                 python3 -m venv .venv || true
                 source .venv/bin/activate
-                .venv/bin/python -m pip install --upgrade pip
-                .venv/bin/pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib
+                .venv/bin/pip install -e .
                 echo "Python environment ready."
               '';
             };

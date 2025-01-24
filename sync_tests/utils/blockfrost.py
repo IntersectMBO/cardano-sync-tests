@@ -1,18 +1,21 @@
-import os
 import logging
+import os
+from datetime import datetime
 
 from blockfrost import BlockFrostApi
-from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 def get_blockfrost_api():
     """Initialize and return the BlockFrost API client."""
     project_id = os.environ.get("BLOCKFROST_API_KEY")
     if not project_id:
-        raise ValueError("BLOCKFROST_API_KEY is not set.")
+        msg = "BLOCKFROST_API_KEY is not set."
+        raise ValueError(msg)
     return BlockFrostApi(project_id=project_id)
+
 
 def is_blockfrost_healthy(api):
     """Check if the Blockfrost API is healthy."""
@@ -20,8 +23,9 @@ def is_blockfrost_healthy(api):
         health = api.health(return_type="json")
         return health.get("is_healthy", False)
     except Exception as e:
-        logging.error(f"Error checking Blockfrost health: {e}")
+        logging.exception(f"Error checking Blockfrost health: {e}")
         return False
+
 
 def get_tx_count_per_epoch(epoch_no):
     """Get the transaction count for a given epoch."""
@@ -31,7 +35,7 @@ def get_tx_count_per_epoch(epoch_no):
         try:
             return api.epoch(number=epoch_no).tx_count
         except Exception as e:
-            logging.error(f"Error fetching transaction count for epoch {epoch_no}: {e}")
+            logging.exception(f"Error fetching transaction count for epoch {epoch_no}: {e}")
             return None
     else:
         logging.error("Blockfrost API is unhealthy.")
@@ -46,7 +50,7 @@ def get_current_epoch_no():
         try:
             return api.epoch_latest().epoch
         except Exception as e:
-            logging.error(f"Error fetching current epoch number: {e}")
+            logging.exception(f"Error fetching current epoch number: {e}")
             return None
     else:
         logging.error("Blockfrost API is unhealthy.")
@@ -62,7 +66,7 @@ def get_epoch_start_datetime(epoch_no):
             epoch_data = api.epoch(number=epoch_no)
             return datetime.utcfromtimestamp(epoch_data.start_time).strftime("%Y-%m-%dT%H:%M:%SZ")
         except Exception as e:
-            logging.error(f"Error fetching start datetime for epoch {epoch_no}: {e}")
+            logging.exception(f"Error fetching start datetime for epoch {epoch_no}: {e}")
             return None
     else:
         logging.error("Blockfrost API is unhealthy.")
