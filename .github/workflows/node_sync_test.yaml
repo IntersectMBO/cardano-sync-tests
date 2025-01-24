@@ -31,7 +31,7 @@ on:
         options:
         - non-bootstrap-peers
         - bootstrap-peers
-        default: legacy
+        default: non-bootstrap-peers
       node_start_arguments1:
         description: "Initial sync - Extra arguments when starting the node"
         required: false
@@ -48,17 +48,16 @@ on:
         description: "Upgrade node - cardano-node topology"
         type: choice
         options:
-        - legacy
         - p2p
-        default: legacy
+        - legacy
+        default: p2p
       node_start_arguments2:
         description: "Upgrade node - Extra arguments when starting the node"
         required: false
         default: "None"
 
-
 jobs:
-  node_sync_test_buildkite_mainnet:
+  node_sync_test_buildkite:
     runs-on: ubuntu-latest
     steps:
       - name: Get latest node tag
@@ -83,7 +82,6 @@ jobs:
             echo "Release URL: $latest_url"
             echo "Download Archive URL: $latest_archive"
           fi
-
 
       - name: Trigger the Buildkite pipeline - run sync tests on Mainnet
         uses: 'buildkite/trigger-pipeline-action@v1.5.0'
@@ -114,87 +112,3 @@ jobs:
           "AWS_DB_NAME":"${{ secrets.AWS_DB_NAME }}",
           "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}"
           }'
-
-  node_sync_test:
-    strategy:
-      matrix:
-        env: [preprod, preview]
-        ghc: ["9.6"]
-        cabal: ["3.12.1.0"]
-        sys:
-          - { os: ubuntu-latest, shell: bash }
-          - { os: macos-latest, shell: bash }
-        branch:
-          - ${{ github.ref_name }}
-      fail-fast: false
-    runs-on: ${{ matrix.sys.os }}
-    timeout-minutes: 600
-    env:
-      MSYS2_PATH_TYPE: inherit
-      MSYSTEM: MINGW64
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        if: matrix.sys.os != 'windows-latest'
-        with:
-          extra_nix_config: |
-            trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
-            substituters = https://cache.nixos.org https://cache.iog.io
-            allow-import-from-derivation = true
-
-      - name: Enter Nix Development Shell
-        if: matrix.sys.os != 'windows-latest'
-        run: |
-          nix develop --accept-flake-config .#python --command bash -c "
-            echo 'Inside Nix development shell';
-            python -m pip install --upgrade pip;
-            pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib;
-          "
-
-      - name: Run sync test
-        if: runner.os != 'Windows'
-        env:
-          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
-        run: |
-          nix develop --accept-flake-config .#python --command python -m sync_tests.tests.node_sync_test \
-            -e ${{ matrix.env }} \
-            -b ${{ github.event.inputs.build_mode }} \
-            -t1 "${{ github.event.inputs.tag_no1 }}" \
-            -t2 "${{ github.event.inputs.tag_no2 }}" \
-            -r1 "${{ github.event.inputs.node_rev1 }}" \
-            -r2 "${{ github.event.inputs.node_rev2 }}" \
-            -n1 "${{ github.event.inputs.node_topology1 }}" \
-            -n2 "${{ github.event.inputs.node_topology2 }}" \
-            -a1="${{ github.event.inputs.node_start_arguments1 }}" \
-            -a2="${{ github.event.inputs.node_start_arguments2 }}"
-
-      - name: Write the test results into the database
-        env:
-          AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
-          AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
-          AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
-          AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
-          BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
-        run: |
-          nix develop --accept-flake-config .#python --command python -m sync_tests.tests.node_write_sync_values_to_db \
-            -e ${{ matrix.env }}
-
-      - name: Prepare node logs
-        if: always()
-        run: |
-          cp logfile.log node.log
-
-      - name: Generate artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: node_logs_${{ matrix.env }}_${{ matrix.sys.os }}
-          path: |
-            logfile.log
-            node.log
-            sync_results.json
