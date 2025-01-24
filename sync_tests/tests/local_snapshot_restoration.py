@@ -1,9 +1,9 @@
 import argparse
+import datetime
 import os
 import sys
+import typing as tp
 from collections import OrderedDict
-from datetime import datetime
-from datetime import timedelta
 from pathlib import Path
 
 sys.path.append(os.getcwd())
@@ -15,7 +15,7 @@ TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"
 
 
-def main():
+def main() -> int:
     if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot restoration")
         return 0
@@ -26,7 +26,7 @@ def main():
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -65,9 +65,12 @@ def main():
     print(f"Snapshot file from key-store: {snapshot_file}")
     restoration_time = utils_db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
     print(f"Restoration time [sec]: {restoration_time}")
-    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = utils_db_sync.get_db_sync_tip(env)
+    db_sync_tip = utils_db_sync.get_db_sync_tip(env)
+    assert db_sync_tip is not None  # TODO: refactor
+    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = db_sync_tip
     print(
-        f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, block: {snapshot_block_no}, slot: {snapshot_slot_no}"
+        f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, "
+        f"block: {snapshot_block_no}, slot: {snapshot_slot_no}"
     )
 
     # start node
@@ -89,11 +92,13 @@ def main():
     utils_db_sync.wait(utils_db_sync.ONE_MINUTE)
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
     db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
-    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
     utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
-    epoch_no, block_no, slot_no = utils_db_sync.get_db_sync_tip(env)
+    db_sync_tip = utils_db_sync.get_db_sync_tip(env)
+    assert db_sync_tip is not None  # TODO: refactor
+    epoch_no, block_no, slot_no = db_sync_tip
     print(f"Test end time: {end_test_time}")
     utils_db_sync.print_file(utils_db_sync.DB_SYNC_LOG_FILE, 60)
 
@@ -104,12 +109,12 @@ def main():
 
     # export test data as a json file
     print("--- Gathering end results")
-    test_data = OrderedDict()
+    test_data: OrderedDict[str, tp.Any] = OrderedDict()
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
     test_data["no_of_cpu_cores"] = os.cpu_count()
-    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_gb()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -122,7 +127,7 @@ def main():
     test_data["end_test_time"] = end_test_time
     test_data["db_total_sync_time_in_sec"] = db_full_sync_time_in_secs
     test_data["db_total_sync_time_in_h_m_s"] = str(
-        timedelta(seconds=int(db_full_sync_time_in_secs))
+        datetime.timedelta(seconds=int(db_full_sync_time_in_secs))
     )
     test_data["snapshot_name"] = snapshot_file
     test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
@@ -177,12 +182,12 @@ def main():
         utils_db_sync.sh_colors.WARNING,
         f"Are corrupted ledger files present: {corrupted_ledger_files}",
     )
-    return None
+    return 0
 
 
 if __name__ == "__main__":
 
-    def hyphenated(string):
+    def hyphenated(string: str) -> str:
         return "--" + string
 
     parser = argparse.ArgumentParser(description="Execute basic sync test\n\n")
@@ -192,13 +197,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "-nv",
         "--node_version_gh_action",
-        help="node version - 1.33.0-rc2 (tag number) or 1.33.0 (release number - for released versions) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version)",
+        help=(
+            "node version - 1.33.0-rc2 (tag number) or 1.33.0 "
+            "(release number - for released versions) or 1.33.0_PR2124 "
+            "(for not released and not tagged runs with a specific node PR/version)"
+        ),
     )
     parser.add_argument("-dbr", "--db_sync_branch", help="db-sync branch")
     parser.add_argument(
         "-dv",
         "--db_sync_version_gh_action",
-        help="db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 (release number - for released versions) or 12.0.2_PR2124 (for not released and not tagged runs with a specific db_sync PR/version)",
+        help=(
+            "db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 "
+            "(release number - for released versions) or 12.0.2_PR2124 "
+            "(for not released and not tagged runs with a specific db_sync PR/version)"
+        ),
     )
     parser.add_argument(
         "-dsa",

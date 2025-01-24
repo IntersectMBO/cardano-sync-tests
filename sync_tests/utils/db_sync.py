@@ -1,4 +1,5 @@
 import hashlib
+import hashlib.Hash
 import json
 import logging
 import mmap
@@ -10,17 +11,18 @@ import subprocess
 import sys
 import tarfile
 import time
+import typing as tp
 import urllib.request
 from datetime import timedelta
 from os.path import basename
 from os.path import normpath
 from pathlib import Path
 
+import psutil
 import psycopg2
 import requests
 import xmltodict
 from assertpy import assert_that
-from psutil import process_iter
 
 import sync_tests.utils.helpers as utils
 
@@ -45,7 +47,7 @@ POSTGRES_USER = (
 )
 
 # Log and Stats Paths
-db_sync_perf_stats = []
+db_sync_perf_stats: list[dict] = []
 DB_SYNC_PERF_STATS_FILE = (
     ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_performance_stats.json"
 )
@@ -72,41 +74,42 @@ class sh_colors:
     UNDERLINE = "\033[4m"
 
 
-def print_color_log(log_type, message):
-    """Logs messages with colors for terminal output."""
+def print_color_log(log_type: str, message: str) -> None:
+    """Log messages with colors for terminal output."""
     print(f"{log_type}{message}{sh_colors.ENDC}")
 
 
-def get_machine_name():
-    """Retrieves the name of the machine."""
+def get_machine_name() -> str:
+    """Retrieve the name of the machine."""
     return platform.node()
 
 
-def export_env_var(name, value):
-    """Exports an environment variable with the given name and value."""
+def export_env_var(name: str, value: tp.Any) -> None:
+    """Export an environment variable with the given name and value."""
     os.environ[name] = str(value)
 
 
-def wait(seconds):
-    """Pauses execution for the specified number of seconds."""
+def wait(seconds: int) -> None:
+    """Pause execution for the specified number of seconds."""
     time.sleep(seconds)
 
 
-def make_tarfile(output_filename, source_dir):
-    """Creates a tar.gz archive of the specified source directory."""
+def make_tarfile(output_filename: str, source_dir: str) -> None:
+    """Create a tar.gz archive of the specified source directory."""
     shutil.make_archive(base_name=output_filename[:-7], format="gztar", root_dir=source_dir)
 
 
-def upload_artifact(file, destination="auto", s3_path=None):
-    """Uploads an artifact to either S3 or Buildkite based on the specified destination."""
+def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = None) -> None:
+    """Upload an artifact to either S3 or Buildkite based on the specified destination."""
     if destination in ("buildkite", "auto"):
         try:
             cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
             subprocess.run(cmd, check=True)
             logging.info(f"Uploaded {file} to Buildkite.")
-            return
         except (subprocess.CalledProcessError, FileNotFoundError):
             logging.warning("Buildkite agent not available. Falling back to S3.")
+        else:
+            return
 
     if destination in ("s3", "auto"):
         if not s3_path:
@@ -116,12 +119,12 @@ def upload_artifact(file, destination="auto", s3_path=None):
             cmd = ["aws", "s3", "cp", f"{file}", f"s3://{s3_path}"]
             subprocess.run(cmd, check=True)
             logging.info(f"Uploaded {file} to S3 at {s3_path}.")
-        except subprocess.CalledProcessError as e:
-            logging.exception(f"Error uploading {file} to S3: {e}")
+        except subprocess.CalledProcessError:
+            logging.exception(f"Error uploading {file} to S3")
 
 
-def create_node_database_archive(env):
-    """Creates an archive of the Cardano node database for the specified environment."""
+def create_node_database_archive(env: str) -> str:
+    """Create an archive of the Cardano node database for the specified environment."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-node")
@@ -133,14 +136,14 @@ def create_node_database_archive(env):
     return node_db_archive_path
 
 
-def set_buildkite_meta_data(key, value):
-    """Sets metadata in Buildkite for the specified key and value."""
+def set_buildkite_meta_data(key: str, value: tp.Any) -> None:
+    """Set metadata in Buildkite for the specified key and value."""
     p = subprocess.Popen(["buildkite-agent", "meta-data", "set", f"{key}", f"{value}"])
     p.communicate(timeout=15)
 
 
-def get_buildkite_meta_data(key):
-    """Retrieves metadata from Buildkite for the specified key."""
+def get_buildkite_meta_data(key: str) -> str:
+    """Retrieve metadata from Buildkite for the specified key."""
     p = subprocess.Popen(
         ["buildkite-agent", "meta-data", "get", f"{key}"],
         stdout=subprocess.PIPE,
@@ -150,23 +153,23 @@ def get_buildkite_meta_data(key):
     return outs.decode("utf-8").strip()
 
 
-def write_data_as_json_to_file(file, data):
-    """Writes data to a file in JSON format."""
+def write_data_as_json_to_file(file: str | Path, data: dict | list) -> None:
+    """Write data to a file in JSON format."""
     with open(file, "w") as test_results_file:
         json.dump(data, test_results_file, indent=2)
 
 
-def print_file(file, number_of_lines=0):
-    """Prints contents of a file to the log, optionally limiting to a specified number of lines."""
+def print_file(file: str | Path, number_of_lines: int = 0) -> None:
+    """Print contents of a file to the log, optionally limiting to a specified number of lines."""
     with open(file) as f:
         lines = f.readlines()
     for line in lines[-number_of_lines:] if number_of_lines else lines:
         logging.info(line.strip())
 
 
-def manage_process(proc_name, action):
-    """Manages a process by retrieving, terminating, or killing based on the action specified."""
-    for proc in process_iter():
+def manage_process(proc_name: str, action: str) -> psutil.Process:
+    """Manage a process by retrieving, terminating, or killing based on the action specified."""
+    for proc in psutil.process_iter():
         if proc_name in proc.name():
             if action == "get":
                 return proc
@@ -185,8 +188,8 @@ def manage_process(proc_name, action):
     return None
 
 
-def manage_directory(dir_name, action, root="."):
-    """Manages a directory by creating or removing it based on the action specified."""
+def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
+    """Manage a directory by creating or removing it based on the action specified."""
     path = Path(f"{root}/{dir_name}")
     if action == "create":
         path.mkdir(parents=True, exist_ok=True)
@@ -199,13 +202,13 @@ def manage_directory(dir_name, action, root="."):
     raise ValueError(msg)
 
 
-def get_file_sha_256_sum(filepath):
-    """Calculates and returns the SHA-256 checksum of a file."""
+def get_file_sha_256_sum(filepath: str | Path) -> hashlib.Hash:
+    """Calculate and returns the SHA-256 checksum of a file."""
     return hashlib.file_digest(Path(filepath).open("rb"), hashlib.sha256).hexdigest()
 
 
-def print_n_last_lines_from_file(n, file_name):
-    """Prints the last n lines from the specified file."""
+def print_n_last_lines_from_file(n: int, file_name: str | Path) -> None:
+    """Print the last n lines from the specified file."""
     logs = (
         subprocess.run(["tail", "-n", f"{n}", f"{file_name}"], stdout=subprocess.PIPE, check=False)
         .stdout.decode("utf-8")
@@ -217,12 +220,12 @@ def print_n_last_lines_from_file(n, file_name):
         logging.info(line)
 
 
-def get_last_perf_stats_point():
-    """Retrieves the last performance statistics data point, or initializes one if none exists."""
+def get_last_perf_stats_point() -> dict[str, int]:
+    """Retrieve the last performance statistics data point, or initializes one if none exists."""
     try:
         last_perf_stats_point = db_sync_perf_stats[-1]
-    except Exception as e:
-        logging.exception(f"Exception in get_last_perf_stats_point: {e}")
+    except Exception:
+        logging.exception("Exception in get_last_perf_stats_point")
         stats_data_point = {
             "time": 0,
             "slot_no": 0,
@@ -235,8 +238,8 @@ def get_last_perf_stats_point():
     return last_perf_stats_point
 
 
-def get_testnet_value(env):
-    """Returns the appropriate testnet magic value for the specified environment."""
+def get_testnet_value(env: str) -> str | None:
+    """Return the appropriate testnet magic value for the specified environment."""
     if env == "mainnet":
         return "--mainnet"
     if env == "preprod":
@@ -250,15 +253,17 @@ def get_testnet_value(env):
     return None
 
 
-def get_log_output_frequency(env):
-    """Determines the log output frequency based on the environment."""
+def get_log_output_frequency(env: str) -> int:
+    """Determine the log output frequency based on the environment."""
     if env == "mainnet":
         return 20
     return 3
 
 
-def export_epoch_sync_times_from_db(env, file, snapshot_epoch_no=0):
-    """Exports epoch synchronization times from the database to a file."""
+def export_epoch_sync_times_from_db(
+    env: str, file: str | Path, snapshot_epoch_no: int | str = 0
+) -> str | None:
+    """Export epoch synchronization times from the database to a file."""
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
     try:
         p = subprocess.Popen(
@@ -269,7 +274,8 @@ def export_epoch_sync_times_from_db(env, file, snapshot_epoch_no=0):
                 "-c",
                 rf"\o {file}",
                 "-c",
-                f"SELECT array_to_json(array_agg(epoch_sync_time), FALSE) FROM epoch_sync_time where no >= {snapshot_epoch_no};",
+                "SELECT array_to_json(array_agg(epoch_sync_time), FALSE) FROM "
+                f"epoch_sync_time where no >= {snapshot_epoch_no};",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -277,24 +283,28 @@ def export_epoch_sync_times_from_db(env, file, snapshot_epoch_no=0):
         out, err = (p.decode("utf-8").strip() for p in p.communicate(timeout=600))
         if err:
             logging.error(
-                f"Error during exporting epoch sync times from db: {err}. Killing extraction process."
+                f"Error during exporting epoch sync times from db: {err}. "
+                "Killing extraction process."
             )
             p.kill()
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        p.kill()
+        logging.exception(
+            "Error during exporting epoch sync times from db. Killing extraction process."
+        )
+    except Exception:
+        logging.exception(
+            "Error during exporting epoch sync times from db. Killing extraction process."
+        )
+        p.kill()
+    else:
         return out
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-        p.kill()
-        logging.exception(
-            f"Error during exporting epoch sync times from db: {e}. Killing extraction process."
-        )
-    except Exception as e:
-        logging.exception(
-            f"Error during exporting epoch sync times from db: {e}. Killing extraction process."
-        )
-        p.kill()
+
+    return None
 
 
-def emergency_upload_artifacts(env):
-    """Uploads artifacts for debugging in case of an emergency."""
+def emergency_upload_artifacts(env: str) -> None:
+    """Upload artifacts for debugging in case of an emergency."""
     write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
     export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
 
@@ -312,8 +322,8 @@ def emergency_upload_artifacts(env):
     manage_process(proc_name="cardano-node", action="terminate")
 
 
-def get_node_config_files(env):
-    """Downloads Cardano node configuration files for the specified environment."""
+def get_node_config_files(env: str) -> None:
+    """Download Cardano node configuration files for the specified environment."""
     base_url = "https://book.play.dev.cardano.org/environments/"
     filenames = [
         (base_url + env + "/config.json", f"{env}-config.json"),
@@ -330,13 +340,13 @@ def get_node_config_files(env):
             if not os.path.isfile(filename):
                 msg = f"Downloaded file '{filename}' does not exist."
                 raise FileNotFoundError(msg)
-        except Exception as e:
-            logging.exception(f"Error downloading {url}: {e}")
+        except Exception:
+            logging.exception(f"Error downloading {url}")
             sys.exit(1)
 
 
-def copy_node_executables(build_method="nix"):
-    """Copies the Cardano node executables built with the specified build method."""
+def copy_node_executables(build_method: str = "nix") -> None:
+    """Copy the Cardano node executables built with the specified build method."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     node_dir = Path.cwd() / "cardano-node"
@@ -396,10 +406,10 @@ def copy_node_executables(build_method="nix"):
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def get_node_version():
+def get_node_version() -> tuple[str, str]:
     """Get node version."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-node")
@@ -418,11 +428,11 @@ def get_node_version():
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def download_and_extract_node_snapshot(env):
-    """Downloads and extracts the Cardano node snapshot for the specified environment."""
+def download_and_extract_node_snapshot(env: str) -> None:
+    """Download and extracts the Cardano node snapshot for the specified environment."""
     current_directory = os.getcwd()
     headers = {"User-Agent": "Mozilla/5.0"}
     if env == "mainnet":
@@ -451,8 +461,8 @@ def download_and_extract_node_snapshot(env):
     logging.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
-def set_node_socket_path_env_var_in_cwd():
-    """Sets the node socket path environment variable in the current working directory."""
+def set_node_socket_path_env_var_in_cwd() -> None:
+    """Set the node socket path environment variable in the current working directory."""
     os.chdir(ROOT_TEST_PATH / "cardano-node")
     current_directory = os.getcwd()
     if basename(normpath(current_directory)) != "cardano-node":
@@ -462,11 +472,13 @@ def set_node_socket_path_env_var_in_cwd():
     export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
 
 
-def get_node_tip(env, timeout_minutes=20):
-    """Retrieves the current tip of the Cardano node."""
+def get_node_tip(env: str, timeout_minutes: int = 20) -> tuple:
+    """Retrieve the current tip of the Cardano node."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-node")
-    cmd = "./_cardano-cli latest query tip " + get_testnet_value(env)
+    testnet_value = get_testnet_value(env)
+    assert testnet_value is not None  # TODO: refactor
+    cmd = "./_cardano-cli latest query tip " + testnet_value
 
     for i in range(timeout_minutes):
         try:
@@ -505,7 +517,8 @@ def get_node_tip(env, timeout_minutes=20):
         except subprocess.CalledProcessError as e:
             logging.exception(f" === Waiting 60s before retrying to get the tip again - {i}")
             logging.exception(
-                f"     !!!ERROR: command {e.cmd} return with error (code {e.returncode}): {' '.join(str(e.output).split())}"
+                f"     !!!ERROR: command {e.cmd} return with error (code {e.returncode}): "
+                f"{' '.join(str(e.output).split())}"
             )
             if "Invalid argument" in str(e.output):
                 emergency_upload_artifacts(env)
@@ -515,8 +528,8 @@ def get_node_tip(env, timeout_minutes=20):
     sys.exit(1)
 
 
-def wait_for_node_to_start(env):
-    """Waits for the Cardano node to start."""
+def wait_for_node_to_start(env: str) -> int:
+    """Wait for the Cardano node to start."""
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take >10 mins for the cli to work (opening db and
     # replaying the ledger)
@@ -531,8 +544,8 @@ def wait_for_node_to_start(env):
     return start_time_seconds
 
 
-def wait_for_node_to_sync(env, sync_percentage=99.9):
-    """Waits for the Cardano node to start."""
+def wait_for_node_to_sync(env: str, sync_percentage: float = 99.9) -> int:
+    """Wait for the Cardano node to start."""
     start_sync = time.perf_counter()
     *data, node_sync_progress = get_node_tip(env)
     log_frequency = get_log_output_frequency(env)
@@ -551,7 +564,8 @@ def wait_for_node_to_sync(env, sync_percentage=99.9):
                 node_sync_progress,
             ) = get_node_tip(env)
             logging.info(
-                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, block: {node_block_no}, slot: {node_slot}, era: {node_era}"
+                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, "
+                f"block: {node_block_no}, slot: {node_slot}, era: {node_era}"
             )
         *data, node_sync_progress = get_node_tip(env)
         time.sleep(ONE_MINUTE)
@@ -562,8 +576,8 @@ def wait_for_node_to_sync(env, sync_percentage=99.9):
     return sync_time_seconds
 
 
-def start_node_in_cwd(env):
-    """Starts the Cardano node in the current working directory."""
+def start_node_in_cwd(env: str) -> int:
+    """Start the Cardano node in the current working directory."""
     os.chdir(ROOT_TEST_PATH / "cardano-node")
     current_directory = os.getcwd()
     if basename(normpath(current_directory)) != "cardano-node":
@@ -594,32 +608,33 @@ def start_node_in_cwd(env):
                 logging.error(
                     f"ERROR: waited {timeout_counter} seconds and the DB folder was not created yet"
                 )
-                node_startup_error = print_file(NODE_LOG_FILE)
-                print_color_log(sh_colors.FAIL, f"Error: {node_startup_error}")
+                print_file(NODE_LOG_FILE)
+                print_color_log(sh_colors.FAIL, "Error starting node")
                 sys.exit(1)
 
         logging.info(f"DB folder was created after {counter} seconds")
         secs_to_start = wait_for_node_to_start(env)
         logging.info(f" - listdir current_directory: {os.listdir(current_directory)}")
         logging.info(f" - listdir db: {os.listdir(node_db_dir)}")
-        return secs_to_start
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
+    else:
+        return secs_to_start
 
 
-def create_pgpass_file(env):
-    """Creates a PostgreSQL password file for the specified environment."""
+def create_pgpass_file(env: str) -> None:
+    """Create a PostgreSQL password file for the specified environment."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     db_sync_config_dir = Path.cwd() / "cardano-db-sync" / "config"
     os.chdir(db_sync_config_dir)
 
     pgpass_file = f"pgpass-{env}"
-    POSTGRES_PORT = os.getenv("PGPORT")
-    pgpass_content = f"{POSTGRES_DIR}:{POSTGRES_PORT}:{env}:{POSTGRES_USER}:*"
+    postgres_port = os.getenv("PGPORT")
+    pgpass_content = f"{POSTGRES_DIR}:{postgres_port}:{env}:{POSTGRES_USER}:*"
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     with open(pgpass_file, "w") as pgpass_text_file:
@@ -628,8 +643,8 @@ def create_pgpass_file(env):
     os.chdir(current_directory)
 
 
-def create_database():
-    """Sets up the PostgreSQL database for use with Cardano DB Sync."""
+def create_database() -> None:
+    """Set up the PostgreSQL database for use with Cardano DB Sync."""
     os.chdir(ROOT_TEST_PATH)
     db_sync_dir = Path.cwd() / "cardano-db-sync"
     os.chdir(db_sync_dir)
@@ -642,14 +657,14 @@ def create_database():
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
     if "All good!" not in output:
         msg = "Create database has not ended successfully"
         raise RuntimeError(msg)
 
 
-def copy_db_sync_executables(build_method="nix"):
-    """Copies the Cardano DB Sync executables built with the specified build method."""
+def copy_db_sync_executables(build_method: str = "nix") -> None:
+    """Copy the Cardano DB Sync executables built with the specified build method."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     db_sync_dir = Path.cwd() / "cardano-db-sync"
@@ -704,11 +719,11 @@ def copy_db_sync_executables(build_method="nix"):
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def get_db_sync_version():
-    """Retrieves the version of the Cardano DB Sync executable."""
+def get_db_sync_version() -> tuple[str, str]:
+    """Retrieve the version of the Cardano DB Sync executable."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
     try:
@@ -726,12 +741,12 @@ def get_db_sync_version():
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def get_latest_snapshot_url(env, args):
-    """Fetches the latest snapshot URL for the specified environment."""
-    github_snapshot_url = utils.get_arg_value(args=args, key="snapshot_url")
+def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
+    """Fetch the latest snapshot URL for the specified environment."""
+    github_snapshot_url: str = utils.get_arg_value(args=args, key="snapshot_url")
     if github_snapshot_url != "latest":
         return github_snapshot_url
 
@@ -767,8 +782,8 @@ def get_latest_snapshot_url(env, args):
     return latest_snapshot_url
 
 
-def download_db_sync_snapshot(snapshot_url):
-    """Downloads the database synchronization snapshot from a given URL."""
+def download_db_sync_snapshot(snapshot_url: str) -> str:
+    """Download the database synchronization snapshot from a given URL."""
     current_directory = os.getcwd()
     headers = {"User-Agent": "Mozilla/5.0"}
     archive_name = snapshot_url.split("/")[-1].strip()
@@ -786,20 +801,24 @@ def download_db_sync_snapshot(snapshot_url):
     return archive_name
 
 
-def get_snapshot_sha_256_sum(snapshot_url):
-    """Calculates the SHA-256 checksum of the downloaded snapshot."""
+def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
+    """Calculate the SHA-256 checksum of the downloaded snapshot."""
     snapshot_sha_256_sum_url = snapshot_url + ".sha256sum"
     for line in requests.get(snapshot_sha_256_sum_url):
         return line.decode("utf-8").split(" ")[0]
     return None
 
 
-def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
-    """Restores the Cardano DB Sync database from a snapshot."""
+def restore_db_sync_from_snapshot(
+    env: str, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
+) -> int:
+    """Restore the Cardano DB Sync database from a snapshot."""
     os.chdir(ROOT_TEST_PATH)
     if remove_ledger_dir == "yes":
         ledger_state_dir = Path.cwd() / "cardano-db-sync" / "ledger-state" / f"{env}"
-        manage_directory(dir_name=ledger_state_dir, action="remove")
+        # TODO: Fix this, as it will not remove the directory. It is passing absolute path, so
+        # it cannot work with the default `root` set to `.`.
+        manage_directory(dir_name=str(ledger_state_dir), action="remove")
     os.chdir(Path.cwd() / "cardano-db-sync")
 
     ledger_dir = manage_directory(dir_name=f"ledger-state/{env}", action="create")
@@ -807,8 +826,8 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
 
     # set tmp to local dir in current partition due to buildkite agent space
     # limitation on /tmp which is not big enough for snapshot restoration
-    TMP_DIR = manage_directory(dir_name="tmp", action="create")
-    export_env_var("TMPDIR", TMP_DIR)
+    tmp_dir = manage_directory(dir_name="tmp", action="create")
+    export_env_var("TMPDIR", tmp_dir)
 
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
     export_env_var("ENVIRONMENT", f"{env}")
@@ -836,10 +855,10 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
-    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(msg) from e
+    except subprocess.TimeoutExpired:
         p.kill()
-        logging.exception(e)
+        logging.exception("Process timeout expired")
 
     finally:
         export_env_var("TMPDIR", "/tmp")
@@ -852,8 +871,8 @@ def restore_db_sync_from_snapshot(env, snapshot_file, remove_ledger_dir="yes"):
     return int(end_restoration - start_restoration)
 
 
-def create_db_sync_snapshot_stage_1(env):
-    """Performs the first stage of creating a DB Sync snapshot."""
+def create_db_sync_snapshot_stage_1(env: str) -> str:
+    """Perform the first stage of creating a DB Sync snapshot."""
     os.chdir(ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-db-sync")
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
@@ -873,17 +892,17 @@ def create_db_sync_snapshot_stage_1(env):
             logging.error(f"Warnings or Errors: {errs}")
         final_line_with_script_cmd = outs.split("\n")[2].lstrip()
         logging.info(f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}")
-        return final_line_with_script_cmd
-
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
+    else:
+        return final_line_with_script_cmd
 
 
-def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
-    """Performs the second stage of creating a DB Sync snapshot."""
+def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
+    """Perform the second stage of creating a DB Sync snapshot."""
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
@@ -909,18 +928,18 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd, env):
         snapshot_path = (
             snapshot_line.split()[1] if "Created" in snapshot_line else "Snapshot path unknown"
         )
-
-        return snapshot_path
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         msg = "Snapshot creation timed out."
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
     except subprocess.CalledProcessError as e:
         msg = f"Command '{e.cmd}' failed with error: {e.stderr}"
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
+    else:
+        return snapshot_path
 
 
-def get_db_sync_tip(env):
-    """Retrieves the tip information from the Cardano DB Sync database."""
+def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
+    """Retrieve the tip information from the Cardano DB Sync database."""
     p = subprocess.Popen(
         [
             "psql",
@@ -941,30 +960,32 @@ def get_db_sync_tip(env):
     counter = 0
 
     while should_try:
+        output_string = ""
         try:
             outs, errs = p.communicate(timeout=180)
             output_string = outs.decode("utf-8")
             epoch_no, block_no, slot_no = [e.strip() for e in outs.decode("utf-8").split("|")]
-            return epoch_no, block_no, slot_no
-        except Exception as e:
+        except Exception:
             if counter > 5:
                 should_try = False
                 emergency_upload_artifacts(env)
-                logging.exception(e)
+                logging.exception("Failed to get the tip")
                 p.kill()
                 raise
             logging.exception(
-                f"db-sync tip data unavailable, possible postgress failure. Output from psql: {output_string}"
+                f"db-sync tip data unavailable, possible postgress failure. "
+                f"Output from psql: {output_string}, errs: {errs.decode('utf-8')}"
             )
             counter += 1
-            logging.exception(e)
-            logging.exception(errs)
             time.sleep(ONE_MINUTE)
+        else:
+            return epoch_no, block_no, slot_no
+
     return None
 
 
-def get_db_sync_progress(env):
-    """Calculates the synchronization progress of the Cardano DB Sync database."""
+def get_db_sync_progress(env: str) -> float | None:
+    """Calculate the synchronization progress of the Cardano DB Sync database."""
     p = subprocess.Popen(
         [
             "psql",
@@ -976,7 +997,10 @@ def get_db_sync_progress(env):
             "-d",
             f"{env}",
             "-c",
-            "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) - extract (epoch from (min (time) at time zone 'UTC'))) / (extract (epoch from (now () at time zone 'UTC')) - extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;",
+            "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
+            "- extract (epoch from (min (time) at time zone 'UTC'))) "
+            "/ (extract (epoch from (now () at time zone 'UTC')) "
+            "- extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -985,11 +1009,11 @@ def get_db_sync_progress(env):
     counter = 0
 
     while should_try:
+        progress_string = ""
         try:
             outs, errs = p.communicate(timeout=300)
             progress_string = outs.decode("utf-8")
             db_sync_progress = round(float(progress_string), 2)
-            return db_sync_progress
         except Exception:
             if counter > 5:
                 should_try = False
@@ -997,19 +1021,23 @@ def get_db_sync_progress(env):
                 p.kill()
                 raise
             logging.exception(
-                f"db-sync progress unavailable, possible postgress failure. Output from psql: {progress_string}"
+                "db-sync progress unavailable, possible postgress failure. "
+                f"Output from psql: {progress_string}"
             )
             counter += 1
             time.sleep(ONE_MINUTE)
+        else:
+            return db_sync_progress
     return None
 
 
-def wait_for_db_to_sync(env, sync_percentage=99.9):
-    """Waits for the Cardano DB Sync database to fully synchronize."""
+def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
+    """Wait for the Cardano DB Sync database to fully synchronize."""
     db_sync_perf_stats.clear()
     start_sync = time.perf_counter()
     last_rollback_time = time.perf_counter()
     db_sync_progress = get_db_sync_progress(env)
+    assert db_sync_progress is not None  # TODO: refactor
     buildkite_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
@@ -1025,15 +1053,18 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
             raise Exception(msg)
         if counter % 5 == 0:
             current_progress = get_db_sync_progress(env)
+            assert current_progress is not None  # TODO: refactor
             if current_progress < db_sync_progress and db_sync_progress > 3:
                 logging.info(
-                    f"Progress decreasing - current progress: {current_progress} VS previous: {db_sync_progress}."
+                    "Progress decreasing - current progress: "
+                    f"{current_progress} VS previous: {db_sync_progress}."
                 )
                 logging.info("Possible rollback... Printing last 10 lines of log")
                 print_n_last_lines_from_file(10, DB_SYNC_LOG_FILE)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
                     logging.info(
-                        "Resetting previous rollback counter as there was no progress decrease for more than 10 minutes"
+                        "Resetting previous rollback counter as there was no progress decrease "
+                        "for more than 10 minutes"
                     )
                     rollback_counter = 0
                 last_rollback_time = time.perf_counter()
@@ -1055,26 +1086,32 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
                 node_sync_progress,
             ) = get_node_tip(env)
             logging.info(
-                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, block: {node_block_no}, slot: {node_slot}, era: {node_era}"
+                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, "
+                f"block: {node_block_no}, slot: {node_slot}, era: {node_era}"
             )
-            epoch_no, block_no, slot_no = get_db_sync_tip(env)
+            db_sync_tip = get_db_sync_tip(env)
+            assert db_sync_tip is not None  # TODO: refactor
+            epoch_no, block_no, slot_no = db_sync_tip
             db_sync_progress = get_db_sync_progress(env)
+            assert db_sync_progress is not None  # TODO: refactor
             sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
             logging.info(
-                f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
+                f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
+                f"epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
             )
             print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
 
         try:
             time_point = int(time.perf_counter() - start_sync)
-            _, _, slot_no = get_db_sync_tip(env)
+            db_sync_tip = get_db_sync_tip(env)
+            assert db_sync_tip is not None  # TODO: refactor
+            _, _, slot_no = db_sync_tip
             cpu_usage = db_sync_process.cpu_percent(interval=None)
             rss_mem_usage = db_sync_process.memory_info()[0]
-        except Exception as e:
+        except Exception:
             end_sync = time.perf_counter()
             db_full_sync_time_in_secs = int(end_sync - start_sync)
             logging.exception("Unexpected error during sync process")
-            logging.exception(e)
             emergency_upload_artifacts(env)
             return db_full_sync_time_in_secs
 
@@ -1095,8 +1132,8 @@ def wait_for_db_to_sync(env, sync_percentage=99.9):
     return sync_time_seconds
 
 
-def get_total_db_size(env):
-    """Fetches the total size of the Cardano DB Sync database."""
+def get_total_db_size(env: str) -> str:
+    """Fetch the total size of the Cardano DB Sync database."""
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
     cmd = [
         "psql",
@@ -1124,8 +1161,8 @@ def get_total_db_size(env):
         raise
 
 
-def start_db_sync(env, start_args="", first_start="True"):
-    """Starts the Cardano DB Sync process."""
+def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> None:
+    """Start the Cardano DB Sync process."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     export_env_var("DB_SYNC_START_ARGS", start_args)
@@ -1141,7 +1178,7 @@ def start_db_sync(env, start_args="", first_start="True"):
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
     not_found = True
     counter = 0
@@ -1151,7 +1188,7 @@ def start_db_sync(env, start_args="", first_start="True"):
             logging.error(f"ERROR: waited {counter} seconds and the db-sync was not started")
             sys.exit(1)
 
-        for proc in process_iter():
+        for proc in psutil.process_iter():
             if "cardano-db-sync" in proc.name():
                 logging.info(f"db-sync process present: {proc}")
                 not_found = False
@@ -1161,26 +1198,26 @@ def start_db_sync(env, start_args="", first_start="True"):
         time.sleep(ONE_MINUTE)
 
 
-def get_file_size(file):
-    """Returns the size of a specified file in megabytes."""
+def get_file_size(file: str) -> int:
+    """Return the size of a specified file in megabytes."""
     file_stats = os.stat(file)
     file_size_in_mb = int(file_stats.st_size / (1000 * 1000))
     return file_size_in_mb
 
 
-def is_string_present_in_file(file_to_check, search_string):
-    """Checks if a specific string is present in a given file."""
+def is_string_present_in_file(file_to_check: str | Path, search_string: str) -> bool:
+    """Check if a specific string is present in a given file."""
     with open(file_to_check, encoding="utf-8") as file:
         return bool(re.search(re.escape(search_string), file.read()))
 
 
-def are_errors_present_in_db_sync_logs(log_file):
-    """Checks for errors in the DB Sync logs."""
+def are_errors_present_in_db_sync_logs(log_file: str | Path) -> bool:
+    """Check for errors in the DB Sync logs."""
     return is_string_present_in_file(log_file, "db-sync-node:Error")
 
 
-def are_rollbacks_present_in_db_sync_logs(log_file):
-    """Checks for rollbacks in the DB Sync logs."""
+def are_rollbacks_present_in_db_sync_logs(log_file: str | Path) -> str:
+    """Check for rollbacks in the DB Sync logs."""
     with (
         open(log_file, "rb", 0) as file,
         mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s,
@@ -1194,8 +1231,10 @@ def are_rollbacks_present_in_db_sync_logs(log_file):
         return "No"
 
 
-def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port="5432"):
-    """Sets up PostgreSQL for use with Cardano DB Sync."""
+def setup_postgres(
+    pg_dir: Path = POSTGRES_DIR, pg_user: str = POSTGRES_USER, pg_port: str = "5432"
+) -> None:
+    """Set up PostgreSQL for use with Cardano DB Sync."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
 
@@ -1213,11 +1252,11 @@ def setup_postgres(pg_dir=POSTGRES_DIR, pg_user=POSTGRES_USER, pg_port="5432"):
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def list_databases():
-    """Lists all databases available in the PostgreSQL instance."""
+def list_databases() -> None:
+    """List all databases available in the PostgreSQL instance."""
     cmd = ["psql", "-U", f"{POSTGRES_USER}", "-l"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
 
@@ -1231,8 +1270,8 @@ def list_databases():
         raise
 
 
-def get_db_schema():
-    """Retrieves the schema of the Cardano DB Sync database."""
+def get_db_schema() -> dict:
+    """Retrieve the schema of the Cardano DB Sync database."""
     try:
         conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
         cursor = conn.cursor()
@@ -1245,7 +1284,14 @@ def get_db_schema():
         db_schema = {}
         for table in tabels:
             table_name = table[0]
-            get_table_fields_and_attributes = f'SELECT a.attname as "Column", pg_catalog.format_type(a.atttypid, a.atttypmod) as "Datatype" FROM pg_catalog.pg_attribute a WHERE a.attnum > 0 AND NOT a.attisdropped AND a.attrelid = ( SELECT c.oid FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname ~ \'^{table_name}$\' AND pg_catalog.pg_table_is_visible(c.oid));'
+            get_table_fields_and_attributes = (
+                'SELECT a.attname as "Column", pg_catalog.format_type(a.atttypid, a.atttypmod)'
+                ' as "Datatype" FROM pg_catalog.pg_attribute a WHERE a.attnum > 0'
+                " AND NOT a.attisdropped AND a.attrelid = ( SELECT c.oid"
+                " FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n"
+                f" ON n.oid = c.relnamespace WHERE c.relname ~ '^{table_name}$'"
+                " AND pg_catalog.pg_table_is_visible(c.oid));"
+            )
             cursor.execute(get_table_fields_and_attributes)
             table_with_attributes = cursor.fetchall()
             attributes = []
@@ -1257,8 +1303,8 @@ def get_db_schema():
         cursor.close()
         conn.commit()
         conn.close()
-    except (Exception, psycopg2.DatabaseError) as error:
-        logging.exception(error)
+    except (Exception, psycopg2.DatabaseError):
+        logging.exception("Error")
     finally:
         if conn is not None:
             conn.close()
@@ -1266,34 +1312,48 @@ def get_db_schema():
     return db_schema
 
 
-def get_db_indexes():
-    """Fetches the indexes of tables in the Cardano DB Sync database."""
+def get_db_indexes() -> dict:
+    """Fetch the indexes of tables in the Cardano DB Sync database."""
     try:
         conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
         cursor = conn.cursor()
 
-        get_all_tables = "select tbl.relname as table_name from pg_index pgi join pg_class idx on idx.oid = pgi.indexrelid join pg_namespace insp on insp.oid = idx.relnamespace join pg_class tbl on tbl.oid = pgi.indrelid join pg_namespace tnsp on tnsp.oid = tbl.relnamespace where pgi.indisunique and tnsp.nspname = 'public';"
+        get_all_tables = (
+            "select tbl.relname as table_name from pg_index pgi"
+            " join pg_class idx on idx.oid = pgi.indexrelid join pg_namespace insp"
+            " on insp.oid = idx.relnamespace join pg_class tbl"
+            " on tbl.oid = pgi.indrelid join pg_namespace tnsp"
+            " on tnsp.oid = tbl.relnamespace where pgi.indisunique and tnsp.nspname = 'public';"
+        )
         cursor.execute(get_all_tables)
         tables = cursor.fetchall()
         all_indexes = {}
 
         for table in tables:
             table_name = table[0]
-            get_table_and_index = f"select tbl.relname as table_name, idx.relname as index_name from pg_index pgi join pg_class idx on idx.oid = pgi.indexrelid join pg_namespace insp on insp.oid = idx.relnamespace join pg_class tbl on tbl.oid = pgi.indrelid join pg_namespace tnsp on tnsp.oid = tbl.relnamespace where pgi.indisunique and tnsp.nspname = 'public' and tbl.relname = '{table_name}';"
+            get_table_and_index = (
+                "select tbl.relname as table_name, idx.relname as index_name"
+                " from pg_index pgi join pg_class idx on idx.oid = pgi.indexrelid"
+                " join pg_namespace insp on insp.oid = idx.relnamespace join pg_class tbl"
+                " on tbl.oid = pgi.indrelid join pg_namespace tnsp"
+                " on tnsp.oid = tbl.relnamespace where pgi.indisunique"
+                f" and tnsp.nspname = 'public' and tbl.relname = '{table_name}';"
+            )
             cursor.execute(get_table_and_index)
             table_and_index = cursor.fetchall()
             indexes = []
             table_indexes = {}
-            for table, index in table_and_index:
+            for _table, index in table_and_index:
                 indexes.append(index)
                 table_indexes.update({str(table_name): indexes})
             all_indexes.update({str(table_name): indexes})
         cursor.close()
         conn.commit()
         conn.close()
+    except (Exception, psycopg2.DatabaseError):
+        logging.exception("Error")
+    else:
         return all_indexes
-    except (Exception, psycopg2.DatabaseError) as error:
-        logging.exception(error)
     finally:
         if conn is not None:
             conn.close()
@@ -1301,10 +1361,11 @@ def get_db_indexes():
     return all_indexes
 
 
-def check_database(fn, err_msg, expected_value):
-    """Validates the database using a specified function and expected value."""
+def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exception | None:
+    """Validate the database using a specified function and expected value."""
     try:
         assert_that(fn()).described_as(err_msg).is_equal_to(expected_value)
     except AssertionError as e:
         print_color_log(sh_colors.WARNING, f"Warning - validation errors: {e}\n\n")
         return e
+    return None

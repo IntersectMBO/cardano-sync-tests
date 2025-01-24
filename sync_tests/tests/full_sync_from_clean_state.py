@@ -1,10 +1,10 @@
 import argparse
+import datetime
 import json
 import os
 import sys
+import typing as tp
 from collections import OrderedDict
-from datetime import datetime
-from datetime import timedelta
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ def create_sync_stats_chart() -> None:
     fig = plt.figure(figsize=(14, 10))
 
     # define epochs sync times chart
-    ax_epochs = fig.add_axes([0.05, 0.05, 0.9, 0.35])
+    ax_epochs = fig.add_axes((0.05, 0.05, 0.9, 0.35))
     ax_epochs.set(xlabel="epochs [number]", ylabel="time [min]")
     ax_epochs.set_title("Epochs Sync Times")
 
@@ -39,7 +39,7 @@ def create_sync_stats_chart() -> None:
     ax_epochs.bar(epochs, epoch_times)
 
     # define performance chart
-    ax_perf = fig.add_axes([0.05, 0.5, 0.9, 0.45])
+    ax_perf = fig.add_axes((0.05, 0.5, 0.9, 0.45))
     ax_perf.set(xlabel="time [min]", ylabel="RSS [B]")
     ax_perf.set_title("RSS usage")
 
@@ -53,7 +53,7 @@ def create_sync_stats_chart() -> None:
     fig.savefig(CHART)
 
 
-def upload_sync_results_to_aws(env):
+def upload_sync_results_to_aws(env: str) -> None:
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-db-sync")
 
@@ -62,7 +62,9 @@ def upload_sync_results_to_aws(env):
         sync_test_results_dict = json.load(json_file)
 
     test_summary_table = env + "_db_sync"
-    test_id = str(int(aws_db_utils.get_last_identifier(test_summary_table).split("_")[-1]) + 1)
+    last_identifier = aws_db_utils.get_last_identifier(test_summary_table)
+    assert last_identifier is not None  # TODO: refactor
+    test_id = str(int(last_identifier.split("_")[-1]) + 1)
     identifier = env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
@@ -131,7 +133,7 @@ def upload_sync_results_to_aws(env):
         sys.exit(1)
 
 
-def print_report(db_schema, db_indexes):
+def print_report(db_schema: Exception | None, db_indexes: Exception | None) -> None:
     log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
     utils_db_sync.print_color_log(
         utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
@@ -172,13 +174,13 @@ def print_report(db_schema, db_indexes):
         utils_db_sync.print_color_log(utils_db_sync.sh_colors.WARNING, "NO Db indexes issues")
 
 
-def main():
+def main() -> None:
     # system and software versions details
     print("--- Sync from clean state - setup")
     platform_system, platform_release, platform_version = utils.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
-    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
     env = utils.get_arg_value(args=args, key="environment")
@@ -208,8 +210,8 @@ def main():
     print(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # cardano-node setup
-    NODE_DIR = git_utils.clone_repo("cardano-node", node_version_from_gh_action)
-    os.chdir(NODE_DIR)
+    node_dir = git_utils.clone_repo("cardano-node", node_version_from_gh_action)
+    os.chdir(node_dir)
     utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
     utils.execute_command("nix-build -v -A cardano-cli -o cardano-cli-bin")
 
@@ -224,8 +226,8 @@ def main():
 
     # cardano-db sync setup
     os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    DB_SYNC_DIR = git_utils.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
-    os.chdir(DB_SYNC_DIR)
+    db_sync_dir = git_utils.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
+    os.chdir(db_sync_dir)
     print("--- Db sync setup")
     utils_db_sync.setup_postgres()  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
     utils_db_sync.create_pgpass_file(env)
@@ -245,12 +247,15 @@ def main():
     db_indexes = utils_db_sync.check_database(
         utils_db_sync.get_db_indexes, "DB indexes are incorrect", EXPECTED_DB_INDEXES
     )
-    epoch_no, block_no, slot_no = utils_db_sync.get_db_sync_tip(env)
-    end_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    db_sync_tip = utils_db_sync.get_db_sync_tip(env)
+    assert db_sync_tip is not None  # TODO: refactor
+    epoch_no, block_no, slot_no = db_sync_tip
+    end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
     print("--- Summary & Artifacts uploading")
     print(
-        f"FINAL db-sync progress: {utils_db_sync.get_db_sync_progress(env)}, epoch: {epoch_no}, block: {block_no}"
+        f"FINAL db-sync progress: {utils_db_sync.get_db_sync_progress(env)}, "
+        f"epoch: {epoch_no}, block: {block_no}"
     )
     print(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
 
@@ -259,12 +264,12 @@ def main():
     utils_db_sync.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
-    test_data = OrderedDict()
+    test_data: OrderedDict[str, tp.Any] = OrderedDict()
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
     test_data["no_of_cpu_cores"] = os.cpu_count()
-    test_data["total_ram_in_GB"] = utils.get_total_ram_in_GB()
+    test_data["total_ram_in_GB"] = utils.get_total_ram_in_gb()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -278,7 +283,9 @@ def main():
     test_data["start_test_time"] = start_test_time
     test_data["end_test_time"] = end_test_time
     test_data["total_sync_time_in_sec"] = db_full_sync_time_in_secs
-    test_data["total_sync_time_in_h_m_s"] = str(timedelta(seconds=int(db_full_sync_time_in_secs)))
+    test_data["total_sync_time_in_h_m_s"] = str(
+        datetime.timedelta(seconds=int(db_full_sync_time_in_secs))
+    )
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
@@ -333,7 +340,7 @@ def main():
 
 if __name__ == "__main__":
 
-    def hyphenated(db_sync_start_args):
+    def hyphenated(db_sync_start_args: str) -> str:
         start_args = db_sync_start_args.split(" ")
         final_args_string = ""
 
@@ -349,13 +356,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "-nv",
         "--node_version_gh_action",
-        help="node version - 1.33.0-rc2 (tag number) or 1.33.0 (release number - for released versions) or 1.33.0_PR2124 (for not released and not tagged runs with a specific node PR/version)",
+        help=(
+            "node version - 1.33.0-rc2 (tag number) or 1.33.0 "
+            "(release number - for released versions) or 1.33.0_PR2124 "
+            "(for not released and not tagged runs with a specific node PR/version)"
+        ),
     )
     parser.add_argument("-dbr", "--db_sync_branch", help="db-sync branch or tag")
     parser.add_argument(
         "-dv",
         "--db_sync_version_gh_action",
-        help="db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 (release number - for released versions) or 12.0.2_PR2124 (for not released and not tagged runs with a specific db_sync PR/version)",
+        help=(
+            "db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 "
+            "(release number - for released versions) or 12.0.2_PR2124 "
+            "(for not released and not tagged runs with a specific db_sync PR/version)"
+        ),
     )
     parser.add_argument(
         "-dsa",
