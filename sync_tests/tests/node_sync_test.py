@@ -113,6 +113,7 @@ def enable_cardano_node_resources_monitoring(node_config_filepath):
     with open(node_config_filepath, "w") as json_file:
         json.dump(node_config_json, json_file, indent=2)
 
+
 def enable_cardano_node_tracers(node_config_filepath):
     os.chdir(Path(ROOT_TEST_PATH))
     with open(node_config_filepath) as json_file:
@@ -145,6 +146,7 @@ def get_epoch_no_d_zero():
     if env == "shelley-qa":
         return 2554
     return None
+
 
 def get_start_slot_no_d_zero():
     env = helpers.get_arg_value(args=args, key="environment")
@@ -215,172 +217,6 @@ def get_calculated_slot_no(env):
         + (current_time - shelley_start_time).total_seconds()
     )
     return last_slot_no
-
-
-def wait_for_node_to_sync(env):
-    era_details_dict = OrderedDict()
-    epoch_details_dict = OrderedDict()
-
-    actual_epoch, actual_block, actual_hash, actual_slot, actual_era, syncProgress = (
-        node.get_current_tip()
-    )
-    last_slot_no = get_calculated_slot_no(env)
-    start_sync = time.perf_counter()
-
-    count = 0
-    if syncProgress is not None:
-        while syncProgress < 100:
-            if count % 60 == 0:
-                helpers.print_message(
-                    type="warn",
-                    message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
-                    f" - actual_epoch: {actual_epoch} "
-                    f" - actual_block: {actual_block} "
-                    f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {syncProgress}",
-                )
-            if actual_era not in era_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                if env == "mainnet":
-                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
-                else:
-                    actual_era_start_time = explorer.get_epoch_start_datetime(
-                        env, actual_epoch
-                    )
-                actual_era_dict = {
-                    "start_epoch": actual_epoch,
-                    "start_time": actual_era_start_time,
-                    "start_sync_time": current_time,
-                }
-                era_details_dict[actual_era] = actual_era_dict
-            if actual_epoch not in epoch_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                actual_epoch_dict = {"start_sync_time": current_time}
-                epoch_details_dict[actual_epoch] = actual_epoch_dict
-
-            time.sleep(5)
-            count += 1
-            (
-                actual_epoch,
-                actual_block,
-                actual_hash,
-                actual_slot,
-                actual_era,
-                syncProgress,
-            ) = node.get_current_tip()
-
-    else:
-        while actual_slot <= last_slot_no:
-            if count % 60 == 0:
-                helpers.print_message(
-                    type="warn",
-                    message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
-                    f" - actual_epoch: {actual_epoch} "
-                    f" - actual_block: {actual_block} "
-                    f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {syncProgress}",
-                )
-            if actual_era not in era_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                if env == "mainnet":
-                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
-                else:
-                    actual_era_start_time = explorer.get_epoch_start_datetime(
-                        env, actual_epoch
-                    )
-                actual_era_dict = {
-                    "start_epoch": actual_epoch,
-                    "start_time": actual_era_start_time,
-                    "start_sync_time": current_time,
-                }
-                era_details_dict[actual_era] = actual_era_dict
-            if actual_epoch not in epoch_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                actual_epoch_dict = {"start_sync_time": current_time}
-                epoch_details_dict[actual_epoch] = actual_epoch_dict
-            time.sleep(1)
-            count += 1
-            (
-                actual_epoch,
-                actual_block,
-                actual_hash,
-                actual_slot,
-                actual_era,
-                syncProgress,
-            ) = node.get_current_tip()
-
-    end_sync = time.perf_counter()
-    sync_time_seconds = int(end_sync - start_sync)
-    print(f"sync_time_seconds: {sync_time_seconds}")
-
-    os.chdir(Path(ROOT_TEST_PATH) / "db" / "immutable")
-    chunk_files = sorted(os.listdir(os.getcwd()), key=os.path.getmtime)
-    latest_chunk_no = chunk_files[-1].split(".")[0]
-    os.chdir(Path(ROOT_TEST_PATH))
-    helpers.print_message(type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}")
-
-    # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
-    # for the last/current era, "end_sync_time" = current_utc_time / end_of_sync_time
-    eras_list = list(era_details_dict.keys())
-    for era in eras_list:
-        if era == eras_list[-1]:
-            end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-            last_epoch = actual_epoch
-        else:
-            end_sync_time = era_details_dict[eras_list[eras_list.index(era) + 1]]["start_sync_time"]
-            last_epoch = (
-                int(era_details_dict[eras_list[eras_list.index(era) + 1]]["start_epoch"]) - 1
-            )
-
-        actual_era_dict = era_details_dict[era]
-        actual_era_dict["last_epoch"] = last_epoch
-        actual_era_dict["end_sync_time"] = end_sync_time
-
-        no_of_epochs_in_era = (
-            int(last_epoch)
-            - int(era_details_dict[eras_list[eras_list.index(era)]]["start_epoch"])
-            + 1
-        )
-        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(env, era, no_of_epochs_in_era)
-
-        actual_era_dict["sync_duration_secs"] = int(
-            (
-                datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
-            ).total_seconds()
-        )
-
-        actual_era_dict["sync_speed_sps"] = int(
-            actual_era_dict["slots_in_era"] / actual_era_dict["sync_duration_secs"]
-        )
-
-        era_details_dict[era] = actual_era_dict
-
-    # calculate and add "end_sync_time" and "sync_duration_secs" for each epoch;
-    epoch_list = list(epoch_details_dict.keys())
-    for epoch in epoch_list:
-        if epoch == epoch_list[-1]:
-            epoch_end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        else:
-            epoch_end_sync_time = epoch_details_dict[epoch_list[epoch_list.index(epoch) + 1]][
-                "start_sync_time"
-            ]
-        actual_epoch_dict = epoch_details_dict[epoch]
-        actual_epoch_dict["end_sync_time"] = epoch_end_sync_time
-        actual_epoch_dict["sync_duration_secs"] = int(
-            (
-                datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
-            ).total_seconds()
-        )
-        epoch_details_dict[epoch] = actual_epoch_dict
-    return (
-        sync_time_seconds,
-        last_slot_no,
-        latest_chunk_no,
-        era_details_dict,
-        epoch_details_dict,
-    )
 
 
 def get_no_of_slots_in_era(env, era_name, no_of_epochs_in_era):
@@ -507,6 +343,7 @@ def get_cli_executable_path_built_with_cabal():
             CLI = f
             return f
     return None
+
 
 def get_node_files(node_rev, repository=None, build_tool="nix"):
     test_directory = Path.cwd()
@@ -673,7 +510,7 @@ def main():
         latest_chunk_no1,
         era_details_dict1,
         epoch_details_dict1,
-    ) = wait_for_node_to_sync(env)
+    ) = node.wait_for_node_to_sync(env)
 
     end_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     print(f"secs_to_start1: {secs_to_start1}")
@@ -777,7 +614,7 @@ def main():
             latest_chunk_no2,
             era_details_dict2,
             epoch_details_dict2,
-        ) = wait_for_node_to_sync(env)
+        ) = node.wait_for_node_to_sync(env)
         end_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         helpers.print_message(type="warn", message=f"Stop node for: {node_rev2}")
         stop_node(platform_system)
