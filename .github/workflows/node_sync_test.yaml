@@ -10,7 +10,6 @@ on:
         - mainnet
         - preprod
         - preview
-        - shelley-qa
         default: preprod
       build_mode:
         description: "build-mode"

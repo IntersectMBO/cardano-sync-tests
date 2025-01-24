@@ -22,7 +22,6 @@ on:
         - mainnet
         - preprod
         - preview
-        - shelley-qa
         default: preprod
       run_only_sync_test:
         type: boolean
