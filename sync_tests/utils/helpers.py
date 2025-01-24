@@ -133,3 +133,11 @@ def execute_command(command):
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         logging.exception(f"Command {command} returned exception: {e}")
         raise
+
+
+def convert_to_datetime(datetime_str: str):
+    """Convert a datetime string to a Python `datetime` object.
+
+    The input string must match the format: "%Y-%m-%dT%H:%M:%S".
+    """
+    return datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S")

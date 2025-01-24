@@ -24,9 +24,11 @@ EXPLORER_URLS = {
 }
 
 
-def get_epoch_start_datetime_from_explorer(env, epoch_no):
-    """Fetches the start datetime of a specific epoch from the Cardano explorer."""
-    headers = {"Content-type": "application/json"}
+def get_epoch_start_datetime(env, epoch_no):
+    """
+    Fetches the start datetime of a specific epoch from the Cardano explorer."""
+    headers = {'Content-type': 'application/json'}
+
     query = """
     query searchForEpochByNumber($number: Int!) {
       epochs(where: {number: {_eq: $number}}) {
