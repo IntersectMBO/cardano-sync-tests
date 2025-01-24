@@ -3,7 +3,10 @@ name: repo_lint
 on:
   pull_request:
     branches:
-    - master
+    - main
+
+env:
+  PY_COLORS: "1"
 
 jobs:
   lint:
@@ -11,11 +14,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - uses: actions/setup-python@v2
+    - name: Check out repository
+      uses: actions/checkout@v4
+    - name: Set up Python
+      id: setup-python
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.8
+        python-version: '3.11'
     - name: Install dependencies
-      run: make install
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        .venv/bin/pip install -r requirements-dev.txt
     - name: Run lint
-      run: make lint || { git diff; false; }
+      run: |
+        source .venv/bin/activate
+        pre-commit run -a || { git diff; false; }
