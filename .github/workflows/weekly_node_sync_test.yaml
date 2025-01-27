@@ -18,7 +18,7 @@ jobs:
           echo "tag_no1=nightly_node_$current_date" >> $GITHUB_OUTPUT
 
       - name: Trigger Buildkite pipeline for Mainnet sync tests
-        uses: 'buildkite/trigger-pipeline-action@v1.5.0'
+        uses: 'buildkite/trigger-pipeline-action@v2.3.0'
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
           PIPELINE: 'input-output-hk/node-sync-tests'
