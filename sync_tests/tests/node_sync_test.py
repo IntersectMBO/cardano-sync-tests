@@ -71,8 +71,13 @@ def download_config_file(config_slug: str, save_as: pl.Path) -> None:
     urllib.request.urlretrieve(url, save_as)
 
 
-def get_node_config_files(env: str, node_topology_type: str, conf_dir: pl.Path) -> None:
-    download_config_file(config_slug=f"{env}/config.json", save_as=conf_dir / "config.json")
+def get_node_config_files(
+    env: str, node_topology_type: str, conf_dir: pl.Path, use_genesis_mode: bool = False
+) -> None:
+    config_file_path = conf_dir / "config.json"
+    topology_file_path = conf_dir / "topology.json"
+
+    download_config_file(config_slug=f"{env}/config.json", save_as=config_file_path)
     download_config_file(
         config_slug=f"{env}/byron-genesis.json", save_as=conf_dir / "byron-genesis.json"
     )
@@ -89,14 +94,15 @@ def get_node_config_files(env: str, node_topology_type: str, conf_dir: pl.Path) 
     if env == "mainnet" and node_topology_type == "non-bootstrap-peers":
         download_config_file(
             config_slug=f"{env}/topology-non-bootstrap-peers.json",
-            save_as=conf_dir / "topology.json",
+            save_as=topology_file_path,
         )
     elif env == "mainnet" and node_topology_type == "legacy":
-        download_config_file(
-            config_slug=f"{env}/topology-legacy.json", save_as=conf_dir / "topology.json"
-        )
+        download_config_file(config_slug=f"{env}/topology-legacy.json", save_as=topology_file_path)
     else:
-        download_config_file(config_slug=f"{env}/topology.json", save_as=conf_dir / "topology.json")
+        download_config_file(config_slug=f"{env}/topology.json", save_as=topology_file_path)
+
+    if use_genesis_mode:
+        enable_genesis_mode(config_file=config_file_path, topology_file=topology_file_path)
 
 
 def configure_node(config_file: pl.Path) -> None:
@@ -118,15 +124,19 @@ def configure_node(config_file: pl.Path) -> None:
 
 
 def disable_p2p_node_config(config_file: pl.Path) -> None:
-    with open(config_file) as json_file:
-        node_config_json = json.load(json_file)
+    """Disable P2P settings in the node configuration file."""
+    helpers.update_json_file(
+        file_path=config_file, updates={"EnableP2P": False, "PeerSharing": False}
+    )
 
-    # Use the legacy topology
-    node_config_json["EnableP2P"] = False
-    node_config_json["PeerSharing"] = False
 
-    with open(config_file, "w") as json_file:
-        json.dump(node_config_json, json_file, indent=2)
+def enable_genesis_mode(config_file: pl.Path, topology_file: pl.Path) -> None:
+    """Enable Genesis mode in the node configuration and topology files."""
+    helpers.update_json_file(file_path=config_file, updates={"ConsensusMode": "GenesisMode"})
+    helpers.update_json_file(
+        file_path=topology_file,
+        updates={"peerSnapshotFile": "sync_tests/data/peersnapshotfile.json"},
+    )
 
 
 def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
@@ -138,7 +148,7 @@ def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
         if start_socket_path is None:
             socket_path = (base_dir / "db" / "node.socket").expanduser().absolute()
         else:
-            socket_path = pl.Path(start_socket_path).expanduser().absolute()
+            socket_path = pl.Path(start_socket_path)
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
@@ -770,6 +780,7 @@ def run_sync_test(args: argparse.Namespace) -> None:
     node_topology_type2 = helpers.get_arg_value(args=args, key="node_topology2")
     node_start_arguments1 = helpers.get_arg_value(args=args, key="node_start_arguments1")
     node_start_arguments2 = helpers.get_arg_value(args=args, key="node_start_arguments2")
+    use_genesis_mode = helpers.get_arg_value(args=args, key="use_genesis_mode")
 
     print(f"- env: {env}")
     print(f"- node_build_mode: {node_build_mode}")
@@ -781,6 +792,7 @@ def run_sync_test(args: argparse.Namespace) -> None:
     print(f"- node_topology_type2: {node_topology_type2}")
     print(f"- node_start_arguments1: {node_start_arguments1}")
     print(f"- node_start_arguments2: {node_start_arguments2}")
+    print(f"- use_genesis_mode: {use_genesis_mode}")
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
     print(f"- platform: {platform_system, platform_release, platform_version}")
@@ -816,7 +828,12 @@ def run_sync_test(args: argparse.Namespace) -> None:
     print("--- Get the node configuration files")
     rm_node_config_files(conf_dir=conf_dir)
     # TO DO: change the default to P2P when full P2P will be supported on Mainnet
-    get_node_config_files(env=env, node_topology_type=node_topology_type1, conf_dir=conf_dir)
+    get_node_config_files(
+        env=env,
+        node_topology_type=node_topology_type1,
+        conf_dir=conf_dir,
+        use_genesis_mode=use_genesis_mode,
+    )
 
     print("Configure node")
     configure_node(config_file=conf_dir / "config.json")
@@ -1147,6 +1164,13 @@ def get_args() -> argparse.Namespace:
         nargs="+",
         type=str,
         help="arguments to be passed when starting the node from existing state (second tag_no)",
+    )
+    parser.add_argument(
+        "-g",
+        "--use_genesis_mode",
+        type=lambda x: x.lower() == "true",
+        default=False,
+        help="use_genesis_mode",
     )
 
     return parser.parse_args()
