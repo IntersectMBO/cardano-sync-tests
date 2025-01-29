@@ -326,10 +326,10 @@ def start_node(
         ).strip()
 
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
+    logfile = open(NODE_LOG_FILE, "w+")
 
     try:
-        with open(NODE_LOG_FILE, "w+") as logfile:
-            subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
         utils.print_message(type="info", message="waiting for db folder to be created")
         count = 0
         count_timeout = 299
