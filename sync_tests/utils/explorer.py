@@ -24,8 +24,8 @@ EXPLORER_URLS = {
 }
 
 
-def get_epoch_start_datetime_from_explorer(env, epoch_no):
-    """Fetches the start datetime of a specific epoch from the Cardano explorer."""
+def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | None:
+    """Fetch the start datetime of a specific epoch from the Cardano explorer."""
     headers = {"Content-type": "application/json"}
     query = """
     query searchForEpochByNumber($number: Int!) {
@@ -55,7 +55,8 @@ def get_epoch_start_datetime_from_explorer(env, epoch_no):
 
     if url is None:
         logging.error(
-            f"The provided 'env' is not supported. Please use one of: {', '.join(EXPLORER_URLS.keys())}"
+            "The provided 'env' is not supported. Please use one of: "
+            f"{', '.join(EXPLORER_URLS.keys())}"
         )
         return None
 
@@ -67,7 +68,8 @@ def get_epoch_start_datetime_from_explorer(env, epoch_no):
         if status_code != 200:
             logging.error(f"Failed to fetch data from {url}: {response.text}")
             logging.error(
-                f"!!! ERROR: status_code != 200 when getting start time for epoch {epoch_no} on {env}"
+                "!!! ERROR: status_code != 200 when getting start time for "
+                f"epoch {epoch_no} on {env}"
             )
         else:
             count = 0
@@ -79,7 +81,8 @@ def get_epoch_start_datetime_from_explorer(env, epoch_no):
 
                 if count > 10:
                     logging.error(
-                        f"!!! ERROR: Not able to get start time for epoch {epoch_no} on {env} after 10 tries"
+                        "!!! ERROR: Not able to get start time for "
+                        f"epoch {epoch_no} on {env} after 10 tries"
                     )
                     break
 
@@ -87,8 +90,8 @@ def get_epoch_start_datetime_from_explorer(env, epoch_no):
                 data = response.json()
                 result = data["data"]["epochs"][0]["startedAt"]
 
-    except requests.RequestException as e:
-        logging.exception(f"Request failed: {e}")
+    except requests.RequestException:
+        logging.exception("Request failed")
     except KeyError:
         logging.exception(f"Unexpected response structure: {response.json()}")
 

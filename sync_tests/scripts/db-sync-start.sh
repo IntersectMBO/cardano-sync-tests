@@ -3,18 +3,19 @@
 
 
 cd cardano-db-sync
-export PGPASSFILE=config/pgpass-$ENVIRONMENT
+export PGPASSFILE="config/pgpass-$ENVIRONMENT"
 
 if [[ $FIRST_START == "True" ]]; then
     cd config
-    wget -O $ENVIRONMENT-db-config.json https://book.play.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json
+    wget -O "$ENVIRONMENT-db-config.json https://book.play.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json"
     sed -i "s/NodeConfigFile.*/NodeConfigFile\": \"..\/..\/cardano-node\/$ENVIRONMENT-config.json\",/g" "$ENVIRONMENT-db-config.json"
     cd ..
 fi
 
 # clear log file
-cat /dev/null > $LOG_FILEPATH
+cat /dev/null > "$LOG_FILEPATH"
 
 # set abort on first error flag and start db-sync
 export DbSyncAbortOnPanic=1
-PGPASSFILE=$PGPASSFILE db-sync-node/bin/cardano-db-sync --config config/$ENVIRONMENT-db-config.json --socket-path ../cardano-node/db/node.socket --schema-dir schema/ --state-dir ledger-state/$ENVIRONMENT $DB_SYNC_START_ARGS >> $LOG_FILEPATH &
+# shellcheck disable=SC2086
+PGPASSFILE="$PGPASSFILE" db-sync-node/bin/cardano-db-sync --config "config/$ENVIRONMENT-db-config.json" --socket-path ../cardano-node/db/node.socket --schema-dir schema/ --state-dir "ledger-state/$ENVIRONMENT" ${DB_SYNC_START_ARGS} >> $"LOG_FILEPATH" &
