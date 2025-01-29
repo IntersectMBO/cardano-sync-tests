@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import fileinput
 import json
 import os
@@ -9,12 +10,12 @@ import signal
 import subprocess
 import sys
 import time
+import typing as tp
 import urllib.request
 from collections import OrderedDict
-from datetime import datetime
-from datetime import timedelta
 from pathlib import Path
 
+from git import Repo
 from psutil import process_iter
 
 sys.path.append(os.getcwd())
@@ -30,20 +31,20 @@ from sync_tests.utils.gitpython import git_clone_iohk_repo
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = "./cardano-node"
 CLI = "./cardano-cli"
-ROOT_TEST_PATH = ""
+ROOT_TEST_PATH: Path = Path.cwd()
 NODE_LOG_FILE = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = r"sync_results.json"
 ONE_MINUTE = 60
 
 
-def set_repo_paths():
+def set_repo_paths() -> None:
     global ROOT_TEST_PATH
     ROOT_TEST_PATH = Path.cwd()
     print(f"ROOT_TEST_PATH: {ROOT_TEST_PATH}")
 
 
-def delete_node_files():
+def delete_node_files() -> None:
     for p in Path("..").glob("cardano-*"):
         if p.is_dir():
             utils.print_message(type="info_warn", message=f"deleting directory: {p}")
@@ -73,7 +74,7 @@ def update_config(file_name: str, updates: dict) -> None:
     print("Configuration updated successfully.")
 
 
-def disable_p2p_node_config():
+def disable_p2p_node_config() -> None:
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
@@ -99,7 +100,7 @@ def download_config_file(env: str, file_name: str, save_as: Optional[str] = None
     urllib.request.urlretrieve(url, save_as)
 
 
-def get_node_config_files(env, node_topology_type):
+def get_node_config_files(env: str, node_topology_type: str) -> None:
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
@@ -123,11 +124,13 @@ def get_node_config_files(env, node_topology_type):
     utils.print_file_content("topology.json")
 
 
-def enable_cardano_node_resources_monitoring(node_config_filepath):
+def enable_cardano_node_resources_monitoring(node_config_filepath: str) -> None:
     utils.print_message(type="warn", message="- Enable cardano node resource monitoring:")
     utils.print_message(
         type="info",
-        message='  node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]',
+        message=(
+            '  node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]'
+        ),
     )
 
     os.chdir(Path(ROOT_TEST_PATH))
@@ -138,7 +141,7 @@ def enable_cardano_node_resources_monitoring(node_config_filepath):
         json.dump(node_config_json, json_file, indent=2)
 
 
-def enable_cardano_node_tracers(node_config_filepath):
+def enable_cardano_node_tracers(node_config_filepath: str) -> None:
     os.chdir(Path(ROOT_TEST_PATH))
     with open(node_config_filepath) as json_file:
         node_config_json = json.load(json_file)
@@ -169,7 +172,8 @@ def enable_cardano_node_tracers(node_config_filepath):
         json.dump(node_config_json, json_file, indent=2)
 
 
-def set_node_socket_path_env_var():
+def set_node_socket_path_env_var() -> None:
+    socket_path: str | Path
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
@@ -177,7 +181,7 @@ def set_node_socket_path_env_var():
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
-def get_epoch_no_d_zero():
+def get_epoch_no_d_zero() -> int | None:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 257
@@ -190,7 +194,7 @@ def get_epoch_no_d_zero():
     return None
 
 
-def get_start_slot_no_d_zero():
+def get_start_slot_no_d_zero() -> int | None:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 25661009
@@ -203,24 +207,25 @@ def get_start_slot_no_d_zero():
     return None
 
 
-def get_testnet_value():
+def get_testnet_value() -> str | None:
     env = utils.get_arg_value(args=args, key="environment")
+    arg: str | None = None
     if env == "mainnet":
-        return "--mainnet"
+        arg = "--mainnet"
     if env == "testnet":
-        return "--testnet-magic 1097911063"
+        arg = "--testnet-magic 1097911063"
     if env == "staging":
-        return "--testnet-magic 633343913"
+        arg = "--testnet-magic 633343913"
     if env == "shelley-qa":
-        return "--testnet-magic 3"
+        arg = "--testnet-magic 3"
     if env == "preview":
-        return "--testnet-magic 2"
+        arg = "--testnet-magic 2"
     if env == "preprod":
-        return "--testnet-magic 1"
-    return None
+        arg = "--testnet-magic 1"
+    return arg
 
 
-def wait_for_node_to_start(timeout_minutes=20):
+def wait_for_node_to_start(timeout_minutes: int = 20) -> int:
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take > 10 mins for the cli to work (opening db and
     # replaying the ledger)
@@ -235,8 +240,8 @@ def wait_for_node_to_start(timeout_minutes=20):
     return start_time_seconds
 
 
-def get_current_tip(timeout_minutes=10):
-    cmd = CLI + " latest query tip " + get_testnet_value()
+def get_current_tip(timeout_minutes: int = 10) -> tuple:
+    cmd = CLI + " latest query tip " + (get_testnet_value() or "")
 
     for i in range(timeout_minutes):
         try:
@@ -257,23 +262,26 @@ def get_current_tip(timeout_minutes=10):
                 else None
             )
 
-            return epoch, block, hash_value, slot, era, sync_progress
         except subprocess.CalledProcessError as e:
-            print(
-                f" === {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - Waiting 60s before retrying to get the tip again - {i}"
-            )
+            now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+            print(f" === {now} - Waiting 60s before retrying to get the tip again - {i}")
             utils.print_message(
                 type="error",
-                message=f"     !!! ERROR: command {e.cmd} returned with error (code {e.returncode}): {' '.join(str(e.output.decode('utf-8')).split())}",
+                message=(
+                    f"     !!! ERROR: command {e.cmd} returned with error "
+                    f"(code {e.returncode}): {' '.join(str(e.output.decode('utf-8')).split())}"
+                ),
             )
             if "Invalid argument" in str(e.output):
                 print(f" -- exiting on - {e.output.decode('utf-8')}")
                 sys.exit(1)
+        else:
+            return epoch, block, hash_value, slot, era, sync_progress
         time.sleep(ONE_MINUTE)
     sys.exit(1)
 
 
-def get_node_version():
+def get_node_version() -> tuple[str, str]:
     try:
         cmd = CLI + " --version"
         output = (
@@ -288,10 +296,12 @@ def get_node_version():
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
 
 
-def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
+def start_node(
+    cardano_node: str, node_start_arguments: tp.Iterable[str], timeout_minutes: int = 400
+) -> int:
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     start_args = " ".join(node_start_arguments)
@@ -315,21 +325,24 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
             f"config.json --socket-path ./db/node.socket {start_args}"
         ).strip()
 
-    logfile = open(NODE_LOG_FILE, "w+")
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
 
     try:
-        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+        with open(NODE_LOG_FILE, "w+") as logfile:
+            subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
         utils.print_message(type="info", message="waiting for db folder to be created")
         count = 0
         count_timeout = 299
-        while not os.path.isdir(current_directory / "db"):
+        while not Path.is_dir(current_directory / "db"):
             time.sleep(1)
             count += 1
             if count > count_timeout:
                 utils.print_message(
                     type="error",
-                    message=f"ERROR: waited {count_timeout} seconds and the DB folder was not created yet",
+                    message=(
+                        f"ERROR: waited {count_timeout} seconds and the DB folder "
+                        "was not created yet"
+                    ),
                 )
                 sys.exit(1)
 
@@ -337,15 +350,16 @@ def start_node(cardano_node, tag_no, node_start_arguments, timeout_minutes=400):
         secs_to_start = wait_for_node_to_start(timeout_minutes)
         print(f" - listdir current_directory: {os.listdir(current_directory)}")
         print(f" - listdir db: {os.listdir(current_directory / 'db')}")
-        return secs_to_start
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from e
+    else:
+        return secs_to_start
 
 
-def stop_node(platform_system):
+def stop_node(platform_system: str) -> None:
     for proc in process_iter():
         if "cardano-node" in proc.name():
             utils.print_message(
@@ -364,7 +378,7 @@ def stop_node(platform_system):
             )
 
 
-def copy_log_file_artifact(old_name, new_name):
+def copy_log_file_artifact(old_name: str, new_name: str) -> None:
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
@@ -372,29 +386,32 @@ def copy_log_file_artifact(old_name, new_name):
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
 
 
-def get_calculated_slot_no(env):
-    current_time = datetime.utcnow()
+def get_calculated_slot_no(env: str) -> int:
+    current_time = datetime.datetime.now(tz=datetime.timezone.utc)
     shelley_start_time = byron_start_time = current_time
 
-    if env == "testnet":
-        byron_start_time = datetime.strptime("2019-07-24 20:20:16", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2020-07-28 20:20:16", "%Y-%m-%d %H:%M:%S")
-    elif env == "staging":
-        byron_start_time = datetime.strptime("2017-09-26 18:23:33", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2020-08-01 18:23:33", "%Y-%m-%d %H:%M:%S")
-    elif env == "mainnet":
-        byron_start_time = datetime.strptime("2017-09-23 21:44:51", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2020-07-29 21:44:51", "%Y-%m-%d %H:%M:%S")
-    elif env == "shelley-qa":
-        byron_start_time = datetime.strptime("2020-08-17 13:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2020-08-17 17:00:00", "%Y-%m-%d %H:%M:%S")
+    if env == "mainnet":
+        byron_start_time = datetime.datetime.strptime(
+            "2017-09-23 21:44:51", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
+        shelley_start_time = datetime.datetime.strptime(
+            "2020-07-29 21:44:51", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
     elif env == "preprod":
-        byron_start_time = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2022-06-21 00:00:00", "%Y-%m-%d %H:%M:%S")
+        byron_start_time = datetime.datetime.strptime(
+            "2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
+        shelley_start_time = datetime.datetime.strptime(
+            "2022-06-21 00:00:00", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
     elif env == "preview":
         # this env was started directly in Alonzo
-        byron_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
-        shelley_start_time = datetime.strptime("2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S")
+        byron_start_time = datetime.datetime.strptime(
+            "2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
+        shelley_start_time = datetime.datetime.strptime(
+            "2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=datetime.timezone.utc)
 
     last_slot_no = int(
         (shelley_start_time - byron_start_time).total_seconds() / 20
@@ -403,30 +420,33 @@ def get_calculated_slot_no(env):
     return last_slot_no
 
 
-def wait_for_node_to_sync(env):
+def wait_for_node_to_sync(env: str) -> tuple:
     era_details_dict = OrderedDict()
     epoch_details_dict = OrderedDict()
 
-    actual_epoch, actual_block, actual_hash, actual_slot, actual_era, syncProgress = (
+    actual_epoch, actual_block, actual_hash, actual_slot, actual_era, sync_progress = (
         get_current_tip()
     )
     last_slot_no = get_calculated_slot_no(env)
     start_sync = time.perf_counter()
 
     count = 0
-    if syncProgress is not None:
-        while syncProgress < 100:
+    if sync_progress is not None:
+        while sync_progress < 100:
             if count % 60 == 0:
+                now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
                 utils.print_message(
                     type="warn",
-                    message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
+                    message=f"{now} - actual_era  : {actual_era} "
                     f" - actual_epoch: {actual_epoch} "
                     f" - actual_block: {actual_block} "
                     f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {syncProgress}",
+                    f" - syncProgress: {sync_progress}",
                 )
             if actual_era not in era_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
                 if env == "mainnet":
                     actual_era_start_time = get_epoch_start_datetime(actual_epoch)
                 else:
@@ -440,8 +460,10 @@ def wait_for_node_to_sync(env):
                 }
                 era_details_dict[actual_era] = actual_era_dict
             if actual_epoch not in epoch_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                actual_epoch_dict = {"start_sync_time": current_time}
+                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+                actual_epoch_dict: dict[str, tp.Any] = {"start_sync_time": current_time}
                 epoch_details_dict[actual_epoch] = actual_epoch_dict
 
             time.sleep(5)
@@ -452,22 +474,25 @@ def wait_for_node_to_sync(env):
                 actual_hash,
                 actual_slot,
                 actual_era,
-                syncProgress,
+                sync_progress,
             ) = get_current_tip()
 
     else:
         while actual_slot <= last_slot_no:
             if count % 60 == 0:
+                now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
                 utils.print_message(
                     type="warn",
-                    message=f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')} - actual_era  : {actual_era} "
+                    message=f"{now} - actual_era  : {actual_era} "
                     f" - actual_epoch: {actual_epoch} "
                     f" - actual_block: {actual_block} "
                     f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {syncProgress}",
+                    f" - syncProgress: {sync_progress}",
                 )
             if actual_era not in era_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
                 if env == "mainnet":
                     actual_era_start_time = get_epoch_start_datetime(actual_epoch)
                 else:
@@ -481,7 +506,9 @@ def wait_for_node_to_sync(env):
                 }
                 era_details_dict[actual_era] = actual_era_dict
             if actual_epoch not in epoch_details_dict:
-                current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
                 actual_epoch_dict = {"start_sync_time": current_time}
                 epoch_details_dict[actual_epoch] = actual_epoch_dict
             time.sleep(1)
@@ -492,7 +519,7 @@ def wait_for_node_to_sync(env):
                 actual_hash,
                 actual_slot,
                 actual_era,
-                syncProgress,
+                sync_progress,
             ) = get_current_tip()
 
     end_sync = time.perf_counter()
@@ -510,7 +537,9 @@ def wait_for_node_to_sync(env):
     eras_list = list(era_details_dict.keys())
     for era in eras_list:
         if era == eras_list[-1]:
-            end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
             last_epoch = actual_epoch
         else:
             end_sync_time = era_details_dict[eras_list[eras_list.index(era) + 1]]["start_sync_time"]
@@ -531,8 +560,12 @@ def wait_for_node_to_sync(env):
 
         actual_era_dict["sync_duration_secs"] = int(
             (
-                datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
+                datetime.datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=datetime.timezone.utc
+                )
+                - datetime.datetime.strptime(
+                    actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
             ).total_seconds()
         )
 
@@ -546,7 +579,9 @@ def wait_for_node_to_sync(env):
     epoch_list = list(epoch_details_dict.keys())
     for epoch in epoch_list:
         if epoch == epoch_list[-1]:
-            epoch_end_sync_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            epoch_end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
         else:
             epoch_end_sync_time = epoch_details_dict[epoch_list[epoch_list.index(epoch) + 1]][
                 "start_sync_time"
@@ -555,8 +590,12 @@ def wait_for_node_to_sync(env):
         actual_epoch_dict["end_sync_time"] = epoch_end_sync_time
         actual_epoch_dict["sync_duration_secs"] = int(
             (
-                datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ")
-                - datetime.strptime(actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ")
+                datetime.datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=datetime.timezone.utc
+                )
+                - datetime.datetime.strptime(
+                    actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
             ).total_seconds()
         )
         epoch_details_dict[epoch] = actual_epoch_dict
@@ -569,7 +608,7 @@ def wait_for_node_to_sync(env):
     )
 
 
-def get_no_of_slots_in_era(env, era_name, no_of_epochs_in_era):
+def get_no_of_slots_in_era(env: str, era_name: str, no_of_epochs_in_era: int) -> int:
     slot_length_secs = 1
     epoch_length_slots = 432000
 
@@ -584,7 +623,7 @@ def get_no_of_slots_in_era(env, era_name, no_of_epochs_in_era):
     return int(epoch_length_secs * no_of_epochs_in_era)
 
 
-def get_data_from_logs(log_file):
+def get_data_from_logs(log_file: str) -> dict:
     os.chdir(Path(ROOT_TEST_PATH))
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
@@ -593,7 +632,7 @@ def get_data_from_logs(log_file):
     heap_ram_details_dict = OrderedDict()
     rss_ram_details_dict = OrderedDict()
     centi_cpu_dict = OrderedDict()
-    cpu_details_dict = OrderedDict()
+    cpu_details_dict: OrderedDict[float, tp.Any] = OrderedDict()
     logs_details_dict = OrderedDict()
 
     with open(log_file) as f:
@@ -619,16 +658,16 @@ def get_data_from_logs(log_file):
             slot_no = line.split(" at slot ")[1]
             tip_details_dict[timestamp] = slot_no
 
-    no_of_cpu_cores = os.cpu_count()
+    no_of_cpu_cores = os.cpu_count() or 1
     timestamps_list = list(centi_cpu_dict.keys())
     for timestamp1 in timestamps_list[1:]:
         # %CPU = dValue / dt for 1 core
-        previous_timestamp = datetime.strptime(
+        previous_timestamp = datetime.datetime.strptime(
             timestamps_list[timestamps_list.index(timestamp1) - 1], "%Y-%m-%d %H:%M:%S"
-        )
-        current_timestamp = datetime.strptime(
+        ).replace(tzinfo=datetime.timezone.utc)
+        current_timestamp = datetime.datetime.strptime(
             timestamps_list[timestamps_list.index(timestamp1)], "%Y-%m-%d %H:%M:%S"
-        )
+        ).replace(tzinfo=datetime.timezone.utc)
         previous_value = float(
             centi_cpu_dict[timestamps_list[timestamps_list.index(timestamp1) - 1]]
         )
@@ -665,7 +704,7 @@ def get_data_from_logs(log_file):
     return logs_details_dict
 
 
-def get_cabal_build_files():
+def get_cabal_build_files() -> list[str]:
     node_build_files = []
 
     for dirpath, _, filenames in os.walk("dist-newstyle/build"):
@@ -675,7 +714,7 @@ def get_cabal_build_files():
     return node_build_files
 
 
-def get_node_executable_path_built_with_cabal():
+def get_node_executable_path_built_with_cabal() -> str | None:
     for f in get_cabal_build_files():
         if "\\x\\cardano-node\\build\\" in f and "cardano-node-tmp" not in f and "autogen" not in f:
             utils.print_message(type="info", message=f"Found node executable: {f}")
@@ -685,7 +724,7 @@ def get_node_executable_path_built_with_cabal():
     return None
 
 
-def get_cli_executable_path_built_with_cabal():
+def get_cli_executable_path_built_with_cabal() -> str | None:
     for f in get_cabal_build_files():
         if "\\x\\cardano-cli\\build\\" in f and "cardano-cli-tmp" not in f and "autogen" not in f:
             utils.print_message(type="info", message=f"Found node-cli executable: {f}")
@@ -695,7 +734,7 @@ def get_cli_executable_path_built_with_cabal():
     return None
 
 
-def copy_node_executables(src_location, dst_location, build_mode):
+def copy_node_executables(src_location: Path, dst_location: Path, build_mode: str) -> None:
     if build_mode == "nix":
         node_binary_location = "cardano-node-bin/bin/"
         cli_binary_location = "cardano-cli-bin/bin/"
@@ -738,8 +777,12 @@ def copy_node_executables(src_location, dst_location, build_mode):
         time.sleep(5)
 
     if build_mode == "cabal":
-        node_binary_location = get_node_executable_path_built_with_cabal()
-        cli_binary_location = get_cli_executable_path_built_with_cabal()
+        node_binary_location_tmp = get_node_executable_path_built_with_cabal()
+        assert node_binary_location_tmp is not None  # TODO: refactor
+        node_binary_location = node_binary_location_tmp
+        cli_binary_location_tmp = get_cli_executable_path_built_with_cabal()
+        assert cli_binary_location_tmp is not None  # TODO: refactor
+        cli_binary_location = cli_binary_location_tmp
 
         try:
             shutil.copy2(node_binary_location, Path(dst_location) / "cardano-node")
@@ -748,6 +791,7 @@ def copy_node_executables(src_location, dst_location, build_mode):
                 type="error",
                 message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
             )
+            sys.exit(1)
 
         try:
             shutil.copy2(cli_binary_location, Path(dst_location) / "cardano-cli")
@@ -756,10 +800,12 @@ def copy_node_executables(src_location, dst_location, build_mode):
                 type="error",
                 message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
             )
+            sys.exit(1)
         time.sleep(5)
 
 
-def get_node_files(node_rev, repository=None, build_tool="nix"):
+# TODO: refactor completely
+def get_node_files(node_rev: str, repository: Repo | None = None, build_tool: str = "nix") -> Repo:
     test_directory = Path.cwd()
     repo = None
     utils.print_message(type="info", message=f"test_directory: {test_directory}")
@@ -768,7 +814,7 @@ def get_node_files(node_rev, repository=None, build_tool="nix"):
     node_repo_name = "cardano-node"
     node_repo_dir = test_directory / "cardano_node_dir"
 
-    if node_repo_dir.is_dir():
+    if node_repo_dir.is_dir() and repository:
         repo = git_checkout(repository, node_rev)
     else:
         repo = git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
@@ -788,7 +834,7 @@ def get_node_files(node_rev, repository=None, build_tool="nix"):
         cli_repo_name = "cardano-cli"
         cli_repo_dir = test_directory / "cardano_cli_dir"
 
-        if cli_repo_dir.is_dir():
+        if cli_repo_dir.is_dir() and repository:
             git_checkout(repository, cli_rev)
         else:
             git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
@@ -825,14 +871,14 @@ def get_node_files(node_rev, repository=None, build_tool="nix"):
     return repo
 
 
-def main():
-    global NODE, CLI, repository
+def main() -> None:
+    repository = None
     secs_to_start1, secs_to_start2 = 0, 0
     set_repo_paths()
     set_node_socket_path_env_var()
 
     print("--- Test data information", flush=True)
-    start_test_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     utils.print_message(type="info", message=f"Test start time: {start_test_time}")
     utils.print_message(type="warn", message="Test parameters:")
     env = utils.get_arg_value(args=args, key="environment")
@@ -845,7 +891,7 @@ def main():
     node_topology_type2 = utils.get_arg_value(args=args, key="node_topology2")
     node_start_arguments1 = utils.get_arg_value(args=args, key="node_start_arguments1")
     node_start_arguments2 = utils.get_arg_value(args=args, key="node_start_arguments2")
-    repository = None
+
     print(f"- env: {env}")
     print(f"- node_build_mode: {node_build_mode}")
     print(f"- tag_no1: {tag_no1}")
@@ -865,7 +911,7 @@ def main():
         type="info",
         message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
     )
-    start_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     if "windows" not in platform_system.lower():
         repository = get_node_files(node_rev1)
     elif "windows" in platform_system.lower():
@@ -873,10 +919,13 @@ def main():
     else:
         utils.print_message(
             type="error",
-            message=f"ERROR: method not implemented yet!!! Only building with NIX is supported at this moment - {node_build_mode}",
+            message=(
+                f"ERROR: method not implemented yet!!! "
+                f"Only building with NIX is supported at this moment - {node_build_mode}"
+            ),
         )
         sys.exit(1)
-    end_build_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     utils.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
     utils.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
 
@@ -901,15 +950,17 @@ def main():
     )
     utils.print_message(
         type="ok",
-        message=f"================== Start node sync test using node_rev1: {node_rev1} =============",
+        message=(
+            f"================== Start node sync test using node_rev1: {node_rev1} ============="
+        ),
     )
     utils.print_message(
         type="ok",
         message="===================================================================================",
     )
     print()
-    start_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    secs_to_start1 = start_node(NODE, tag_no1, node_start_arguments1, timeout_minutes=10)
+    start_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+    secs_to_start1 = start_node(NODE, node_start_arguments1, timeout_minutes=10)
 
     utils.print_message(type="info", message=" - waiting for the node to sync")
     (
@@ -920,7 +971,7 @@ def main():
         epoch_details_dict1,
     ) = wait_for_node_to_sync(env)
 
-    end_sync_time1 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    end_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     print(f"secs_to_start1: {secs_to_start1}")
     print(f"start_sync_time1: {start_sync_time1}")
     print(f"end_sync_time1: {end_sync_time1}")
@@ -929,7 +980,7 @@ def main():
     stop_node(platform_system)
 
     # we are interested in the node logs only for the main sync - using tag_no1
-    test_values_dict = OrderedDict()
+    test_values_dict: OrderedDict[str, tp.Any] = OrderedDict()
     print("--- Parse the node logs and get the relevant data")
     logs_details_dict = get_data_from_logs(NODE_LOG_FILE)
     test_values_dict["log_values"] = json.dumps(logs_details_dict)
@@ -977,7 +1028,9 @@ def main():
         )
         utils.print_message(
             type="ok",
-            message=f"================= Start sync using node_rev2: {node_rev2} ===================",
+            message=(
+                f"================= Start sync using node_rev2: {node_rev2} ==================="
+            ),
         )
         utils.print_message(
             type="ok",
@@ -992,7 +1045,10 @@ def main():
         else:
             utils.print_message(
                 type="error",
-                message=f"ERROR: method not implemented yet!!! Only building with NIX is supported at this moment - {node_build_mode}",
+                message=(
+                    "ERROR: method not implemented yet!!! "
+                    f"Only building with NIX is supported at this moment - {node_build_mode}"
+                ),
             )
             sys.exit(1)
 
@@ -1008,8 +1064,10 @@ def main():
         print(f" - cardano_cli_git_rev2: {cli_git_rev2}")
         print()
         print(f"================ Start node using node_rev2: {node_rev2} ====================")
-        start_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        secs_to_start2 = start_node(NODE, tag_no2, node_start_arguments2)
+        start_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%d/%m/%Y %H:%M:%S"
+        )
+        secs_to_start2 = start_node(NODE, node_start_arguments2)
 
         utils.print_message(
             type="info",
@@ -1022,7 +1080,9 @@ def main():
             era_details_dict2,
             epoch_details_dict2,
         ) = wait_for_node_to_sync(env)
-        end_sync_time2 = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        end_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%d/%m/%Y %H:%M:%S"
+        )
         utils.print_message(type="warn", message=f"Stop node for: {node_rev2}")
         stop_node(platform_system)
         stop_node(platform_system)
@@ -1065,9 +1125,9 @@ def main():
     test_values_dict["start_node_secs1"] = secs_to_start1
     test_values_dict["start_node_secs2"] = secs_to_start2
     test_values_dict["sync_time_seconds1"] = sync_time_seconds1
-    test_values_dict["sync_time1"] = str(timedelta(seconds=int(sync_time_seconds1)))
+    test_values_dict["sync_time1"] = str(datetime.timedelta(seconds=int(sync_time_seconds1)))
     test_values_dict["sync_time_seconds2"] = sync_time_seconds2
-    test_values_dict["sync_time2"] = str(timedelta(seconds=int(sync_time_seconds2)))
+    test_values_dict["sync_time2"] = str(datetime.timedelta(seconds=int(sync_time_seconds2)))
     test_values_dict["total_chunks1"] = latest_chunk_no1
     test_values_dict["total_chunks2"] = latest_chunk_no2
     test_values_dict["platform_system"] = platform_system
@@ -1077,7 +1137,7 @@ def main():
     test_values_dict["sync_duration_per_epoch"] = json.dumps(epoch_details)
     test_values_dict["eras_in_test"] = json.dumps(list(era_details_dict1.keys()))
     test_values_dict["no_of_cpu_cores"] = os.cpu_count()
-    test_values_dict["total_ram_in_GB"] = utils.get_total_ram_in_GB()
+    test_values_dict["total_ram_in_GB"] = utils.get_total_ram_in_gb()
     test_values_dict["epoch_no_d_zero"] = get_epoch_no_d_zero()
     test_values_dict["start_slot_no_d_zero"] = get_start_slot_no_d_zero()
     test_values_dict["hydra_eval_no1"] = node_rev1
@@ -1106,17 +1166,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e",
         "--environment",
-        help="the environment on which to run the sync test - shelley-qa, preview, preprod, mainnet",
+        help="the environment on which to run the sync test - preview, preprod, mainnet",
     )
     parser.add_argument(
         "-r1",
         "--node_rev1",
-        help="desired cardano-node revision - cardano-node tag or branch (used for initial sync, from clean state)",
+        help=(
+            "desired cardano-node revision - cardano-node tag or branch "
+            "(used for initial sync, from clean state)"
+        ),
     )
     parser.add_argument(
         "-r2",
         "--node_rev2",
-        help="desired cardano-node revision - cardano-node tag or branch (used for final sync, from existing state)",
+        help=(
+            "desired cardano-node revision - cardano-node tag or branch "
+            "(used for final sync, from existing state)"
+        ),
     )
     parser.add_argument(
         "-t1",
@@ -1131,12 +1197,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "-n1",
         "--node_topology1",
-        help="type of node topology used for the initial sync - legacy, non-bootstrap-peers, bootstrap-peers",
+        help=(
+            "type of node topology used for the initial sync - "
+            "legacy, non-bootstrap-peers, bootstrap-peers"
+        ),
     )
     parser.add_argument(
         "-n2",
         "--node_topology2",
-        help="type of node topology used for final sync (after restart) - legacy, non-bootstrap-peers, bootstrap-peers",
+        help=(
+            "type of node topology used for final sync (after restart) - "
+            "legacy, non-bootstrap-peers, bootstrap-peers"
+        ),
     )
     parser.add_argument(
         "-a1",

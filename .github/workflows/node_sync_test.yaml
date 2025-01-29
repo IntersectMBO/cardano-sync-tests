@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Trigger the Buildkite pipeline - run sync tests on Mainnet
-        uses: 'buildkite/trigger-pipeline-action@v1.5.0'
+        uses: 'buildkite/trigger-pipeline-action@v2.3.0'
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
           PIPELINE: 'input-output-hk/node-sync-tests'
@@ -112,3 +112,4 @@ jobs:
           "AWS_DB_NAME":"${{ secrets.AWS_DB_NAME }}",
           "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}"
           }'
+
