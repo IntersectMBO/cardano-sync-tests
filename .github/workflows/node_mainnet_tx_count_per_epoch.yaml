@@ -19,18 +19,10 @@ jobs:
         if: matrix.sys.os != 'windows-latest'
         with:
           extra_nix_config: |
-            trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
-            substituters = https://cache.nixos.org https://cache.iog.io
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo=
+            substituters = https://cache.nixos.org https://cache.iog.io https://iohk.cachix.org
             allow-import-from-derivation = true
-
-      - name: Enter Nix Development Shell
-        if: matrix.sys.os != 'windows-latest'
-        run: |
-          nix develop --accept-flake-config .#python --command bash -c "
-            echo 'Inside Nix development shell';
-            python -m pip install --upgrade pip;
-            pip install pytest requests allure-pytest pytest-html pytest-order pyyaml psycopg2 psutil blockfrost-python GitPython colorama matplotlib;
-          "
 
       - name: Get the automated tests results
         env:
