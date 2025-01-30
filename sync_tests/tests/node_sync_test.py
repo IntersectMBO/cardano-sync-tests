@@ -147,6 +147,11 @@ def enable_cardano_node_tracers(node_config_filepath: str) -> None:
     utils.print_message(type="warn", message="- Enable tracer:")
     utils.print_message(type="info", message="  Set minSeverity = Info")
     node_config_json["minSeverity"] = "Info"
+
+    # Use the legacy tracing system
+    node_config_json["TraceOptions"] = {}
+    node_config_json["UseTraceDispatcher"] = False
+
     # node_config_json["TestEnableDevelopmentNetworkProtocols"] = True
     # node_config_json["TestEnableDevelopmentHardForkEras"] = True
 
