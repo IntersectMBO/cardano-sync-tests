@@ -26,9 +26,9 @@
               nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl ];
               shellHook = ''
                 echo "Setting up Python environment..."
-                python3 -m venv .venv || true
-                source .venv/bin/activate
-                .venv/bin/pip install -e .
+                python3 -m venv .venv_nix || true
+                source .venv_nix/bin/activate
+                .venv_nix/bin/pip install -e .
                 echo "Python environment ready."
               '';
             };
