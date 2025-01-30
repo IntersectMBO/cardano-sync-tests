@@ -251,6 +251,7 @@ def wait_query_tip_available(timeout_minutes: int = 20) -> int:
     for i in range(timeout_minutes):
         try:
             get_current_tip()
+            break
         except subprocess.CalledProcessError as e:
             now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
             print(f" === {now} - Waiting 60s before retrying to get the tip again - {i}")
@@ -265,6 +266,9 @@ def wait_query_tip_available(timeout_minutes: int = 20) -> int:
                 print(f" -- exiting on - {e.output.decode('utf-8')}")
                 sys.exit(1)
         time.sleep(ONE_MINUTE)
+    else:
+        utils.print_message(type="error", message="     !!! ERROR: failed to get tip")
+        sys.exit(1)
 
     stop_counter = time.perf_counter()
     start_time_seconds = int(stop_counter - start_counter)
