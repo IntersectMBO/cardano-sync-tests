@@ -6,7 +6,6 @@ import os
 import platform
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -16,7 +15,6 @@ from collections import OrderedDict
 from pathlib import Path
 
 from git import Repo
-from psutil import process_iter
 
 sys.path.append(os.getcwd())
 
@@ -225,43 +223,34 @@ def get_testnet_value() -> str | None:
     return arg
 
 
-def wait_for_node_to_start(timeout_minutes: int = 20) -> int:
+def get_current_tip() -> tuple:
+    cmd = CLI + " latest query tip " + (get_testnet_value() or "")
+
+    output = (
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
+    )
+    output_json = json.loads(output)
+    epoch = int(output_json.get("epoch", 0))
+    block = int(output_json.get("block", 0))
+    hash_value = output_json.get("hash", "")
+    slot = int(output_json.get("slot", 0))
+    era = output_json.get("era", "").lower()
+    sync_progress = (
+        int(float(output_json.get("syncProgress", 0.0))) if "syncProgress" in output_json else None
+    )
+
+    return epoch, block, hash_value, slot, era, sync_progress
+
+
+def wait_query_tip_available(timeout_minutes: int = 20) -> int:
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take > 10 mins for the cli to work (opening db and
     # replaying the ledger)
     start_counter = time.perf_counter()
-    get_current_tip(timeout_minutes)
-    stop_counter = time.perf_counter()
-    start_time_seconds = int(stop_counter - start_counter)
-    utils.print_message(
-        type="ok",
-        message=f"It took {start_time_seconds} seconds for the QUERY TIP command to be available",
-    )
-    return start_time_seconds
-
-
-def get_current_tip(timeout_minutes: int = 10) -> tuple:
-    cmd = CLI + " latest query tip " + (get_testnet_value() or "")
 
     for i in range(timeout_minutes):
         try:
-            output = (
-                subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-                .decode("utf-8")
-                .strip()
-            )
-            output_json = json.loads(output)
-            epoch = int(output_json.get("epoch", 0))
-            block = int(output_json.get("block", 0))
-            hash_value = output_json.get("hash", "")
-            slot = int(output_json.get("slot", 0))
-            era = output_json.get("era", "").lower()
-            sync_progress = (
-                int(float(output_json.get("syncProgress", 0.0)))
-                if "syncProgress" in output_json
-                else None
-            )
-
+            get_current_tip()
         except subprocess.CalledProcessError as e:
             now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
             print(f" === {now} - Waiting 60s before retrying to get the tip again - {i}")
@@ -275,10 +264,15 @@ def get_current_tip(timeout_minutes: int = 10) -> tuple:
             if "Invalid argument" in str(e.output):
                 print(f" -- exiting on - {e.output.decode('utf-8')}")
                 sys.exit(1)
-        else:
-            return epoch, block, hash_value, slot, era, sync_progress
         time.sleep(ONE_MINUTE)
-    sys.exit(1)
+
+    stop_counter = time.perf_counter()
+    start_time_seconds = int(stop_counter - start_counter)
+    utils.print_message(
+        type="ok",
+        message=f"It took {start_time_seconds} seconds for the QUERY TIP command to be available",
+    )
+    return start_time_seconds
 
 
 def get_node_version() -> tuple[str, str]:
@@ -300,13 +294,9 @@ def get_node_version() -> tuple[str, str]:
 
 
 def start_node(
-    cardano_node: str, node_start_arguments: tp.Iterable[str], timeout_minutes: int = 400
-) -> int:
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
+    cardano_node: str, node_start_arguments: tp.Iterable[str]
+) -> tuple[subprocess.Popen, tp.IO[str]]:
     start_args = " ".join(node_start_arguments)
-    if "None" in start_args:
-        start_args = ""
 
     if platform.system().lower() == "windows":
         cmd = (
@@ -328,54 +318,47 @@ def start_node(
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
     logfile = open(NODE_LOG_FILE, "w+")
 
-    try:
-        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
-        utils.print_message(type="info", message="waiting for db folder to be created")
-        count = 0
-        count_timeout = 299
-        while not Path.is_dir(current_directory / "db"):
-            time.sleep(1)
-            count += 1
-            if count > count_timeout:
-                utils.print_message(
-                    type="error",
-                    message=(
-                        f"ERROR: waited {count_timeout} seconds and the DB folder "
-                        "was not created yet"
-                    ),
-                )
-                sys.exit(1)
-
-        utils.print_message(type="ok", message=f"DB folder was created after {count} seconds")
-        secs_to_start = wait_for_node_to_start(timeout_minutes)
-        print(f" - listdir current_directory: {os.listdir(current_directory)}")
-        print(f" - listdir db: {os.listdir(current_directory / 'db')}")
-    except subprocess.CalledProcessError as e:
-        msg = "command '{}' return with error (code {}): {}".format(
-            e.cmd, e.returncode, " ".join(str(e.output).split())
-        )
-        raise RuntimeError(msg) from e
-    else:
-        return secs_to_start
+    proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+    return proc, logfile
 
 
-def stop_node(platform_system: str) -> None:
-    for proc in process_iter():
-        if "cardano-node" in proc.name():
-            utils.print_message(
-                type="info_warn", message=f"Killing the `cardano-node` process - {proc}"
-            )
-            if "windows" in platform_system.lower():
-                proc.send_signal(signal.SIGTERM)
-            else:
-                proc.send_signal(signal.SIGINT)
-    time.sleep(20)
-    for proc in process_iter():
-        if "cardano-node" in proc.name():
+def wait_node_start(timeout_minutes: int = 20) -> int:
+    current_directory = Path.cwd()
+
+    utils.print_message(type="info", message="waiting for db folder to be created")
+    count = 0
+    count_timeout = 299
+    while not Path.is_dir(current_directory / "db"):
+        time.sleep(1)
+        count += 1
+        if count > count_timeout:
             utils.print_message(
                 type="error",
-                message=f" !!! ERROR: `cardano-node` process is still active - {proc}",
+                message=(
+                    f"ERROR: waited {count_timeout} seconds and the DB folder was not created yet"
+                ),
             )
+            sys.exit(1)
+
+    utils.print_message(type="ok", message=f"DB folder was created after {count} seconds")
+    secs_to_start = wait_query_tip_available(timeout_minutes)
+    print(f" - listdir current_directory: {os.listdir(current_directory)}")
+    print(f" - listdir db: {os.listdir(current_directory / 'db')}")
+    return secs_to_start
+
+
+def stop_node(proc: subprocess.Popen) -> int:
+    if proc.poll() is None:  # None means the process is still running
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)  # Give it some time to exit gracefully
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    # Get and report the exit code
+    exit_code = proc.returncode
+    return exit_code
 
 
 def copy_log_file_artifact(old_name: str, new_name: str) -> None:
@@ -960,24 +943,45 @@ def main() -> None:
     )
     print()
     start_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    secs_to_start1 = start_node(NODE, node_start_arguments1, timeout_minutes=10)
+    os.chdir(Path(ROOT_TEST_PATH))
+    if "None" in node_start_arguments1:
+        node_start_arguments1 = []
+    node_proc1, logfile1 = start_node(cardano_node=NODE, node_start_arguments=node_start_arguments1)
+    secs_to_start1 = wait_node_start(timeout_minutes=10)
 
     utils.print_message(type="info", message=" - waiting for the node to sync")
-    (
-        sync_time_seconds1,
-        last_slot_no1,
-        latest_chunk_no1,
-        era_details_dict1,
-        epoch_details_dict1,
-    ) = wait_for_node_to_sync(env)
 
-    end_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+    sync1_error = False
+    try:
+        (
+            sync_time_seconds1,
+            last_slot_no1,
+            latest_chunk_no1,
+            era_details_dict1,
+            epoch_details_dict1,
+        ) = wait_for_node_to_sync(env)
+    except Exception as e:
+        sync1_error = True
+        utils.print_message(
+            type="error",
+            message=f" !!! ERROR - could not finish sync1 - {e}",
+        )
+    finally:
+        end_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%d/%m/%Y %H:%M:%S"
+        )
+        utils.print_message(type="warn", message=f"Stop node for: {node_rev1}")
+        exit_code1 = stop_node(proc=node_proc1)
+        utils.print_message(type="warn", message=f"Exit code: {exit_code1}")
+        logfile1.flush()
+        logfile1.close()
+
+    if sync1_error:
+        sys.exit(1)
+
     print(f"secs_to_start1: {secs_to_start1}")
     print(f"start_sync_time1: {start_sync_time1}")
     print(f"end_sync_time1: {end_sync_time1}")
-    utils.print_message(type="warn", message=f"Stop node for: {node_rev1}")
-    stop_node(platform_system)
-    stop_node(platform_system)
 
     # we are interested in the node logs only for the main sync - using tag_no1
     test_values_dict: OrderedDict[str, tp.Any] = OrderedDict()
@@ -1067,25 +1071,46 @@ def main() -> None:
         start_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        secs_to_start2 = start_node(NODE, node_start_arguments2)
+        os.chdir(Path(ROOT_TEST_PATH))
+        if "None" in node_start_arguments1:
+            node_start_arguments2 = []
+        node_proc2, logfile2 = start_node(
+            cardano_node=NODE, node_start_arguments=node_start_arguments2
+        )
+        secs_to_start2 = wait_node_start()
 
         utils.print_message(
             type="info",
             message=f" - waiting for the node to sync - using node_rev2: {node_rev2}",
         )
-        (
-            sync_time_seconds2,
-            last_slot_no2,
-            latest_chunk_no2,
-            era_details_dict2,
-            epoch_details_dict2,
-        ) = wait_for_node_to_sync(env)
-        end_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-            "%d/%m/%Y %H:%M:%S"
-        )
-        utils.print_message(type="warn", message=f"Stop node for: {node_rev2}")
-        stop_node(platform_system)
-        stop_node(platform_system)
+
+        sync2_error = False
+        try:
+            (
+                sync_time_seconds2,
+                last_slot_no2,
+                latest_chunk_no2,
+                era_details_dict2,
+                epoch_details_dict2,
+            ) = wait_for_node_to_sync(env)
+        except Exception as e:
+            sync2_error = True
+            utils.print_message(
+                type="error",
+                message=f" !!! ERROR - could not finish sync2 - {e}",
+            )
+        finally:
+            end_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                "%d/%m/%Y %H:%M:%S"
+            )
+            utils.print_message(type="warn", message=f"Stop node for: {node_rev2}")
+            exit_code2 = stop_node(proc=node_proc2)
+            utils.print_message(type="warn", message=f"Exit code: {exit_code2}")
+            logfile2.flush()
+            logfile2.close()
+
+        if sync2_error:
+            sys.exit(1)
 
     chain_size = utils.get_directory_size(Path(ROOT_TEST_PATH) / "db")
 
