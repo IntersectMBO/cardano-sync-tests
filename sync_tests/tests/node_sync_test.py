@@ -175,7 +175,11 @@ def set_node_socket_path_env_var() -> None:
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
-        socket_path = (Path(ROOT_TEST_PATH) / "db" / "node.socket").expanduser().absolute()
+        start_socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH")
+        if start_socket_path is None:
+            socket_path = Path(ROOT_TEST_PATH / "db" / "node.socket").expanduser().absolute()
+        else:
+            socket_path = Path(start_socket_path).expanduser().absolute()
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
@@ -308,11 +312,12 @@ def start_node(
             f"--config config.json {start_args}"
         ).strip()
     else:
+        socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
         cmd = (
             f"{cardano_node} run --topology topology.json --database-path "
             f"{Path(ROOT_TEST_PATH) / 'db'} "
             f"--host-addr 0.0.0.0 --port 3000 --config "
-            f"config.json --socket-path ./db/node.socket {start_args}"
+            f"config.json --socket-path {socket_path} {start_args}"
         ).strip()
 
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
