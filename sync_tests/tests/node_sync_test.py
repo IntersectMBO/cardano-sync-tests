@@ -3,6 +3,7 @@ import datetime
 import fileinput
 import json
 import os
+import pathlib as pl
 import platform
 import re
 import shutil
@@ -11,24 +12,20 @@ import sys
 import time
 import typing as tp
 import urllib.request
-from pathlib import Path
 
-from git import Repo
+import git
 
 sys.path.append(os.getcwd())
 
-from typing import Optional
-
 import sync_tests.utils.helpers as utils
-from sync_tests.utils.blockfrost import get_epoch_start_datetime
-from sync_tests.utils.explorer import get_epoch_start_datetime_from_explorer
-from sync_tests.utils.gitpython import git_checkout
-from sync_tests.utils.gitpython import git_clone_iohk_repo
+from sync_tests.utils import blockfrost
+from sync_tests.utils import explorer
+from sync_tests.utils import gitpython
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = "./cardano-node"
 CLI = "./cardano-cli"
-ROOT_TEST_PATH: Path = Path.cwd()
+ROOT_TEST_PATH: pl.Path = pl.Path.cwd()
 NODE_LOG_FILE = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
@@ -36,12 +33,12 @@ RESULTS_FILE_NAME = "sync_results.json"
 
 def set_repo_paths() -> None:
     global ROOT_TEST_PATH
-    ROOT_TEST_PATH = Path.cwd()
+    ROOT_TEST_PATH = pl.Path.cwd()
     print(f"ROOT_TEST_PATH: {ROOT_TEST_PATH}")
 
 
 def delete_node_files() -> None:
-    for p in Path("..").glob("cardano-*"):
+    for p in pl.Path("..").glob("cardano-*"):
         if p.is_dir():
             utils.print_message(type="info_warn", message=f"deleting directory: {p}")
             shutil.rmtree(p)  # Use shutil.rmtree to delete directories
@@ -52,14 +49,14 @@ def delete_node_files() -> None:
 
 def rm_node_config_files() -> None:
     utils.print_message(type="info_warn", message="Removing existing config files")
-    os.chdir(Path(ROOT_TEST_PATH))
-    for gen in Path("..").glob("*-genesis.json"):
-        Path(gen).unlink(missing_ok=True)
+    os.chdir(pl.Path(ROOT_TEST_PATH))
+    for gen in pl.Path("..").glob("*-genesis.json"):
+        pl.Path(gen).unlink(missing_ok=True)
     for f in ("config.json", "topology.json"):
-        Path(f).unlink(missing_ok=True)
+        pl.Path(f).unlink(missing_ok=True)
 
 
-def download_config_file(env: str, file_name: str, save_as: Optional[str] = None) -> None:
+def download_config_file(env: str, file_name: str, save_as: str | None = None) -> None:
     save_as = save_as or file_name
     url = f"{CONFIGS_BASE_URL}/{env}/{file_name}"
     print(f"Downloading {file_name} from {url} and saving as {save_as}...")
@@ -67,8 +64,8 @@ def download_config_file(env: str, file_name: str, save_as: Optional[str] = None
 
 
 def get_node_config_files(env: str, node_topology_type: str) -> None:
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
+    os.chdir(pl.Path(ROOT_TEST_PATH))
+    current_directory = pl.Path.cwd()
     print(f"current_directory: {current_directory}")
     download_config_file(env, "config.json")
     download_config_file(env, "byron-genesis.json")
@@ -120,15 +117,15 @@ def disable_p2p_node_config(node_config_filepath: str) -> None:
 
 
 def set_node_socket_path_env_var() -> None:
-    socket_path: str | Path
+    socket_path: str | pl.Path
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
         start_socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH")
         if start_socket_path is None:
-            socket_path = Path(ROOT_TEST_PATH / "db" / "node.socket").expanduser().absolute()
+            socket_path = pl.Path(ROOT_TEST_PATH / "db" / "node.socket").expanduser().absolute()
         else:
-            socket_path = Path(start_socket_path).expanduser().absolute()
+            socket_path = pl.Path(start_socket_path).expanduser().absolute()
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
@@ -268,7 +265,7 @@ def start_node(
         socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
         cmd = (
             f"{cardano_node} run --topology topology.json --database-path "
-            f"{Path(ROOT_TEST_PATH) / 'db'} "
+            f"{pl.Path(ROOT_TEST_PATH) / 'db'} "
             f"--host-addr 0.0.0.0 --port 3000 --config "
             f"config.json --socket-path {socket_path} {start_args}"
         ).strip()
@@ -281,12 +278,12 @@ def start_node(
 
 
 def wait_node_start(timeout_minutes: int = 20) -> int:
-    current_directory = Path.cwd()
+    current_directory = pl.Path.cwd()
 
     utils.print_message(type="info", message="waiting for db folder to be created")
     count = 0
     count_timeout = 299
-    while not Path.is_dir(current_directory / "db"):
+    while not pl.Path.is_dir(current_directory / "db"):
         time.sleep(1)
         count += 1
         if count > count_timeout:
@@ -320,8 +317,8 @@ def stop_node(proc: subprocess.Popen) -> int:
 
 
 def copy_log_file_artifact(old_name: str, new_name: str) -> None:
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
+    os.chdir(pl.Path(ROOT_TEST_PATH))
+    current_directory = pl.Path.cwd()
     print(f"current_directory: {current_directory}")
     utils.execute_command(f"cp {old_name} {new_name}")
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
@@ -389,9 +386,9 @@ def wait_for_node_to_sync(env: str) -> tuple:
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
                 if env == "mainnet":
-                    actual_era_start_time = get_epoch_start_datetime(actual_epoch)
+                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
                 else:
-                    actual_era_start_time = get_epoch_start_datetime_from_explorer(
+                    actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
                         env, actual_epoch
                     )
                 actual_era_dict = {
@@ -435,9 +432,9 @@ def wait_for_node_to_sync(env: str) -> tuple:
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
                 if env == "mainnet":
-                    actual_era_start_time = get_epoch_start_datetime(actual_epoch)
+                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
                 else:
-                    actual_era_start_time = get_epoch_start_datetime_from_explorer(
+                    actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
                         env, actual_epoch
                     )
                 actual_era_dict = {
@@ -467,10 +464,10 @@ def wait_for_node_to_sync(env: str) -> tuple:
     sync_time_seconds = int(end_sync - start_sync)
     print(f"sync_time_seconds: {sync_time_seconds}")
 
-    os.chdir(Path(ROOT_TEST_PATH) / "db" / "immutable")
+    os.chdir(pl.Path(ROOT_TEST_PATH) / "db" / "immutable")
     chunk_files = sorted(os.listdir(os.getcwd()), key=os.path.getmtime)
     latest_chunk_no = chunk_files[-1].split(".")[0]
-    os.chdir(Path(ROOT_TEST_PATH))
+    os.chdir(pl.Path(ROOT_TEST_PATH))
     utils.print_message(type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}")
 
     # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
@@ -565,8 +562,8 @@ def get_no_of_slots_in_era(env: str, era_name: str, no_of_epochs_in_era: int) ->
 
 
 def get_data_from_logs(log_file: str) -> dict:
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
+    os.chdir(pl.Path(ROOT_TEST_PATH))
+    current_directory = pl.Path.cwd()
     print(f"current_directory: {current_directory}")
 
     tip_details_dict = {}
@@ -675,28 +672,28 @@ def get_cli_executable_path_built_with_cabal() -> str | None:
     return None
 
 
-def copy_node_executables(src_location: Path, dst_location: Path, build_mode: str) -> None:
+def copy_node_executables(src_location: pl.Path, dst_location: pl.Path, build_mode: str) -> None:
     if build_mode == "nix":
         node_binary_location = "cardano-node-bin/bin/"
         cli_binary_location = "cardano-cli-bin/bin/"
 
-        os.chdir(Path(src_location) / node_binary_location)
+        os.chdir(pl.Path(src_location) / node_binary_location)
         utils.print_message(
             type="info", message="files permissions inside cardano-node-bin/bin folder:"
         )
         subprocess.check_call(["ls", "-la"])
 
-        os.chdir(Path(src_location) / cli_binary_location)
+        os.chdir(pl.Path(src_location) / cli_binary_location)
         utils.print_message(
             type="info", message="files permissions inside cardano-cli-bin/bin folder:"
         )
         subprocess.check_call(["ls", "-la"])
-        os.chdir(Path(dst_location))
+        os.chdir(pl.Path(dst_location))
 
         try:
             shutil.copy2(
-                Path(src_location) / node_binary_location / "cardano-node",
-                Path(dst_location) / "cardano-node",
+                pl.Path(src_location) / node_binary_location / "cardano-node",
+                pl.Path(dst_location) / "cardano-node",
             )
         except Exception as e:
             utils.print_message(
@@ -706,8 +703,8 @@ def copy_node_executables(src_location: Path, dst_location: Path, build_mode: st
             sys.exit(1)
         try:
             shutil.copy2(
-                Path(src_location) / cli_binary_location / "cardano-cli",
-                Path(dst_location) / "cardano-cli",
+                pl.Path(src_location) / cli_binary_location / "cardano-cli",
+                pl.Path(dst_location) / "cardano-cli",
             )
         except Exception as e:
             utils.print_message(
@@ -726,7 +723,7 @@ def copy_node_executables(src_location: Path, dst_location: Path, build_mode: st
         cli_binary_location = cli_binary_location_tmp
 
         try:
-            shutil.copy2(node_binary_location, Path(dst_location) / "cardano-node")
+            shutil.copy2(node_binary_location, pl.Path(dst_location) / "cardano-node")
         except Exception as e:
             utils.print_message(
                 type="error",
@@ -735,7 +732,7 @@ def copy_node_executables(src_location: Path, dst_location: Path, build_mode: st
             sys.exit(1)
 
         try:
-            shutil.copy2(cli_binary_location, Path(dst_location) / "cardano-cli")
+            shutil.copy2(cli_binary_location, pl.Path(dst_location) / "cardano-cli")
         except Exception as e:
             utils.print_message(
                 type="error",
@@ -746,8 +743,10 @@ def copy_node_executables(src_location: Path, dst_location: Path, build_mode: st
 
 
 # TODO: refactor completely
-def get_node_files(node_rev: str, repository: Repo | None = None, build_tool: str = "nix") -> Repo:
-    test_directory = Path.cwd()
+def get_node_files(
+    node_rev: str, repository: git.Repo | None = None, build_tool: str = "nix"
+) -> git.Repo:
+    test_directory = pl.Path.cwd()
     repo = None
     utils.print_message(type="info", message=f"test_directory: {test_directory}")
     print(f" - listdir test_directory: {os.listdir(test_directory)}")
@@ -756,29 +755,29 @@ def get_node_files(node_rev: str, repository: Repo | None = None, build_tool: st
     node_repo_dir = test_directory / "cardano_node_dir"
 
     if node_repo_dir.is_dir() and repository:
-        repo = git_checkout(repository, node_rev)
+        repo = gitpython.git_checkout(repository, node_rev)
     else:
-        repo = git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
+        repo = gitpython.git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
 
     if build_tool == "nix":
         os.chdir(node_repo_dir)
-        Path("cardano-node-bin").unlink(missing_ok=True)
-        Path("cardano-cli-bin").unlink(missing_ok=True)
+        pl.Path("cardano-node-bin").unlink(missing_ok=True)
+        pl.Path("cardano-cli-bin").unlink(missing_ok=True)
         utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
         utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
         copy_node_executables(node_repo_dir, test_directory, "nix")
 
     elif build_tool == "cabal":
-        cabal_local_file = Path(test_directory) / "sync_tests" / "cabal.project.local"
+        cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
 
         cli_rev = "main"
         cli_repo_name = "cardano-cli"
         cli_repo_dir = test_directory / "cardano_cli_dir"
 
         if cli_repo_dir.is_dir() and repository:
-            git_checkout(repository, cli_rev)
+            gitpython.git_checkout(repository, cli_rev)
         else:
-            git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
+            gitpython.git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
 
         # Build cli
         os.chdir(cli_repo_dir)
@@ -790,7 +789,7 @@ def get_node_files(node_rev: str, repository: Repo | None = None, build_tool: st
         utils.execute_command("cabal update")
         utils.execute_command("cabal build cardano-cli")
         copy_node_executables(cli_repo_dir, test_directory, "cabal")
-        git_checkout(repo, "cabal.project")
+        gitpython.git_checkout(repo, "cabal.project")
 
         # Build node
         os.chdir(node_repo_dir)
@@ -802,7 +801,7 @@ def get_node_files(node_rev: str, repository: Repo | None = None, build_tool: st
         utils.execute_command("cabal update")
         utils.execute_command("cabal build cardano-node")
         copy_node_executables(node_repo_dir, test_directory, "cabal")
-        git_checkout(repo, "cabal.project")
+        gitpython.git_checkout(repo, "cabal.project")
 
     os.chdir(test_directory)
     subprocess.check_call(["chmod", "+x", NODE])
@@ -902,7 +901,7 @@ def main() -> None:
     )
     print()
     start_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    os.chdir(Path(ROOT_TEST_PATH))
+    os.chdir(pl.Path(ROOT_TEST_PATH))
     if "None" in node_start_arguments1:
         node_start_arguments1 = []
     node_proc1, logfile1 = start_node(cardano_node=NODE, node_start_arguments=node_start_arguments1)
@@ -1017,7 +1016,7 @@ def main() -> None:
 
         if env == "mainnet" and (node_topology_type1 != node_topology_type2):
             utils.print_message(type="warn", message="remove the previous topology")
-            utils.delete_file(Path(ROOT_TEST_PATH) / "topology.json")
+            utils.delete_file(pl.Path(ROOT_TEST_PATH) / "topology.json")
             print("Getting the node configuration files")
             get_node_config_files(env, node_topology_type2)
 
@@ -1030,7 +1029,7 @@ def main() -> None:
         start_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        os.chdir(Path(ROOT_TEST_PATH))
+        os.chdir(pl.Path(ROOT_TEST_PATH))
         if "None" in node_start_arguments1:
             node_start_arguments2 = []
         node_proc2, logfile2 = start_node(
@@ -1071,7 +1070,7 @@ def main() -> None:
         if sync2_error:
             sys.exit(1)
 
-    chain_size = utils.get_directory_size(Path(ROOT_TEST_PATH) / "db")
+    chain_size = utils.get_directory_size(pl.Path(ROOT_TEST_PATH) / "db")
 
     print("--- Node sync test completed")
     print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
@@ -1128,8 +1127,8 @@ def main() -> None:
     test_values_dict["hydra_eval_no2"] = node_rev2
 
     print("--- Write tests results to file")
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
+    os.chdir(pl.Path(ROOT_TEST_PATH))
+    current_directory = pl.Path.cwd()
     print(f"current_directory: {current_directory}")
     print(f"Write the test values to the {current_directory / RESULTS_FILE_NAME} file")
     with open(RESULTS_FILE_NAME, "w") as results_file:
