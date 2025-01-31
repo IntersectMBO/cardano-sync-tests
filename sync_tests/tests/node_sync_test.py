@@ -32,8 +32,7 @@ CLI = "./cardano-cli"
 ROOT_TEST_PATH: Path = Path.cwd()
 NODE_LOG_FILE = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
-RESULTS_FILE_NAME = r"sync_results.json"
-ONE_MINUTE = 60
+RESULTS_FILE_NAME = "sync_results.json"
 
 
 def set_repo_paths() -> None:
@@ -220,7 +219,7 @@ def wait_query_tip_available(timeout_minutes: int = 20) -> int:
             if "Invalid argument" in str(e.output):
                 print(f" -- exiting on - {e.output.decode('utf-8')}")
                 sys.exit(1)
-        time.sleep(ONE_MINUTE)
+        time.sleep(60)
     else:
         utils.print_message(type="error", message="     !!! ERROR: failed to get tip")
         sys.exit(1)
