@@ -127,23 +127,23 @@ def set_node_socket_path_env_var() -> None:
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
-def get_epoch_no_d_zero() -> int | None:
+def get_epoch_no_d_zero() -> int:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 257
-    return None
+    return -1
 
 
-def get_start_slot_no_d_zero() -> int | None:
+def get_start_slot_no_d_zero() -> int:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 25661009
-    return None
+    return -1
 
 
-def get_testnet_value() -> str | None:
+def get_testnet_value() -> str:
     env = utils.get_arg_value(args=args, key="environment")
-    arg: str | None = None
+    arg = ""
     if env == "mainnet":
         arg = "--mainnet"
     if env == "preview":
@@ -154,7 +154,7 @@ def get_testnet_value() -> str | None:
 
 
 def get_current_tip() -> tuple:
-    cmd = CLI + " latest query tip " + (get_testnet_value() or "")
+    cmd = f"{CLI} latest query tip {get_testnet_value()}"
 
     output = (
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
