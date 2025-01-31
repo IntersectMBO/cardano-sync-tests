@@ -11,7 +11,6 @@ import sys
 import time
 import typing as tp
 import urllib.request
-from collections import OrderedDict
 from pathlib import Path
 
 from git import Repo
@@ -363,8 +362,8 @@ def get_calculated_slot_no(env: str) -> int:
 
 
 def wait_for_node_to_sync(env: str) -> tuple:
-    era_details_dict = OrderedDict()
-    epoch_details_dict = OrderedDict()
+    era_details_dict = {}
+    epoch_details_dict = {}
 
     actual_epoch, actual_block, actual_hash, actual_slot, actual_era, sync_progress = (
         get_current_tip()
@@ -570,12 +569,12 @@ def get_data_from_logs(log_file: str) -> dict:
     current_directory = Path.cwd()
     print(f"current_directory: {current_directory}")
 
-    tip_details_dict = OrderedDict()
-    heap_ram_details_dict = OrderedDict()
-    rss_ram_details_dict = OrderedDict()
-    centi_cpu_dict = OrderedDict()
-    cpu_details_dict: OrderedDict[float, tp.Any] = OrderedDict()
-    logs_details_dict = OrderedDict()
+    tip_details_dict = {}
+    heap_ram_details_dict = {}
+    rss_ram_details_dict = {}
+    centi_cpu_dict = {}
+    cpu_details_dict: dict[float, tp.Any] = {}
+    logs_details_dict = {}
 
     with open(log_file) as f:
         log_file_lines = [line.rstrip() for line in f]
@@ -944,7 +943,7 @@ def main() -> None:
     print(f"end_sync_time1: {end_sync_time1}")
 
     # we are interested in the node logs only for the main sync - using tag_no1
-    test_values_dict: OrderedDict[str, tp.Any] = OrderedDict()
+    test_values_dict: dict[str, tp.Any] = {}
     print("--- Parse the node logs and get the relevant data")
     logs_details_dict = get_data_from_logs(NODE_LOG_FILE)
     test_values_dict["log_values"] = json.dumps(logs_details_dict)
@@ -1089,7 +1088,7 @@ def main() -> None:
         ]
         test_values_dict[str(era + "_sync_speed_sps")] = era_details_dict1[era]["sync_speed_sps"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
-    epoch_details = OrderedDict()
+    epoch_details = {}
     for epoch in epoch_details_dict1:
         print(f"{epoch} --> {epoch_details_dict1[epoch]}")
         epoch_details[epoch] = epoch_details_dict1[epoch]["sync_duration_secs"]
