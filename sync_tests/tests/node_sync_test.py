@@ -52,36 +52,6 @@ def delete_node_files() -> None:
             p.unlink(missing_ok=True)
 
 
-def update_config(file_name: str, updates: dict) -> None:
-    # Load the current configuration from the JSON file
-    with open(file_name) as file:
-        config = json.load(file)
-
-    # Update the config with the new values
-    for key, value in updates.items():
-        if key in config:
-            print(f"Updating '{key}' from '{config[key]}' to '{value}'")
-            config[key] = value
-        else:
-            print(f"Key '{key}' not found in the config, adding new key-value pair")
-            config[key] = value
-
-    # Write the updated configuration back to the JSON file
-    with open(file_name, "w") as file:
-        json.dump(config, file, indent=4)
-    print("Configuration updated successfully.")
-
-
-def disable_p2p_node_config() -> None:
-    os.chdir(Path(ROOT_TEST_PATH))
-    current_directory = Path.cwd()
-    print(f"current_directory: {current_directory}")
-    print(f" - listdir current_directory: {os.listdir(current_directory)}")
-
-    updates = {"EnableP2P": False, "PeerSharing": False}
-    update_config("config.json", updates)
-
-
 def rm_node_config_files() -> None:
     utils.print_message(type="info_warn", message="Removing existing config files")
     os.chdir(Path(ROOT_TEST_PATH))
@@ -112,7 +82,6 @@ def get_node_config_files(env: str, node_topology_type: str) -> None:
         download_config_file(env, "topology-non-bootstrap-peers.json", save_as="topology.json")
     elif env == "mainnet" and node_topology_type == "legacy":
         download_config_file(env, "topology-legacy.json", save_as="topology.json")
-        disable_p2p_node_config()
     else:
         download_config_file(env, "topology.json")
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
@@ -122,54 +91,31 @@ def get_node_config_files(env: str, node_topology_type: str) -> None:
     utils.print_file_content("topology.json")
 
 
-def enable_cardano_node_resources_monitoring(node_config_filepath: str) -> None:
-    utils.print_message(type="warn", message="- Enable cardano node resource monitoring:")
-    utils.print_message(
-        type="info",
-        message=(
-            '  node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]'
-        ),
-    )
-
-    os.chdir(Path(ROOT_TEST_PATH))
+def configure_node(node_config_filepath: str) -> None:
     with open(node_config_filepath) as json_file:
         node_config_json = json.load(json_file)
-    node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]
-    with open(node_config_filepath, "w") as json_file:
-        json.dump(node_config_json, json_file, indent=2)
-
-
-def enable_cardano_node_tracers(node_config_filepath: str) -> None:
-    os.chdir(Path(ROOT_TEST_PATH))
-    with open(node_config_filepath) as json_file:
-        node_config_json = json.load(json_file)
-
-    utils.print_message(type="warn", message="- Enable tracer:")
-    utils.print_message(type="info", message="  Set minSeverity = Info")
-    node_config_json["minSeverity"] = "Info"
 
     # Use the legacy tracing system
     node_config_json["TraceOptions"] = {}
     node_config_json["UseTraceDispatcher"] = False
 
-    # node_config_json["TestEnableDevelopmentNetworkProtocols"] = True
-    # node_config_json["TestEnableDevelopmentHardForkEras"] = True
+    # Set min severity
+    node_config_json["minSeverity"] = "Info"
 
-    # node_config_json["EnableP2P"] = False
-    # node_config_json["TraceLocalMux"] = True
-    # node_config_json["TraceLocalHandshake"] = True
-    # node_config_json["TraceLocalErrorPolicy"] = True
-    # node_config_json["TraceErrorPolicy"] = True
-    # node_config_json["TurnOnLogging"] = False
-    #
-    # if "mapSeverity" not in node_config_json["options"]:
-    #     node_config_json["options"]["mapSeverity"] = {}
-    # node_config_json["options"]["mapSeverity"]["cardano.node.LocalMux"] = "Info"
-    # node_config_json["options"]["mapSeverity"]["cardano.node.LocalHandshake"] = "Info"
-    # node_config_json["options"]["mapSeverity"]["cardano.node.LocalErrorPolicy"] = "Debug"
-    # node_config_json["options"]["mapSeverity"]["cardano.node.ErrorPolicy"] = "Debug"
+    # Enable resource monitoring
+    node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]
 
-    # print(json.dumps(node_config_json, indent=2))
+    with open(node_config_filepath, "w") as json_file:
+        json.dump(node_config_json, json_file, indent=2)
+
+
+def disable_p2p_node_config(node_config_filepath: str) -> None:
+    with open(node_config_filepath) as json_file:
+        node_config_json = json.load(json_file)
+
+    # Use the legacy topology
+    node_config_json["EnableP2P"] = False
+    node_config_json["PeerSharing"] = False
 
     with open(node_config_filepath, "w") as json_file:
         json.dump(node_config_json, json_file, indent=2)
@@ -936,9 +882,10 @@ def main() -> None:
     # TO DO: change the default to P2P when full P2P will be supported on Mainnet
     get_node_config_files(env, node_topology_type1)
 
-    print("Enabling the desired cardano node tracers")
-    enable_cardano_node_resources_monitoring("config.json")
-    enable_cardano_node_tracers("config.json")
+    print("Configure node")
+    configure_node(node_config_filepath="config.json")
+    if env == "mainnet" and node_topology_type1 == "legacy":
+        disable_p2p_node_config(node_config_filepath="config.json")
 
     print(f"--- Start node sync test using node_rev1: {node_rev1}")
     utils.print_message(
