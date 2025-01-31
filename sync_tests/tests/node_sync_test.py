@@ -15,8 +15,6 @@ import urllib.request
 
 import git
 
-sys.path.append(os.getcwd())
-
 import sync_tests.utils.helpers as utils
 from sync_tests.utils import blockfrost
 from sync_tests.utils import explorer
