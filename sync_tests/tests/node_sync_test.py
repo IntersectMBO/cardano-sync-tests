@@ -131,12 +131,6 @@ def get_epoch_no_d_zero() -> int | None:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 257
-    if env == "testnet":
-        return 121
-    if env == "staging":
-        return None
-    if env == "shelley-qa":
-        return 2554
     return None
 
 
@@ -144,12 +138,6 @@ def get_start_slot_no_d_zero() -> int | None:
     env = utils.get_arg_value(args=args, key="environment")
     if env == "mainnet":
         return 25661009
-    if env == "testnet":
-        return 21902400
-    if env == "staging":
-        return None
-    if env == "shelley-qa":
-        return 18375135
     return None
 
 
@@ -158,12 +146,6 @@ def get_testnet_value() -> str | None:
     arg: str | None = None
     if env == "mainnet":
         arg = "--mainnet"
-    if env == "testnet":
-        arg = "--testnet-magic 1097911063"
-    if env == "staging":
-        arg = "--testnet-magic 633343913"
-    if env == "shelley-qa":
-        arg = "--testnet-magic 3"
     if env == "preview":
         arg = "--testnet-magic 2"
     if env == "preprod":
