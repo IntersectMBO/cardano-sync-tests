@@ -12,7 +12,7 @@ STAGING_EXPLORER_URL = "https://explorer.staging.cardano.org/graphql"
 TESTNET_EXPLORER_URL = "https://explorer.cardano-testnet.iohkdev.io/graphql"
 SHELLEY_QA_EXPLORER_URL = "https://explorer.shelley-qa.dev.cardano.org/graphql"
 PREPROD_EXPLORER_URL = None
-PREVIEW_EXPLORER_URL = None
+PREVIEW_EXPLORER_URL = "https://preview.koios.rest/api/v1/epoch_info?_epoch_no="
 
 EXPLORER_URLS = {
     "mainnet": MAINNET_EXPLORER_URL,
@@ -62,33 +62,46 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
 
     result = None
     try:
-        response = requests.post(url, data=payload, headers=headers)
-        status_code = response.status_code
+        if env == "preview":
+            url = f"{url}{epoch_no}"
+            response = requests.get(url=url, headers=headers)
 
-        if status_code != 200:
-            logging.error(f"Failed to fetch data from {url}: {response.text}")
-            logging.error(
-                "!!! ERROR: status_code != 200 when getting start time for "
-                f"epoch {epoch_no} on {env}"
-            )
-        else:
-            count = 0
-            while "data" in response.json() and response.json().get("data") is None:
-                logging.info(f"Attempt {count}: Response is None. Retrying...")
-                time.sleep(30)
-                response = requests.post(url, data=payload, headers=headers)
-                count += 1
-
-                if count > 10:
-                    logging.error(
-                        "!!! ERROR: Not able to get start time for "
-                        f"epoch {epoch_no} on {env} after 10 tries"
-                    )
-                    break
-
+            if response.status_code != 200:
+                logging.error(f"Failed to fetch data from {url}: {response.text}")
+                logging.error(
+                    "!!! ERROR: status_code != 200 when getting start time for "
+                    f"epoch {epoch_no} on {env}"
+                )
             else:
-                data = response.json()
-                result = data["data"]["epochs"][0]["startedAt"]
+                result = response.json()[0]["start_time"]
+        else:
+            response = requests.post(url, data=payload, headers=headers)
+            status_code = response.status_code
+
+            if status_code != 200:
+                logging.error(f"Failed to fetch data from {url}: {response.text}")
+                logging.error(
+                    "!!! ERROR: status_code != 200 when getting start time for "
+                    f"epoch {epoch_no} on {env}"
+                )
+            else:
+                count = 0
+                while "data" in response.json() and response.json().get("data") is None:
+                    logging.info(f"Attempt {count}: Response is None. Retrying...")
+                    time.sleep(30)
+                    response = requests.post(url, data=payload, headers=headers)
+                    count += 1
+
+                    if count > 10:
+                        logging.error(
+                            "!!! ERROR: Not able to get start time for "
+                            f"epoch {epoch_no} on {env} after 10 tries"
+                        )
+                        break
+
+                else:
+                    data = response.json()
+                    result = data["data"]["epochs"][0]["startedAt"]
 
     except requests.RequestException:
         logging.exception("Request failed")
