@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import fileinput
 import json
+import logging
 import os
 import pathlib as pl
 import platform
@@ -21,6 +22,8 @@ from sync_tests.utils import blockfrost
 from sync_tests.utils import explorer
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
+
+LOGGER = logging.getLogger(__name__)
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = pl.Path.cwd() / "cardano-node"
@@ -139,22 +142,19 @@ def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
-def get_epoch_no_d_zero() -> int:
-    env = helpers.get_arg_value(args=args, key="environment")
+def get_epoch_no_d_zero(env: str) -> int:
     if env == "mainnet":
         return 257
     return -1
 
 
-def get_start_slot_no_d_zero() -> int:
-    env = helpers.get_arg_value(args=args, key="environment")
+def get_start_slot_no_d_zero(env: str) -> int:
     if env == "mainnet":
         return 25661009
     return -1
 
 
-def get_testnet_value() -> str:
-    env = helpers.get_arg_value(args=args, key="environment")
+def get_testnet_value(env: str) -> str:
     arg = ""
     if env == "mainnet":
         arg = "--mainnet"
@@ -165,8 +165,8 @@ def get_testnet_value() -> str:
     return arg
 
 
-def get_current_tip() -> tuple:
-    cmd = f"{CLI} latest query tip {get_testnet_value()}"
+def get_current_tip(env: str) -> tuple:
+    cmd = f"{CLI} latest query tip {get_testnet_value(env=env)}"
 
     output = (
         subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
@@ -184,7 +184,7 @@ def get_current_tip() -> tuple:
     return epoch, block, hash_value, slot, era, sync_progress
 
 
-def wait_query_tip_available(timeout_minutes: int = 20) -> int:
+def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take > 10 mins for the cli to work (opening db and
     # replaying the ledger)
@@ -192,7 +192,7 @@ def wait_query_tip_available(timeout_minutes: int = 20) -> int:
 
     for i in range(timeout_minutes):
         try:
-            get_current_tip()
+            get_current_tip(env=env)
             break
         except subprocess.CalledProcessError as e:
             now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
@@ -269,7 +269,7 @@ def start_node(
     return proc, logfile
 
 
-def wait_node_start(timeout_minutes: int = 20) -> int:
+def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
     current_directory = pl.Path.cwd()
 
     helpers.print_message(type="info", message="waiting for db folder to be created")
@@ -288,7 +288,7 @@ def wait_node_start(timeout_minutes: int = 20) -> int:
             sys.exit(1)
 
     helpers.print_message(type="ok", message=f"DB folder was created after {count} seconds")
-    secs_to_start = wait_query_tip_available(timeout_minutes)
+    secs_to_start = wait_query_tip_available(env=env, timeout_minutes=timeout_minutes)
     print(f" - listdir current_directory: {os.listdir(current_directory)}")
     print(f" - listdir db: {os.listdir(current_directory / 'db')}")
     return secs_to_start
@@ -347,7 +347,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     epoch_details_dict = {}
 
     actual_epoch, actual_block, actual_hash, actual_slot, actual_era, sync_progress = (
-        get_current_tip()
+        get_current_tip(env=env)
     )
     last_slot_no = get_calculated_slot_no(env)
     start_sync = time.perf_counter()
@@ -397,7 +397,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
                 actual_slot,
                 actual_era,
                 sync_progress,
-            ) = get_current_tip()
+            ) = get_current_tip(env=env)
 
     else:
         while actual_slot <= last_slot_no:
@@ -442,7 +442,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
                 actual_slot,
                 actual_era,
                 sync_progress,
-            ) = get_current_tip()
+            ) = get_current_tip(env=env)
 
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
@@ -747,7 +747,7 @@ def get_node_files(
     return repo
 
 
-def main() -> None:
+def run_sync_test(args: argparse.Namespace) -> None:
     repository = None
     secs_to_start1, secs_to_start2 = 0, 0
 
@@ -845,7 +845,7 @@ def main() -> None:
     node_proc1, logfile1 = start_node(
         cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments1
     )
-    secs_to_start1 = wait_node_start(timeout_minutes=10)
+    secs_to_start1 = wait_node_start(env=env, timeout_minutes=10)
 
     helpers.print_message(type="info", message=" - waiting for the node to sync")
 
@@ -976,7 +976,7 @@ def main() -> None:
         node_proc2, logfile2 = start_node(
             cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments2
         )
-        secs_to_start2 = wait_node_start()
+        secs_to_start2 = wait_node_start(env=env)
 
         helpers.print_message(
             type="info",
@@ -1062,8 +1062,8 @@ def main() -> None:
     test_values_dict["eras_in_test"] = json.dumps(list(era_details_dict1.keys()))
     test_values_dict["no_of_cpu_cores"] = os.cpu_count()
     test_values_dict["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
-    test_values_dict["epoch_no_d_zero"] = get_epoch_no_d_zero()
-    test_values_dict["start_slot_no_d_zero"] = get_start_slot_no_d_zero()
+    test_values_dict["epoch_no_d_zero"] = get_epoch_no_d_zero(env=env)
+    test_values_dict["start_slot_no_d_zero"] = get_start_slot_no_d_zero(env=env)
     test_values_dict["hydra_eval_no1"] = node_rev1
     test_values_dict["hydra_eval_no2"] = node_rev2
 
@@ -1080,7 +1080,8 @@ def main() -> None:
     shutil.copy(base_dir / NODE_LOG_FILE_NAME, base_dir / NODE_LOG_FILE_ARTIFACT)
 
 
-if __name__ == "__main__":
+def get_args() -> argparse.Namespace:
+    """Get command line arguments."""
     parser = argparse.ArgumentParser(description="Run Cardano Node sync test\n\n")
 
     parser.add_argument(
@@ -1148,6 +1149,19 @@ if __name__ == "__main__":
         help="arguments to be passed when starting the node from existing state (second tag_no)",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    main()
+
+def main() -> int:
+    logging.basicConfig(
+        format="%(name)s:%(levelname)s:%(message)s",
+        level=logging.INFO,
+    )
+    args = get_args()
+    run_sync_test(args=args)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
