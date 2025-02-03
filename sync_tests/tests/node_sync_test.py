@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import datetime
 import fileinput
 import json
@@ -7,6 +8,7 @@ import pathlib as pl
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -21,18 +23,21 @@ from sync_tests.utils import explorer
 from sync_tests.utils import gitpython
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
-NODE = "./cardano-node"
-CLI = "./cardano-cli"
-ROOT_TEST_PATH: pl.Path = pl.Path.cwd()
-NODE_LOG_FILE = "logfile.log"
+NODE = pl.Path.cwd() / "cardano-node"
+CLI = pl.Path.cwd() / "cardano-cli"
+NODE_LOG_FILE_NAME = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
 
 
-def set_repo_paths() -> None:
-    global ROOT_TEST_PATH
-    ROOT_TEST_PATH = pl.Path.cwd()
-    print(f"ROOT_TEST_PATH: {ROOT_TEST_PATH}")
+@contextlib.contextmanager
+def temporary_chdir(path: pl.Path) -> tp.Iterator[None]:
+    prev_cwd = pl.Path.cwd()  # Store the current working directory
+    try:
+        os.chdir(path)  # Change to the new directory
+        yield
+    finally:
+        os.chdir(prev_cwd)  # Restore the original working directory
 
 
 def delete_node_files() -> None:
@@ -45,47 +50,54 @@ def delete_node_files() -> None:
             p.unlink(missing_ok=True)
 
 
-def rm_node_config_files() -> None:
+def make_executable(path: pl.Path) -> None:
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def rm_node_config_files(conf_dir: pl.Path) -> None:
     utils.print_message(type="info_warn", message="Removing existing config files")
-    os.chdir(pl.Path(ROOT_TEST_PATH))
-    for gen in pl.Path("..").glob("*-genesis.json"):
+    for gen in conf_dir.glob("*-genesis.json"):
         pl.Path(gen).unlink(missing_ok=True)
     for f in ("config.json", "topology.json"):
-        pl.Path(f).unlink(missing_ok=True)
+        (conf_dir / f).unlink(missing_ok=True)
 
 
-def download_config_file(env: str, file_name: str, save_as: str | None = None) -> None:
-    save_as = save_as or file_name
-    url = f"{CONFIGS_BASE_URL}/{env}/{file_name}"
-    print(f"Downloading {file_name} from {url} and saving as {save_as}...")
+def download_config_file(config_slug: str, save_as: pl.Path) -> None:
+    url = f"{CONFIGS_BASE_URL}/{config_slug}"
+    print(f"Downloading {url} and saving as {save_as}...")
     urllib.request.urlretrieve(url, save_as)
 
 
-def get_node_config_files(env: str, node_topology_type: str) -> None:
-    os.chdir(pl.Path(ROOT_TEST_PATH))
-    current_directory = pl.Path.cwd()
-    print(f"current_directory: {current_directory}")
-    download_config_file(env, "config.json")
-    download_config_file(env, "byron-genesis.json")
-    download_config_file(env, "shelley-genesis.json")
-    download_config_file(env, "alonzo-genesis.json")
-    download_config_file(env, "conway-genesis.json")
+def get_node_config_files(env: str, node_topology_type: str, conf_dir: pl.Path) -> None:
+    download_config_file(config_slug=f"{env}/config.json", save_as=conf_dir / "config.json")
+    download_config_file(
+        config_slug=f"{env}/byron-genesis.json", save_as=conf_dir / "byron-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/shelley-genesis.json", save_as=conf_dir / "shelley-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/alonzo-genesis.json", save_as=conf_dir / "alonzo-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/conway-genesis.json", save_as=conf_dir / "conway-genesis.json"
+    )
 
     if env == "mainnet" and node_topology_type == "non-bootstrap-peers":
-        download_config_file(env, "topology-non-bootstrap-peers.json", save_as="topology.json")
+        download_config_file(
+            config_slug=f"{env}/topology-non-bootstrap-peers.json",
+            save_as=conf_dir / "topology.json",
+        )
     elif env == "mainnet" and node_topology_type == "legacy":
-        download_config_file(env, "topology-legacy.json", save_as="topology.json")
+        download_config_file(
+            config_slug=f"{env}/topology-legacy.json", save_as=conf_dir / "topology.json"
+        )
     else:
-        download_config_file(env, "topology.json")
-    print(f" - listdir current_directory: {os.listdir(current_directory)}")
-    utils.print_message(type="info_warn", message=" Config File Content: ")
-    utils.print_file_content("config.json")
-    utils.print_message(type="info_warn", message=" Topology File Content: ")
-    utils.print_file_content("topology.json")
+        download_config_file(config_slug=f"{env}/topology.json", save_as=conf_dir / "topology.json")
 
 
-def configure_node(node_config_filepath: str) -> None:
-    with open(node_config_filepath) as json_file:
+def configure_node(config_file: pl.Path) -> None:
+    with open(config_file) as json_file:
         node_config_json = json.load(json_file)
 
     # Use the legacy tracing system
@@ -98,30 +110,30 @@ def configure_node(node_config_filepath: str) -> None:
     # Enable resource monitoring
     node_config_json["options"]["mapBackends"]["cardano.node.resources"] = ["KatipBK"]
 
-    with open(node_config_filepath, "w") as json_file:
+    with open(config_file, "w") as json_file:
         json.dump(node_config_json, json_file, indent=2)
 
 
-def disable_p2p_node_config(node_config_filepath: str) -> None:
-    with open(node_config_filepath) as json_file:
+def disable_p2p_node_config(config_file: pl.Path) -> None:
+    with open(config_file) as json_file:
         node_config_json = json.load(json_file)
 
     # Use the legacy topology
     node_config_json["EnableP2P"] = False
     node_config_json["PeerSharing"] = False
 
-    with open(node_config_filepath, "w") as json_file:
+    with open(config_file, "w") as json_file:
         json.dump(node_config_json, json_file, indent=2)
 
 
-def set_node_socket_path_env_var() -> None:
+def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
     socket_path: str | pl.Path
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
         start_socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH")
         if start_socket_path is None:
-            socket_path = pl.Path(ROOT_TEST_PATH / "db" / "node.socket").expanduser().absolute()
+            socket_path = (base_dir / "db" / "node.socket").expanduser().absolute()
         else:
             socket_path = pl.Path(start_socket_path).expanduser().absolute()
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
@@ -211,7 +223,7 @@ def wait_query_tip_available(timeout_minutes: int = 20) -> int:
 
 def get_node_version() -> tuple[str, str]:
     try:
-        cmd = CLI + " --version"
+        cmd = f"{CLI} --version"
         output = (
             subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
             .decode("utf-8")
@@ -228,30 +240,30 @@ def get_node_version() -> tuple[str, str]:
 
 
 def start_node(
-    cardano_node: str, node_start_arguments: tp.Iterable[str]
+    cardano_node: pl.Path, base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
 ) -> tuple[subprocess.Popen, tp.IO[str]]:
     start_args = " ".join(node_start_arguments)
 
     if platform.system().lower() == "windows":
         cmd = (
             f"{cardano_node} run --topology topology.json "
-            f"--database-path db "
-            f"--host-addr 0.0.0.0 "
-            f"--port 3000 "
-            f"--socket-path \\\\.\\pipe\\cardano-node "
+            f"--database-path {base_dir / 'db'} "
+            "--host-addr 0.0.0.0 "
+            "--port 3000 "
+            "--socket-path \\\\.\\pipe\\cardano-node "
             f"--config config.json {start_args}"
         ).strip()
     else:
         socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
         cmd = (
             f"{cardano_node} run --topology topology.json --database-path "
-            f"{pl.Path(ROOT_TEST_PATH) / 'db'} "
-            f"--host-addr 0.0.0.0 --port 3000 --config "
+            f"{base_dir / 'db'} "
+            "--host-addr 0.0.0.0 --port 3000 --config "
             f"config.json --socket-path {socket_path} {start_args}"
         ).strip()
 
     utils.print_message(type="info_warn", message=f"start node cmd: {cmd}")
-    logfile = open(NODE_LOG_FILE, "w+")
+    logfile = open(base_dir / NODE_LOG_FILE_NAME, "w+")
 
     proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
     return proc, logfile
@@ -296,14 +308,6 @@ def stop_node(proc: subprocess.Popen) -> int:
     return exit_code
 
 
-def copy_log_file_artifact(old_name: str, new_name: str) -> None:
-    os.chdir(pl.Path(ROOT_TEST_PATH))
-    current_directory = pl.Path.cwd()
-    print(f"current_directory: {current_directory}")
-    utils.execute_command(f"cp {old_name} {new_name}")
-    print(f" - listdir current_directory: {os.listdir(current_directory)}")
-
-
 def get_calculated_slot_no(env: str) -> int:
     current_time = datetime.datetime.now(tz=datetime.timezone.utc)
     shelley_start_time = byron_start_time = current_time
@@ -338,7 +342,7 @@ def get_calculated_slot_no(env: str) -> int:
     return last_slot_no
 
 
-def wait_for_node_to_sync(env: str) -> tuple:
+def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     era_details_dict = {}
     epoch_details_dict = {}
 
@@ -444,10 +448,8 @@ def wait_for_node_to_sync(env: str) -> tuple:
     sync_time_seconds = int(end_sync - start_sync)
     print(f"sync_time_seconds: {sync_time_seconds}")
 
-    os.chdir(pl.Path(ROOT_TEST_PATH) / "db" / "immutable")
-    chunk_files = sorted(os.listdir(os.getcwd()), key=os.path.getmtime)
-    latest_chunk_no = chunk_files[-1].split(".")[0]
-    os.chdir(pl.Path(ROOT_TEST_PATH))
+    chunk_files = sorted((base_dir / "db" / "immutable").iterdir(), key=lambda f: f.stat().st_mtime)
+    latest_chunk_no = chunk_files[-1].stem
     utils.print_message(type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}")
 
     # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
@@ -541,11 +543,7 @@ def get_no_of_slots_in_era(env: str, era_name: str, no_of_epochs_in_era: int) ->
     return int(epoch_length_secs * no_of_epochs_in_era)
 
 
-def get_data_from_logs(log_file: str) -> dict:
-    os.chdir(pl.Path(ROOT_TEST_PATH))
-    current_directory = pl.Path.cwd()
-    print(f"current_directory: {current_directory}")
-
+def get_data_from_logs(log_file: pl.Path) -> dict:
     tip_details_dict = {}
     heap_ram_details_dict = {}
     rss_ram_details_dict = {}
@@ -622,104 +620,70 @@ def get_data_from_logs(log_file: str) -> dict:
     return logs_details_dict
 
 
-def get_cabal_build_files() -> list[str]:
-    node_build_files = []
+def get_cabal_build_files(repo_dir: pl.Path) -> list[pl.Path]:
+    build_dir = repo_dir / "dist-newstyle/build"
 
-    for dirpath, _, filenames in os.walk("dist-newstyle/build"):
-        for f in filenames:
-            abs_filepath = os.path.abspath(os.path.join(dirpath, f))
-            node_build_files.append(abs_filepath)
+    node_build_files: list[pl.Path] = []
+    if build_dir.exists():
+        node_build_files.extend(f.resolve() for f in build_dir.rglob("*") if f.is_file())
+
     return node_build_files
 
 
-def get_node_executable_path_built_with_cabal() -> str | None:
-    for f in get_cabal_build_files():
-        if "\\x\\cardano-node\\build\\" in f and "cardano-node-tmp" not in f and "autogen" not in f:
-            utils.print_message(type="info", message=f"Found node executable: {f}")
-            global NODE
-            NODE = f
+def get_node_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | None:
+    for f in get_cabal_build_files(repo_dir=repo_dir):
+        if (
+            "x" in f.parts
+            and "cardano-node" in f.parts
+            and "build" in f.parts
+            and "cardano-node-tmp" not in f.name
+            and "autogen" not in f.name
+        ):
             return f
     return None
 
 
-def get_cli_executable_path_built_with_cabal() -> str | None:
-    for f in get_cabal_build_files():
-        if "\\x\\cardano-cli\\build\\" in f and "cardano-cli-tmp" not in f and "autogen" not in f:
-            utils.print_message(type="info", message=f"Found node-cli executable: {f}")
-            global CLI
-            CLI = f
+def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | None:
+    for f in get_cabal_build_files(repo_dir=repo_dir):
+        if (
+            "x" in f.parts
+            and "cardano-cli" in f.parts
+            and "build" in f.parts
+            and "cardano-cli-tmp" not in f.name
+            and "autogen" not in f.name
+        ):
             return f
     return None
 
 
-def copy_node_executables(src_location: pl.Path, dst_location: pl.Path, build_mode: str) -> None:
-    if build_mode == "nix":
-        node_binary_location = "cardano-node-bin/bin/"
-        cli_binary_location = "cardano-cli-bin/bin/"
+def copy_cabal_node_exe(repo_dir: pl.Path, dst_location: pl.Path) -> None:
+    node_binary_location_tmp = get_node_executable_path_built_with_cabal(repo_dir=repo_dir)
+    assert node_binary_location_tmp is not None  # TODO: refactor
+    node_binary_location = node_binary_location_tmp
+    shutil.copy2(node_binary_location, dst_location / "cardano-node")
+    make_executable(path=dst_location / "cardano-node")
 
-        os.chdir(pl.Path(src_location) / node_binary_location)
-        utils.print_message(
-            type="info", message="files permissions inside cardano-node-bin/bin folder:"
-        )
-        subprocess.check_call(["ls", "-la"])
 
-        os.chdir(pl.Path(src_location) / cli_binary_location)
-        utils.print_message(
-            type="info", message="files permissions inside cardano-cli-bin/bin folder:"
-        )
-        subprocess.check_call(["ls", "-la"])
-        os.chdir(pl.Path(dst_location))
+def copy_cabal_cli_exe(repo_dir: pl.Path, dst_location: pl.Path) -> None:
+    cli_binary_location_tmp = get_cli_executable_path_built_with_cabal(repo_dir=repo_dir)
+    assert cli_binary_location_tmp is not None  # TODO: refactor
+    cli_binary_location = cli_binary_location_tmp
+    shutil.copy2(cli_binary_location, dst_location / "cardano-cli")
+    make_executable(path=dst_location / "cardano-cli")
 
-        try:
-            shutil.copy2(
-                pl.Path(src_location) / node_binary_location / "cardano-node",
-                pl.Path(dst_location) / "cardano-node",
-            )
-        except Exception as e:
-            utils.print_message(
-                type="error",
-                message=f" !!! ERROR - could not copy the cardano-node file - {e}",
-            )
-            sys.exit(1)
-        try:
-            shutil.copy2(
-                pl.Path(src_location) / cli_binary_location / "cardano-cli",
-                pl.Path(dst_location) / "cardano-cli",
-            )
-        except Exception as e:
-            utils.print_message(
-                type="error",
-                message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
-            )
-            sys.exit(1)
-        time.sleep(5)
 
-    if build_mode == "cabal":
-        node_binary_location_tmp = get_node_executable_path_built_with_cabal()
-        assert node_binary_location_tmp is not None  # TODO: refactor
-        node_binary_location = node_binary_location_tmp
-        cli_binary_location_tmp = get_cli_executable_path_built_with_cabal()
-        assert cli_binary_location_tmp is not None  # TODO: refactor
-        cli_binary_location = cli_binary_location_tmp
+def ln_nix_node_from_repo(repo_dir: pl.Path, dst_location: pl.Path) -> None:
+    (dst_location / "cardano-node").unlink(missing_ok=True)  # Remove existing file if any
+    os.symlink(
+        repo_dir / "cardano-node-bin" / "bin" / "cardano-node",
+        dst_location / "cardano-node",
+    )
 
-        try:
-            shutil.copy2(node_binary_location, pl.Path(dst_location) / "cardano-node")
-        except Exception as e:
-            utils.print_message(
-                type="error",
-                message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
-            )
-            sys.exit(1)
-
-        try:
-            shutil.copy2(cli_binary_location, pl.Path(dst_location) / "cardano-cli")
-        except Exception as e:
-            utils.print_message(
-                type="error",
-                message=f" !!! ERROR - could not copy the cardano-cli file - {e}",
-            )
-            sys.exit(1)
-        time.sleep(5)
+    (dst_location / "cardano-cli").unlink(missing_ok=True)  # Remove existing file if any
+    os.symlink(
+        repo_dir / "cardano-cli-bin" / "bin" / "cardano-cli",
+        dst_location / "cardano-cli",
+    )
 
 
 # TODO: refactor completely
@@ -728,11 +692,9 @@ def get_node_files(
 ) -> git.Repo:
     test_directory = pl.Path.cwd()
     repo = None
-    utils.print_message(type="info", message=f"test_directory: {test_directory}")
-    print(f" - listdir test_directory: {os.listdir(test_directory)}")
 
     node_repo_name = "cardano-node"
-    node_repo_dir = test_directory / "cardano_node_dir"
+    node_repo_dir = pl.Path("cardano_node_dir")
 
     if node_repo_dir.is_dir() and repository:
         repo = gitpython.git_checkout(repository, node_rev)
@@ -740,12 +702,12 @@ def get_node_files(
         repo = gitpython.git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
 
     if build_tool == "nix":
-        os.chdir(node_repo_dir)
-        pl.Path("cardano-node-bin").unlink(missing_ok=True)
-        pl.Path("cardano-cli-bin").unlink(missing_ok=True)
-        utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-        utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
-        copy_node_executables(node_repo_dir, test_directory, "nix")
+        with temporary_chdir(path=node_repo_dir):
+            pl.Path("cardano-node-bin").unlink(missing_ok=True)
+            pl.Path("cardano-cli-bin").unlink(missing_ok=True)
+            utils.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
+            utils.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
+        ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_location=test_directory)
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
@@ -760,42 +722,39 @@ def get_node_files(
             gitpython.git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
 
         # Build cli
-        os.chdir(cli_repo_dir)
-        shutil.copy2(cabal_local_file, cli_repo_dir)
-        print(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
-        shutil.rmtree("dist-newstyle", ignore_errors=True)
-        for line in fileinput.input("cabal.project", inplace=True):
-            print(line.replace("tests: True", "tests: False"), end="")
-        utils.execute_command("cabal update")
-        utils.execute_command("cabal build cardano-cli")
-        copy_node_executables(cli_repo_dir, test_directory, "cabal")
-        gitpython.git_checkout(repo, "cabal.project")
+        with temporary_chdir(path=cli_repo_dir):
+            shutil.copy2(cabal_local_file, cli_repo_dir)
+            print(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
+            shutil.rmtree("dist-newstyle", ignore_errors=True)
+            for line in fileinput.input("cabal.project", inplace=True):
+                print(line.replace("tests: True", "tests: False"), end="")
+            utils.execute_command("cabal update")
+            utils.execute_command("cabal build cardano-cli")
+        copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
 
         # Build node
-        os.chdir(node_repo_dir)
-        shutil.copy2(cabal_local_file, node_repo_dir)
-        print(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
-        shutil.rmtree("dist-newstyle", ignore_errors=True)
-        for line in fileinput.input("cabal.project", inplace=True):
-            print(line.replace("tests: True", "tests: False"), end="")
-        utils.execute_command("cabal update")
-        utils.execute_command("cabal build cardano-node")
-        copy_node_executables(node_repo_dir, test_directory, "cabal")
+        with temporary_chdir(path=node_repo_dir):
+            shutil.copy2(cabal_local_file, node_repo_dir)
+            print(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
+            shutil.rmtree("dist-newstyle", ignore_errors=True)
+            for line in fileinput.input("cabal.project", inplace=True):
+                print(line.replace("tests: True", "tests: False"), end="")
+            utils.execute_command("cabal update")
+            utils.execute_command("cabal build cardano-node")
+        copy_cabal_cli_exe(repo_dir=node_repo_dir, dst_location=test_directory)
         gitpython.git_checkout(repo, "cabal.project")
 
-    os.chdir(test_directory)
-    subprocess.check_call(["chmod", "+x", NODE])
-    subprocess.check_call(["chmod", "+x", CLI])
-    utils.print_message(type="info", message="files permissions inside test folder:")
-    subprocess.check_call(["ls", "-la"])
     return repo
 
 
 def main() -> None:
     repository = None
     secs_to_start1, secs_to_start2 = 0, 0
-    set_repo_paths()
-    set_node_socket_path_env_var()
+
+    conf_dir = pl.Path.cwd()
+    base_dir = pl.Path.cwd()
+
+    set_node_socket_path_env_var(base_dir=base_dir)
 
     print("--- Test data information", flush=True)
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
@@ -855,14 +814,14 @@ def main() -> None:
     print(f"  - cardano_cli_git_rev1: {cli_git_rev1}")
 
     print("--- Get the node configuration files")
-    rm_node_config_files()
+    rm_node_config_files(conf_dir=conf_dir)
     # TO DO: change the default to P2P when full P2P will be supported on Mainnet
-    get_node_config_files(env, node_topology_type1)
+    get_node_config_files(env=env, node_topology_type=node_topology_type1, conf_dir=conf_dir)
 
     print("Configure node")
-    configure_node(node_config_filepath="config.json")
+    configure_node(config_file=conf_dir / "config.json")
     if env == "mainnet" and node_topology_type1 == "legacy":
-        disable_p2p_node_config(node_config_filepath="config.json")
+        disable_p2p_node_config(config_file=conf_dir / "config.json")
 
     print(f"--- Start node sync test using node_rev1: {node_rev1}")
     utils.print_message(
@@ -881,10 +840,11 @@ def main() -> None:
     )
     print()
     start_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    os.chdir(pl.Path(ROOT_TEST_PATH))
     if "None" in node_start_arguments1:
         node_start_arguments1 = []
-    node_proc1, logfile1 = start_node(cardano_node=NODE, node_start_arguments=node_start_arguments1)
+    node_proc1, logfile1 = start_node(
+        cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments1
+    )
     secs_to_start1 = wait_node_start(timeout_minutes=10)
 
     utils.print_message(type="info", message=" - waiting for the node to sync")
@@ -897,7 +857,7 @@ def main() -> None:
             latest_chunk_no1,
             era_details_dict1,
             epoch_details_dict1,
-        ) = wait_for_node_to_sync(env)
+        ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
     except Exception as e:
         sync1_error = True
         utils.print_message(
@@ -924,7 +884,7 @@ def main() -> None:
     # we are interested in the node logs only for the main sync - using tag_no1
     test_values_dict: dict[str, tp.Any] = {}
     print("--- Parse the node logs and get the relevant data")
-    logs_details_dict = get_data_from_logs(NODE_LOG_FILE)
+    logs_details_dict = get_data_from_logs(log_file=base_dir / NODE_LOG_FILE_NAME)
     test_values_dict["log_values"] = json.dumps(logs_details_dict)
 
     print(f"--- Start node using tag_no2: {tag_no2}")
@@ -996,9 +956,11 @@ def main() -> None:
 
         if env == "mainnet" and (node_topology_type1 != node_topology_type2):
             utils.print_message(type="warn", message="remove the previous topology")
-            utils.delete_file(pl.Path(ROOT_TEST_PATH) / "topology.json")
+            (conf_dir / "topology.json").unlink()
             print("Getting the node configuration files")
-            get_node_config_files(env, node_topology_type2)
+            get_node_config_files(
+                env=env, node_topology_type=node_topology_type2, conf_dir=conf_dir
+            )
 
         utils.print_message(type="warn", message="node version")
         cli_version2, cli_git_rev2 = get_node_version()
@@ -1009,11 +971,10 @@ def main() -> None:
         start_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        os.chdir(pl.Path(ROOT_TEST_PATH))
         if "None" in node_start_arguments1:
             node_start_arguments2 = []
         node_proc2, logfile2 = start_node(
-            cardano_node=NODE, node_start_arguments=node_start_arguments2
+            cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments2
         )
         secs_to_start2 = wait_node_start()
 
@@ -1030,7 +991,7 @@ def main() -> None:
                 latest_chunk_no2,
                 era_details_dict2,
                 epoch_details_dict2,
-            ) = wait_for_node_to_sync(env)
+            ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
         except Exception as e:
             sync2_error = True
             utils.print_message(
@@ -1050,7 +1011,7 @@ def main() -> None:
         if sync2_error:
             sys.exit(1)
 
-    chain_size = utils.get_directory_size(pl.Path(ROOT_TEST_PATH) / "db")
+    chain_size = utils.get_directory_size(base_dir / "db")
 
     print("--- Node sync test completed")
     print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
@@ -1107,7 +1068,6 @@ def main() -> None:
     test_values_dict["hydra_eval_no2"] = node_rev2
 
     print("--- Write tests results to file")
-    os.chdir(pl.Path(ROOT_TEST_PATH))
     current_directory = pl.Path.cwd()
     print(f"current_directory: {current_directory}")
     print(f"Write the test values to the {current_directory / RESULTS_FILE_NAME} file")
@@ -1117,7 +1077,7 @@ def main() -> None:
     print("--- Copy the node logs")
     # sometimes uploading the artifacts fails because the node still writes into
     # the log file during the upload even though an attepmt to stop it was made
-    copy_log_file_artifact(NODE_LOG_FILE, NODE_LOG_FILE_ARTIFACT)
+    shutil.copy(base_dir / NODE_LOG_FILE_NAME, base_dir / NODE_LOG_FILE_ARTIFACT)
 
 
 if __name__ == "__main__":

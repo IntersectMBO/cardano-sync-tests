@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -98,7 +99,7 @@ def load_json_files() -> tuple[dict, dict]:
     return expected_db_schema, expected_db_indexes
 
 
-def get_arg_value(args: tp.Any, key: str, default: tp.Any | None = None) -> tp.Any:
+def get_arg_value(args: argparse.Namespace, key: str, default: tp.Any | None = None) -> tp.Any:
     """Retrieve the value of a specific argument from an arguments object."""
     value = vars(args).get(key, default)
     if isinstance(value, str):
