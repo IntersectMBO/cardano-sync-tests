@@ -1,6 +1,7 @@
 import argparse
 import ast
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -9,6 +10,9 @@ import pandas as pd
 
 import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.helpers as utils
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 RESULTS_FILE_NAME = r"sync_results.json"
 

@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import logging
 import os
 import sys
 import typing as tp
@@ -10,6 +11,9 @@ sys.path.append(os.getcwd())
 
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.helpers as utils
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"

@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -12,8 +13,7 @@ import psutil
 from colorama import Fore
 from colorama import Style
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 
 def print_message(message: str, type: str = "info") -> None:
@@ -46,9 +46,9 @@ def print_file_content(file_name: str) -> None:
             content = file.read()
             print(content)
     except FileNotFoundError:
-        logging.exception(f"File '{file_name}' not found.")
+        LOGGER.exception(f"File '{file_name}' not found.")
     except Exception:
-        logging.exception("An error occurred while reading the file")
+        LOGGER.exception("An error occurred while reading the file")
 
 
 def get_directory_size(start_path: str | Path = ".") -> int:
@@ -69,18 +69,18 @@ def zip_file(archive_name: str, file_name: str | Path) -> None:
             archive_name, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
         ) as zip:
             zip.write(file_name)
-        logging.info(f"File '{file_name}' successfully zipped as '{archive_name}'.")
+        LOGGER.info(f"File '{file_name}' successfully zipped as '{archive_name}'.")
     except Exception:
-        logging.exception("Error while zipping file")
+        LOGGER.exception("Error while zipping file")
 
 
 def delete_file(file_path: Path) -> None:
     """Delete a file from the file system."""
     try:
         file_path.unlink()
-        logging.info(f"File '{file_path}' deleted successfully.")
+        LOGGER.info(f"File '{file_path}' deleted successfully.")
     except OSError as e:
-        logging.exception(f"Error deleting file '{file_path}': {e.strerror}")
+        LOGGER.exception(f"Error deleting file '{file_path}': {e.strerror}")
 
 
 def load_json_files() -> tuple[dict, dict]:
@@ -98,7 +98,7 @@ def load_json_files() -> tuple[dict, dict]:
     return expected_db_schema, expected_db_indexes
 
 
-def get_arg_value(args: tp.Any, key: str, default: tp.Any | None = None) -> tp.Any:
+def get_arg_value(args: argparse.Namespace, key: str, default: tp.Any | None = None) -> tp.Any:
     """Retrieve the value of a specific argument from an arguments object."""
     value = vars(args).get(key, default)
     if isinstance(value, str):
@@ -110,7 +110,7 @@ def get_arg_value(args: tp.Any, key: str, default: tp.Any | None = None) -> tp.A
 
 def execute_command(command: str) -> None:
     """Execute a shell command and logs its output and errors."""
-    logging.info(f"--- Execute command {command}")
+    LOGGER.info(f"--- Execute command {command}")
     try:
         cmd = shlex.split(command)
         process = subprocess.Popen(
@@ -119,13 +119,13 @@ def execute_command(command: str) -> None:
         outs, errors = process.communicate(timeout=3600)
 
         if errors:
-            logging.info(f"Warnings or Errors: {errors}")
+            LOGGER.info(f"Warnings or Errors: {errors}")
 
-        logging.info(f"Output of command: {command} : {outs}")
+        LOGGER.info(f"Output of command: {command} : {outs}")
         exit_code = process.returncode
 
         if exit_code != 0:
-            logging.error(f"Command {command} returned exit code: {exit_code}")
+            LOGGER.error(f"Command {command} returned exit code: {exit_code}")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        logging.exception("Command {command} returned exception")
+        LOGGER.exception("Command {command} returned exception")
         raise

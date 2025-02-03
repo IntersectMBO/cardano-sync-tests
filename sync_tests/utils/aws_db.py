@@ -4,8 +4,7 @@ import typing as tp
 
 import pymysql.cursors
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 
 def create_connection() -> pymysql.Connect | None:
@@ -18,7 +17,7 @@ def create_connection() -> pymysql.Connect | None:
             db=os.environ.get("AWS_DB_NAME"),
         )
     except Exception:
-        logging.exception("Database connection failed")
+        LOGGER.exception("Database connection failed")
         return None
     else:
         return conn
@@ -41,13 +40,13 @@ def execute_query(
                 return cur.fetchall()
             conn.commit()
     except Exception:
-        logging.exception(f"Query execution failed: {query}")
+        LOGGER.exception(f"Query execution failed: {query}")
         return None
 
 
 def get_column_names_from_table(table_name: str) -> list[str]:
     """Retrieve column names from the specified table."""
-    logging.info(f"Getting column names from table: {table_name}")
+    LOGGER.info(f"Getting column names from table: {table_name}")
     conn = create_connection()
     if not conn:
         return []
@@ -62,7 +61,7 @@ def get_column_names_from_table(table_name: str) -> list[str]:
 
 def add_column_to_table(table_name: str, column_name: str, column_type: str) -> bool:
     """Add a new column to the specified table."""
-    logging.info(f"Adding column {column_name} of type {column_type} to table {table_name}")
+    LOGGER.info(f"Adding column {column_name} of type {column_type} to table {table_name}")
     conn = create_connection()
     if not conn:
         return False
@@ -70,7 +69,7 @@ def add_column_to_table(table_name: str, column_name: str, column_type: str) -> 
     try:
         query = f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {column_type}"
         execute_query(conn, query)
-        logging.info(f"Successfully added column {column_name} to table {table_name}")
+        LOGGER.info(f"Successfully added column {column_name} to table {table_name}")
         return True
     finally:
         conn.close()
@@ -81,7 +80,7 @@ def insert_values_into_db(
 ) -> bool:
     """Insert values into the database table."""
     action = "bulk" if bulk else "single"
-    logging.info(
+    LOGGER.info(
         f"Adding {len(col_values_list) if bulk else 1} {action} entry/entries into {table_name}"
     )
 
@@ -100,9 +99,9 @@ def insert_values_into_db(
         else:
             cur.execute(query, col_values_list)
         conn.commit()
-        logging.info(f"Successfully added {cur.rowcount} rows to table {table_name}")
+        LOGGER.info(f"Successfully added {cur.rowcount} rows to table {table_name}")
     except Exception:
-        logging.exception(f"Failed to insert data into {table_name}")
+        LOGGER.exception(f"Failed to insert data into {table_name}")
         return False
     finally:
         conn.close()
@@ -111,7 +110,7 @@ def insert_values_into_db(
 
 def get_row_count(table_name: str) -> int | None:
     """Return the row count of a table."""
-    logging.info(f"Getting row count for table: {table_name}")
+    LOGGER.info(f"Getting row count for table: {table_name}")
     conn = create_connection()
     if not conn:
         return None
@@ -126,7 +125,7 @@ def get_row_count(table_name: str) -> int | None:
 
 def get_last_identifier(table_name: str) -> str | None:
     """Get the last identifier value from the table."""
-    logging.info(f"Fetching last identifier value from {table_name}")
+    LOGGER.info(f"Fetching last identifier value from {table_name}")
 
     if get_row_count(table_name) == 0:
         return f"{table_name}_0"
@@ -148,7 +147,7 @@ def get_last_identifier(table_name: str) -> str | None:
 
 def get_max_epoch(table_name: str) -> int | None:
     """Get the maximum epoch number from the table."""
-    logging.info(f"Fetching max epoch number from {table_name}")
+    LOGGER.info(f"Fetching max epoch number from {table_name}")
 
     if get_row_count(table_name) == 0:
         return 0

@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import sys
 import time
@@ -13,6 +14,9 @@ sys.path.append(os.getcwd())
 import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.helpers as utils
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 TEST_RESULTS = f"snapshot_creation_{utils_db_sync.ENVIRONMENT}_test_results.json"
 
