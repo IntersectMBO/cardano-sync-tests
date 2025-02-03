@@ -4,8 +4,7 @@ import time
 
 import requests
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 MAINNET_EXPLORER_URL = "https://explorer.cardano.org/graphql"
 STAGING_EXPLORER_URL = "https://explorer.staging.cardano.org/graphql"
@@ -54,7 +53,7 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
     url = EXPLORER_URLS.get(env)
 
     if url is None:
-        logging.error(
+        LOGGER.error(
             "The provided 'env' is not supported. Please use one of: "
             f"{', '.join(EXPLORER_URLS.keys())}"
         )
@@ -67,8 +66,8 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
             response = requests.get(url=url, headers=headers)
 
             if response.status_code != 200:
-                logging.error(f"Failed to fetch data from {url}: {response.text}")
-                logging.error(
+                LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
+                LOGGER.error(
                     "!!! ERROR: status_code != 200 when getting start time for "
                     f"epoch {epoch_no} on {env}"
                 )
@@ -79,21 +78,21 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
             status_code = response.status_code
 
             if status_code != 200:
-                logging.error(f"Failed to fetch data from {url}: {response.text}")
-                logging.error(
+                LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
+                LOGGER.error(
                     "!!! ERROR: status_code != 200 when getting start time for "
                     f"epoch {epoch_no} on {env}"
                 )
             else:
                 count = 0
                 while "data" in response.json() and response.json().get("data") is None:
-                    logging.info(f"Attempt {count}: Response is None. Retrying...")
+                    LOGGER.info(f"Attempt {count}: Response is None. Retrying...")
                     time.sleep(30)
                     response = requests.post(url, data=payload, headers=headers)
                     count += 1
 
                     if count > 10:
-                        logging.error(
+                        LOGGER.error(
                             "!!! ERROR: Not able to get start time for "
                             f"epoch {epoch_no} on {env} after 10 tries"
                         )
@@ -104,8 +103,8 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
                     result = data["data"]["epochs"][0]["startedAt"]
 
     except requests.RequestException:
-        logging.exception("Request failed")
+        LOGGER.exception("Request failed")
     except KeyError:
-        logging.exception(f"Unexpected response structure: {response.json()}")
+        LOGGER.exception(f"Unexpected response structure: {response.json()}")
 
     return result
