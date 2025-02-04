@@ -1,4 +1,4 @@
-name: Node sync tests
+name: Genesis node sync tests
 
 on:
   workflow_dispatch:
