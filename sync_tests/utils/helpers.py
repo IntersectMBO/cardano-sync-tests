@@ -2,12 +2,12 @@ import argparse
 import json
 import logging
 import os
+import pathlib as pl
 import platform
 import shlex
 import subprocess
 import typing as tp
 import zipfile
-from pathlib import Path
 
 import psutil
 from colorama import Fore
@@ -51,7 +51,7 @@ def print_file_content(file_name: str) -> None:
         LOGGER.exception("An error occurred while reading the file")
 
 
-def get_directory_size(start_path: str | Path = ".") -> int:
+def get_directory_size(start_path: str | pl.Path = ".") -> int:
     """Calculate the total size of all files in a directory."""
     # returns directory size in bytes
     total_size = 0
@@ -62,7 +62,7 @@ def get_directory_size(start_path: str | Path = ".") -> int:
     return total_size
 
 
-def zip_file(archive_name: str, file_name: str | Path) -> None:
+def zip_file(archive_name: str, file_name: str | pl.Path) -> None:
     """Compress a file into a zip archive."""
     try:
         with zipfile.ZipFile(
@@ -74,7 +74,7 @@ def zip_file(archive_name: str, file_name: str | Path) -> None:
         LOGGER.exception("Error while zipping file")
 
 
-def delete_file(file_path: Path) -> None:
+def delete_file(file_path: pl.Path) -> None:
     """Delete a file from the file system."""
     try:
         file_path.unlink()
@@ -129,3 +129,14 @@ def execute_command(command: str) -> None:
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         LOGGER.exception("Command {command} returned exception")
         raise
+
+
+def update_json_file(file_path: pl.Path, updates: dict) -> None:
+    """Read a JSON file, updates it with the provided dictionary, and writes it back."""
+    with open(file_path) as json_file:
+        data = json.load(json_file)
+
+    data.update(updates)
+
+    with open(file_path, "w") as json_file:
+        json.dump(data, json_file, indent=2)
