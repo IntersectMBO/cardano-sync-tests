@@ -1,5 +1,4 @@
 import hashlib
-import hashlib.Hash
 import json
 import logging
 import mmap
@@ -12,7 +11,6 @@ import sys
 import tarfile
 import time
 import typing as tp
-import urllib.request
 from datetime import timedelta
 from os.path import basename
 from os.path import normpath
@@ -24,7 +22,8 @@ import requests
 import xmltodict
 from assertpy import assert_that
 
-import sync_tests.utils.helpers as utils
+from sync_tests.utils import helpers
+from sync_tests.utils import node
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -167,27 +166,6 @@ def print_file(file: str | Path, number_of_lines: int = 0) -> None:
         logging.info(line.strip())
 
 
-def manage_process(proc_name: str, action: str) -> psutil.Process:
-    """Manage a process by retrieving, terminating, or killing based on the action specified."""
-    for proc in psutil.process_iter():
-        if proc_name in proc.name():
-            if action == "get":
-                return proc
-            if action == "terminate":
-                logging.info(f"Attempting to terminate the {proc_name} process - {proc}")
-                proc.terminate()
-                proc.wait(timeout=30)  # Wait for the process to terminate
-                if proc.is_running():
-                    logging.warning(
-                        f"Termination failed, forcefully killing the {proc_name} process - {proc}"
-                    )
-                    proc.kill()
-            else:
-                msg = "Action must be 'get' or 'terminate'"
-                raise ValueError(msg)
-    return None
-
-
 def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
     """Manage a directory by creating or removing it based on the action specified."""
     path = Path(f"{root}/{dir_name}")
@@ -202,7 +180,7 @@ def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
     raise ValueError(msg)
 
 
-def get_file_sha_256_sum(filepath: str | Path) -> hashlib.Hash:
+def get_file_sha_256_sum(filepath: str | Path) -> str:
     """Calculate and returns the SHA-256 checksum of a file."""
     return hashlib.file_digest(Path(filepath).open("rb"), hashlib.sha256).hexdigest()
 
@@ -236,21 +214,6 @@ def get_last_perf_stats_point() -> dict[str, int]:
         last_perf_stats_point = db_sync_perf_stats[-1]
 
     return last_perf_stats_point
-
-
-def get_testnet_value(env: str) -> str | None:
-    """Return the appropriate testnet magic value for the specified environment."""
-    if env == "mainnet":
-        return "--mainnet"
-    if env == "preprod":
-        return "--testnet-magic 1"
-    if env == "preview":
-        return "--testnet-magic 2"
-    if env == "shelley-qa":
-        return "--testnet-magic 3"
-    if env == "staging":
-        return "--testnet-magic 633343913"
-    return None
 
 
 def get_log_output_frequency(env: str) -> int:
@@ -308,127 +271,18 @@ def emergency_upload_artifacts(env: str) -> None:
     write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
     export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
 
-    utils.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
-    utils.zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
-    utils.zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
-    utils.zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
+    helpers.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
+    helpers.zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
+    helpers.zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
+    helpers.zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
 
     upload_artifact(PERF_STATS_ARCHIVE_NAME)
     upload_artifact(SYNC_DATA_ARCHIVE_NAME)
     upload_artifact(DB_SYNC_ARCHIVE_NAME)
     upload_artifact(NODE_ARCHIVE_NAME)
 
-    manage_process(proc_name="cardano-db-sync", action="terminate")
-    manage_process(proc_name="cardano-node", action="terminate")
-
-
-def get_node_config_files(env: str) -> None:
-    """Download Cardano node configuration files for the specified environment."""
-    base_url = "https://book.play.dev.cardano.org/environments/"
-    filenames = [
-        (base_url + env + "/config.json", f"{env}-config.json"),
-        (base_url + env + "/byron-genesis.json", "byron-genesis.json"),
-        (base_url + env + "/shelley-genesis.json", "shelley-genesis.json"),
-        (base_url + env + "/alonzo-genesis.json", "alonzo-genesis.json"),
-        (base_url + env + "/conway-genesis.json", "conway-genesis.json"),
-        (base_url + env + "/topology.json", f"{env}-topology.json"),
-    ]
-    for url, filename in filenames:
-        try:
-            urllib.request.urlretrieve(url, filename)
-            # Check if the file exists after download
-            if not os.path.isfile(filename):
-                msg = f"Downloaded file '{filename}' does not exist."
-                raise FileNotFoundError(msg)
-        except Exception:
-            logging.exception(f"Error downloading {url}")
-            sys.exit(1)
-
-
-def copy_node_executables(build_method: str = "nix") -> None:
-    """Copy the Cardano node executables built with the specified build method."""
-    current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
-    node_dir = Path.cwd() / "cardano-node"
-    node_dir / "cardano-node-bin/"
-    os.chdir(node_dir)
-    logging.info(f"current_directory: {os.getcwd()}")
-
-    result = subprocess.run(["nix", "--version"], stdout=subprocess.PIPE, text=True, check=True)
-    logging.info(f"Nix version: {result.stdout.strip()}")
-
-    if build_method == "nix":
-        node_binary_location = "cardano-node-bin/bin/cardano-node"
-        node_cli_binary_location = "cardano-cli-bin/bin/cardano-cli"
-        shutil.copy2(node_binary_location, "_cardano-node")
-        shutil.copy2(node_cli_binary_location, "_cardano-cli")
-        os.chdir(current_directory)
-        return
-
-    # Path for copying binaries built with cabal
-    try:
-        find_node_cmd = [
-            "find",
-            ".",
-            "-name",
-            "cardano-node",
-            "-executable",
-            "-type",
-            "f",
-        ]
-        output_find_node_cmd = (
-            subprocess.check_output(find_node_cmd, stderr=subprocess.STDOUT, timeout=15)
-            .decode("utf-8")
-            .strip()
-        )
-        logging.info(f"Find cardano-node output: {output_find_node_cmd}")
-        shutil.copy2(output_find_node_cmd, "_cardano-node")
-
-        find_cli_cmd = [
-            "find",
-            ".",
-            "-name",
-            "cardano-cli",
-            "-executable",
-            "-type",
-            "f",
-        ]
-        output_find_cli_cmd = (
-            subprocess.check_output(find_cli_cmd, stderr=subprocess.STDOUT, timeout=15)
-            .decode("utf-8")
-            .strip()
-        )
-        logging.info(f"Find cardano-cli output: {output_find_cli_cmd}")
-        shutil.copy2(output_find_cli_cmd, "_cardano-cli")
-        os.chdir(current_directory)
-
-    except subprocess.CalledProcessError as e:
-        msg = "command '{}' return with error (code {}): {}".format(
-            e.cmd, e.returncode, " ".join(str(e.output).split())
-        )
-        raise RuntimeError(msg) from e
-
-
-def get_node_version() -> tuple[str, str]:
-    """Get node version."""
-    current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH / "cardano-node")
-    try:
-        cmd = "./_cardano-cli --version"
-        output = (
-            subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-            .decode("utf-8")
-            .strip()
-        )
-        cardano_cli_version = output.split("git rev ")[0].strip()
-        cardano_cli_git_rev = output.split("git rev ")[1].strip()
-        os.chdir(current_directory)
-        return str(cardano_cli_version), str(cardano_cli_git_rev)
-    except subprocess.CalledProcessError as e:
-        msg = "command '{}' return with error (code {}): {}".format(
-            e.cmd, e.returncode, " ".join(str(e.output).split())
-        )
-        raise RuntimeError(msg) from e
+    helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
+    helpers.manage_process(proc_name="cardano-node", action="terminate")
 
 
 def download_and_extract_node_snapshot(env: str) -> None:
@@ -457,7 +311,7 @@ def download_and_extract_node_snapshot(env: str) -> None:
     tf = tarfile.open(Path(current_directory) / archive_name)
     tf.extractall(Path(current_directory))
     os.rename(f"db-{env}", "db")
-    utils.delete_file(Path(current_directory) / archive_name)
+    helpers.delete_file(Path(current_directory) / archive_name)
     logging.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
@@ -470,159 +324,6 @@ def set_node_socket_path_env_var_in_cwd() -> None:
         raise Exception(msg)
     socket_path = "db/node.socket"
     export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
-
-
-def get_node_tip(env: str, timeout_minutes: int = 20) -> tuple:
-    """Retrieve the current tip of the Cardano node."""
-    current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH / "cardano-node")
-    testnet_value = get_testnet_value(env)
-    assert testnet_value is not None  # TODO: refactor
-    cmd = "./_cardano-cli latest query tip " + testnet_value
-
-    for i in range(timeout_minutes):
-        try:
-            output = (
-                subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-                .decode("utf-8")
-                .strip()
-            )
-            os.chdir(current_directory)
-            output_json = json.loads(output)
-            if output_json["epoch"] is not None:
-                output_json["epoch"] = int(output_json["epoch"])
-            if "block" not in output_json:
-                output_json["block"] = None
-            else:
-                output_json["block"] = int(output_json["block"])
-            if "hash" not in output_json:
-                output_json["hash"] = None
-            if "slot" not in output_json:
-                output_json["slot"] = None
-            else:
-                output_json["slot"] = int(output_json["slot"])
-            if "syncProgress" not in output_json:
-                output_json["syncProgress"] = None
-            else:
-                output_json["syncProgress"] = float(output_json["syncProgress"])
-
-            return (
-                output_json["epoch"],
-                output_json["block"],
-                output_json["hash"],
-                output_json["slot"],
-                output_json["era"].lower(),
-                output_json["syncProgress"],
-            )
-        except subprocess.CalledProcessError as e:
-            logging.exception(f" === Waiting 60s before retrying to get the tip again - {i}")
-            logging.exception(
-                f"     !!!ERROR: command {e.cmd} return with error (code {e.returncode}): "
-                f"{' '.join(str(e.output).split())}"
-            )
-            if "Invalid argument" in str(e.output):
-                emergency_upload_artifacts(env)
-                sys.exit(1)
-        time.sleep(ONE_MINUTE)
-    emergency_upload_artifacts(env)
-    sys.exit(1)
-
-
-def wait_for_node_to_start(env: str) -> int:
-    """Wait for the Cardano node to start."""
-    # when starting from clean state it might take ~30 secs for the cli to work
-    # when starting from existing state it might take >10 mins for the cli to work (opening db and
-    # replaying the ledger)
-    start_counter = time.perf_counter()
-    get_node_tip(env)
-    stop_counter = time.perf_counter()
-
-    start_time_seconds = int(stop_counter - start_counter)
-    logging.info(
-        f" === It took {start_time_seconds} seconds for the QUERY TIP command to be available"
-    )
-    return start_time_seconds
-
-
-def wait_for_node_to_sync(env: str, sync_percentage: float = 99.9) -> int:
-    """Wait for the Cardano node to start."""
-    start_sync = time.perf_counter()
-    *data, node_sync_progress = get_node_tip(env)
-    log_frequency = get_log_output_frequency(env)
-    logging.info("--- Waiting for Node to sync")
-    logging.info(f"node progress [%]: {node_sync_progress}")
-    counter = 0
-
-    while node_sync_progress < sync_percentage:
-        if counter % log_frequency == 0:
-            (
-                node_epoch_no,
-                node_block_no,
-                node_hash,
-                node_slot,
-                node_era,
-                node_sync_progress,
-            ) = get_node_tip(env)
-            logging.info(
-                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, "
-                f"block: {node_block_no}, slot: {node_slot}, era: {node_era}"
-            )
-        *data, node_sync_progress = get_node_tip(env)
-        time.sleep(ONE_MINUTE)
-        counter += 1
-
-    end_sync = time.perf_counter()
-    sync_time_seconds = int(end_sync - start_sync)
-    return sync_time_seconds
-
-
-def start_node_in_cwd(env: str) -> int:
-    """Start the Cardano node in the current working directory."""
-    os.chdir(ROOT_TEST_PATH / "cardano-node")
-    current_directory = os.getcwd()
-    if basename(normpath(current_directory)) != "cardano-node":
-        msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
-        raise Exception(msg)
-
-    logging.info(f"current_directory: {current_directory}")
-    cmd = (
-        f"./_cardano-node run --topology {env}-topology.json --database-path "
-        f"{Path(ROOT_TEST_PATH) / 'cardano-node' / 'db'} "
-        f"--host-addr 0.0.0.0 --port 3000 --config "
-        f"{env}-config.json --socket-path ./db/node.socket"
-    )
-
-    logfile = open(NODE_LOG_FILE, "w+")
-    logging.info(f"start node cmd: {cmd}")
-
-    try:
-        subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
-        logging.info("waiting for db folder to be created")
-        counter = 0
-        timeout_counter = 1 * ONE_MINUTE
-        node_db_dir = current_directory + "/db"
-        while not os.path.isdir(node_db_dir):
-            time.sleep(1)
-            counter += 1
-            if counter > timeout_counter:
-                logging.error(
-                    f"ERROR: waited {timeout_counter} seconds and the DB folder was not created yet"
-                )
-                print_file(NODE_LOG_FILE)
-                print_color_log(sh_colors.FAIL, "Error starting node")
-                sys.exit(1)
-
-        logging.info(f"DB folder was created after {counter} seconds")
-        secs_to_start = wait_for_node_to_start(env)
-        logging.info(f" - listdir current_directory: {os.listdir(current_directory)}")
-        logging.info(f" - listdir db: {os.listdir(node_db_dir)}")
-    except subprocess.CalledProcessError as e:
-        msg = "command '{}' return with error (code {}): {}".format(
-            e.cmd, e.returncode, " ".join(str(e.output).split())
-        )
-        raise RuntimeError(msg) from e
-    else:
-        return secs_to_start
 
 
 def create_pgpass_file(env: str) -> None:
@@ -746,7 +447,7 @@ def get_db_sync_version() -> tuple[str, str]:
 
 def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
     """Fetch the latest snapshot URL for the specified environment."""
-    github_snapshot_url: str = utils.get_arg_value(args=args, key="snapshot_url")
+    github_snapshot_url: str = helpers.get_arg_value(args=args, key="snapshot_url")
     if github_snapshot_url != "latest":
         return github_snapshot_url
 
@@ -1041,7 +742,8 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
     buildkite_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
-    db_sync_process = manage_process(proc_name="cardano-db-sync", action="get")
+
+    db_sync_process = helpers.manage_process(proc_name="cardano-db-sync", action="get")
     log_frequency = get_log_output_frequency(env)
 
     logging.info("--- Db sync monitoring")
@@ -1084,7 +786,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                 node_slot,
                 node_era,
                 node_sync_progress,
-            ) = get_node_tip(env)
+            ) = node.get_current_tip(env)
             logging.info(
                 f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, "
                 f"block: {node_block_no}, slot: {node_slot}, era: {node_era}"

@@ -2,74 +2,76 @@ import argparse
 import datetime
 import logging
 import os
+import pathlib as pl
 import sys
 import typing as tp
 from collections import OrderedDict
-from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.db_sync as utils_db_sync
-import sync_tests.utils.helpers as utils
+from sync_tests.utils import db_sync
+from sync_tests.utils import helpers
+from sync_tests.utils import node
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-TEST_RESULTS = f"db_sync_{utils_db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
-DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{utils_db_sync.ENVIRONMENT}_restoration.zip"
+TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
+DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoration.zip"
+NODE = pl.Path.cwd() / "cardano-node"
 
 
 def main() -> int:
-    if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
+    if helpers.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot restoration")
         return 0
 
     print("--- Db sync snapshot restoration")
 
     # system and software versions details
-    platform_system, platform_release, platform_version = utils.get_os_type()
+    platform_system, platform_release, platform_version = helpers.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
 
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     print(f"Test start time: {start_test_time}")
 
-    env = utils.get_arg_value(args=args, key="environment")
+    env = helpers.get_arg_value(args=args, key="environment")
     print(f"Environment: {env}")
 
-    node_pr = utils.get_arg_value(args=args, key="node_pr", default="")
+    node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
     print(f"Node PR number: {node_pr}")
 
-    node_branch = utils.get_arg_value(args=args, key="node_branch", default="")
+    node_branch = helpers.get_arg_value(args=args, key="node_branch", default="")
     print(f"Node branch: {node_branch}")
 
-    node_version_from_gh_action = utils.get_arg_value(
+    node_version_from_gh_action = helpers.get_arg_value(
         args=args, key="node_version_gh_action", default=""
     )
     print(f"Node version: {node_version_from_gh_action}")
 
-    db_branch = utils.get_arg_value(args=args, key="db_sync_branch", default="")
+    db_branch = helpers.get_arg_value(args=args, key="db_sync_branch", default="")
     print(f"DB sync branch: {db_branch}")
 
-    db_sync_version_from_gh_action = utils.get_arg_value(
+    db_sync_version_from_gh_action = helpers.get_arg_value(
         args=args, key="db_sync_version_gh_action", default=""
     )
     print(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # database setup
     print("--- Local snapshot restoration - postgres and database setup")
-    utils_db_sync.setup_postgres(pg_port="5433")
-    utils_db_sync.create_pgpass_file(env)
-    utils_db_sync.create_database()
+    db_sync.setup_postgres(pg_port="5433")
+    db_sync.create_pgpass_file(env)
+    db_sync.create_database()
 
     # snapshot restoration
-    os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-db-sync")
-    snapshot_file = utils_db_sync.get_buildkite_meta_data("snapshot_file")
+    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+    snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
     print("--- Local snapshot restoration - restoration process")
     print(f"Snapshot file from key-store: {snapshot_file}")
-    restoration_time = utils_db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
+    restoration_time = db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
     print(f"Restoration time [sec]: {restoration_time}")
-    db_sync_tip = utils_db_sync.get_db_sync_tip(env)
+    db_sync_tip = db_sync.get_db_sync_tip(env)
     assert db_sync_tip is not None  # TODO: refactor
     snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = db_sync_tip
     print(
@@ -79,37 +81,49 @@ def main() -> int:
 
     # start node
     print("--- Node startup after snapshot restoration")
-    os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-node")
-    utils_db_sync.set_node_socket_path_env_var_in_cwd()
-    utils_db_sync.start_node_in_cwd(env)
-    utils_db_sync.print_file(utils_db_sync.NODE_LOG_FILE, 80)
-    utils_db_sync.wait_for_node_to_sync(env)
+    # cardano-node setup
+    conf_dir = pl.Path.cwd()
+    base_dir = pl.Path.cwd()
+
+    node.set_node_socket_path_env_var(base_dir=base_dir)
+    node.get_node_files(node_rev=node_version_from_gh_action)
+    cli_version, cli_git_rev = node.get_node_version()
+    node.rm_node_config_files(conf_dir=conf_dir)
+    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
+    node.get_node_config_files(
+        env=env,
+        conf_dir=conf_dir,
+    )
+    node.configure_node(config_file=conf_dir / "config.json")
+    node.start_node(cardano_node=NODE, base_dir=base_dir)
+    node.wait_node_start(env=env, timeout_minutes=10)
+    db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
+    node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
     # start db-sync
     print("--- Db-sync startup after snapshot restoration")
-    os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-db-sync")
-    utils_db_sync.export_env_var("PGPORT", "5433")
-    utils_db_sync.start_db_sync(env, start_args="", first_start="False")
-    utils_db_sync.print_file(utils_db_sync.DB_SYNC_LOG_FILE, 20)
-    utils_db_sync.wait(utils_db_sync.ONE_MINUTE)
-    db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
-    db_full_sync_time_in_secs = utils_db_sync.wait_for_db_to_sync(env)
+    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+    db_sync.export_env_var("PGPORT", "5433")
+    db_sync.start_db_sync(env, start_args="", first_start="False")
+    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 20)
+    db_sync.wait(db_sync.ONE_MINUTE)
+    db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version()
+    db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
     print(f"Waiting for additional {wait_time} minutes to continue syncying...")
-    utils_db_sync.wait(wait_time * utils_db_sync.ONE_MINUTE)
-    db_sync_tip = utils_db_sync.get_db_sync_tip(env)
+    db_sync.wait(wait_time * db_sync.ONE_MINUTE)
+    db_sync_tip = db_sync.get_db_sync_tip(env)
     assert db_sync_tip is not None  # TODO: refactor
     epoch_no, block_no, slot_no = db_sync_tip
     print(f"Test end time: {end_test_time}")
-    utils_db_sync.print_file(utils_db_sync.DB_SYNC_LOG_FILE, 60)
+    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 60)
 
     # stop cardano-node and cardano-db-sync
     print("--- Stop cardano services")
-    utils_db_sync.manage_process(proc_name="cardano-db-sync", action="terminate")
-    utils_db_sync.manage_process(proc_name="cardano-node", action="terminate")
+    helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
+    helpers.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
     print("--- Gathering end results")
@@ -118,7 +132,7 @@ def main() -> int:
     test_data["platform_release"] = platform_release
     test_data["platform_version"] = platform_version
     test_data["no_of_cpu_cores"] = os.cpu_count()
-    test_data["total_ram_in_GB"] = utils.get_total_ram_in_gb()
+    test_data["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
@@ -134,7 +148,7 @@ def main() -> int:
         datetime.timedelta(seconds=int(db_full_sync_time_in_secs))
     )
     test_data["snapshot_name"] = snapshot_file
-    test_data["snapshot_size_in_mb"] = utils_db_sync.get_file_size(snapshot_file)
+    test_data["snapshot_size_in_mb"] = db_sync.get_file_size(snapshot_file)
     test_data["restoration_time"] = restoration_time
     test_data["snapshot_epoch_no"] = snapshot_epoch_no
     test_data["snapshot_block_no"] = snapshot_block_no
@@ -142,48 +156,42 @@ def main() -> int:
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
-    test_data["total_database_size"] = utils_db_sync.get_total_db_size(env)
-    test_data["rollbacks"] = utils_db_sync.is_string_present_in_file(
-        utils_db_sync.DB_SYNC_LOG_FILE, "rolling back to"
+    test_data["total_database_size"] = db_sync.get_total_db_size(env)
+    test_data["rollbacks"] = db_sync.is_string_present_in_file(
+        db_sync.DB_SYNC_LOG_FILE, "rolling back to"
     )
-    test_data["errors"] = utils_db_sync.are_errors_present_in_db_sync_logs(
-        utils_db_sync.DB_SYNC_LOG_FILE
-    )
+    test_data["errors"] = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
 
-    utils_db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    utils_db_sync.print_file(TEST_RESULTS)
+    db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
+    db_sync.print_file(TEST_RESULTS)
 
     # compress & upload artifacts
-    utils.zip_file(DB_SYNC_RESTORATION_ARCHIVE, utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.upload_artifact(DB_SYNC_RESTORATION_ARCHIVE)
-    utils_db_sync.upload_artifact(TEST_RESULTS)
+    helpers.zip_file(DB_SYNC_RESTORATION_ARCHIVE, db_sync.DB_SYNC_LOG_FILE)
+    db_sync.upload_artifact(DB_SYNC_RESTORATION_ARCHIVE)
+    db_sync.upload_artifact(TEST_RESULTS)
 
     # search db-sync log for issues
     print("--- Summary: Rollbacks, errors and other isssues")
 
-    log_errors = utils_db_sync.are_errors_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.print_color_log(
-        utils_db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}"
-    )
+    log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
+    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
 
-    rollbacks = utils_db_sync.are_rollbacks_present_in_db_sync_logs(utils_db_sync.DB_SYNC_LOG_FILE)
-    utils_db_sync.print_color_log(
-        utils_db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}"
-    )
+    rollbacks = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
+    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
 
-    failed_rollbacks = utils_db_sync.is_string_present_in_file(
-        utils_db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
+    failed_rollbacks = db_sync.is_string_present_in_file(
+        db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
     )
-    utils_db_sync.print_color_log(
-        utils_db_sync.sh_colors.WARNING,
+    db_sync.print_color_log(
+        db_sync.sh_colors.WARNING,
         f"Are failed rollbacks present: {failed_rollbacks}",
     )
 
-    corrupted_ledger_files = utils_db_sync.is_string_present_in_file(
-        utils_db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
+    corrupted_ledger_files = db_sync.is_string_present_in_file(
+        db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
     )
-    utils_db_sync.print_color_log(
-        utils_db_sync.sh_colors.WARNING,
+    db_sync.print_color_log(
+        db_sync.sh_colors.WARNING,
         f"Are corrupted ledger files present: {corrupted_ledger_files}",
     )
     return 0
