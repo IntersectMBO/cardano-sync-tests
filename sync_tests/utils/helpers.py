@@ -1,10 +1,12 @@
 import argparse
+import contextlib
 import json
 import logging
 import os
 import pathlib as pl
 import platform
 import shlex
+import stat
 import subprocess
 import typing as tp
 import zipfile
@@ -140,3 +142,38 @@ def update_json_file(file_path: pl.Path, updates: dict) -> None:
 
     with open(file_path, "w") as json_file:
         json.dump(data, json_file, indent=2)
+
+
+@contextlib.contextmanager
+def temporary_chdir(path: pl.Path) -> tp.Iterator[None]:
+    prev_cwd = pl.Path.cwd()  # Store the current working directory
+    try:
+        os.chdir(path)  # Change to the new directory
+        yield
+    finally:
+        os.chdir(prev_cwd)  # Restore the original working directory
+
+
+def make_executable(path: pl.Path) -> None:
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def manage_process(proc_name: str, action: str) -> psutil.Process:
+    """Manage a process by retrieving, terminating, or killing based on the action specified."""
+    for proc in psutil.process_iter():
+        if proc_name in proc.name():
+            if action == "get":
+                return proc
+            if action == "terminate":
+                logging.info(f"Attempting to terminate the {proc_name} process - {proc}")
+                proc.terminate()
+                proc.wait(timeout=30)  # Wait for the process to terminate
+                if proc.is_running():
+                    logging.warning(
+                        f"Termination failed, forcefully killing the {proc_name} process - {proc}"
+                    )
+                    proc.kill()
+            else:
+                msg = "Action must be 'get' or 'terminate'"
+                raise ValueError(msg)
+    return None
