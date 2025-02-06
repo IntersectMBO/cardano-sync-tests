@@ -96,7 +96,7 @@ jobs:
           "node_rev1":"${{ steps.get_tag.outputs.node_rev1 }}",
           "node_rev2":"None",
           "tag_no1":"${{ github.event.inputs.tag_no1 }}",
-          "tag_no2":"None"",
+          "tag_no2":"None",
           "node_topology1":"${{ github.event.inputs.node_topology1 }}",
           "node_topology2":"None",
           "node_start_arguments1":"None",
