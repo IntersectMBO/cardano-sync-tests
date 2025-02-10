@@ -328,6 +328,16 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
     return secs_to_start
 
 
+def get_node_exit_code(proc: subprocess.Popen) -> int:
+    """Get the exit code of a node process if it has finished."""
+    if proc.poll() is None:  # None means the process is still running
+        return -1
+
+    # Get and report the exit code
+    exit_code = proc.returncode
+    return exit_code
+
+
 def stop_node(proc: subprocess.Popen) -> int:
     if proc.poll() is None:  # None means the process is still running
         proc.terminate()
@@ -947,9 +957,15 @@ def run_sync_test(args: argparse.Namespace) -> None:
         end_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
             "%d/%m/%Y %H:%M:%S"
         )
-        helpers.print_message(type="warn", message=f"Stop node for: {node_rev1}")
-        exit_code1 = stop_node(proc=node_proc1)
-        helpers.print_message(type="warn", message=f"Exit code: {exit_code1}")
+        node_status1 = get_node_exit_code(proc=node_proc1)
+        if node_status1 != -1:
+            helpers.print_message(
+                type="error", message=f"Node exited unexpectedly with code: {node_status1}"
+            )
+        else:
+            helpers.print_message(type="warn", message=f"Stop node for: {node_rev1}")
+            exit_code1 = stop_node(proc=node_proc1)
+            helpers.print_message(type="warn", message=f"Node exit code: {exit_code1}")
         logfile1.flush()
         logfile1.close()
 
@@ -1081,9 +1097,15 @@ def run_sync_test(args: argparse.Namespace) -> None:
             end_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
                 "%d/%m/%Y %H:%M:%S"
             )
-            helpers.print_message(type="warn", message=f"Stop node for: {node_rev2}")
-            exit_code2 = stop_node(proc=node_proc2)
-            helpers.print_message(type="warn", message=f"Exit code: {exit_code2}")
+            node_status2 = get_node_exit_code(proc=node_proc2)
+            if node_status2 != -1:
+                helpers.print_message(
+                    type="error", message=f"Node exited unexpectedly with code: {node_status2}"
+                )
+            else:
+                helpers.print_message(type="warn", message=f"Stop node for: {node_rev2}")
+                exit_code2 = stop_node(proc=node_proc2)
+                helpers.print_message(type="warn", message=f"Node exit code: {exit_code2}")
             logfile2.flush()
             logfile2.close()
 
