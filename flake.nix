@@ -23,7 +23,19 @@
             };
 
             python = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl ];
+              nativeBuildInputs = with pkgs; [
+                py3Full
+                py3Pkgs.virtualenv
+                py3Pkgs.pip
+                postgresql_14
+                wget
+                curl
+                pkgs.gcc  # <-- Fixes missing libstdc++.so.6
+                pkgs.stdenv.cc.cc  # <-- Ensures C++ standard library
+                py3Pkgs.numpy  # <-- Ensure NumPy is installed correctly
+                py3Pkgs.matplotlib
+                py3Pkgs.pandas
+              ];
               shellHook = ''
                 echo "Setting up Python environment..."
                 python3 -m venv .venv_nix || true
