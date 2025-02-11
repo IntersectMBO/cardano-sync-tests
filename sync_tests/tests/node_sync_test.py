@@ -307,6 +307,9 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
     current_directory = pl.Path.cwd()
 
     helpers.print_message(type="info", message="waiting for db folder to be created")
+
+    print(f" - listdir current_directory: {os.listdir(current_directory)}")
+    
     count = 0
     count_timeout = 299
     while not pl.Path.is_dir(current_directory / "db"):

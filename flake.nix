@@ -15,6 +15,12 @@
           pkgs = nixpkgs.legacyPackages.${system};
           py3Pkgs = pkgs.python311Packages;
           py3Full = pkgs.python311Full;
+
+          # Override cardano-node to enable profiling
+          cardanoNode = pkgs.cardano-node.overrideAttrs (old: {
+            configureFlags = old.configureFlags ++ [ "--enable-profiling" ];
+          });
+
         in
         {
           devShells = rec {
@@ -23,7 +29,7 @@
             };
 
             python = pkgs.mkShell {
-              nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl ];
+              nativeBuildInputs = with pkgs; [ py3Full py3Pkgs.virtualenv py3Pkgs.pip postgresql_14 wget curl cardanoNode ];
               shellHook = ''
                 echo "Setting up Python environment..."
                 python3 -m venv .venv_nix || true
