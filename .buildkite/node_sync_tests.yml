@@ -2,7 +2,7 @@ steps:
   - label: ':drum_with_drumsticks: Run the Cardano node sync test on Mainnet using a Linux machine'
     commands:
       - nix develop --accept-flake-config .#python --command python ./sync_tests/tests/node_sync_test.py -e "${env}" -t1 "${tag_no1}" -t2 "${tag_no2}" -r1 "${node_rev1}" -r2 "${node_rev2}" -n1 "${node_topology1}" -n2 "${node_topology2}" -a1 "${node_start_arguments1}" -a2 "${node_start_arguments2}" -g "${use_genesis_mode}"
-    timeout_in_minutes: 4500
+    timeout_in_minutes: 14400
     agents:
       system: x86_64-linux
       queue: "${queue_name:-core-tech-bench}"

@@ -787,7 +787,7 @@ def get_node_files(
         with temporary_chdir(path=node_repo_dir):
             pl.Path("cardano-node-bin").unlink(missing_ok=True)
             pl.Path("cardano-cli-bin").unlink(missing_ok=True)
-            helpers.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
+            helpers.execute_command("nix build -v .#cardano-node.profiled -o cardano-node-bin")
             helpers.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
         ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_location=test_directory)
 
