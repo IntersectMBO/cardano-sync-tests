@@ -770,20 +770,37 @@ def ln_nix_node_from_repo(repo_dir: pl.Path, dst_location: pl.Path) -> None:
     )
 
 
-# TODO: refactor completely
-def get_node_files(
-    node_rev: str, repository: git.Repo | None = None, build_tool: str = "nix"
-) -> git.Repo:
-    test_directory = pl.Path.cwd()
-    repo = None
-
+def get_node_repo(node_rev: str) -> git.Repo:
     node_repo_name = "cardano-node"
     node_repo_dir = pl.Path("cardano_node_dir")
 
-    if node_repo_dir.is_dir() and repository:
-        repo = gitpython.git_checkout(repository, node_rev)
+    if node_repo_dir.is_dir():
+        repo = git.Repo(path=node_repo_dir)
+        gitpython.git_checkout(repo, node_rev)
     else:
         repo = gitpython.git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
+
+    return repo
+
+
+def get_cli_repo(cli_rev: str) -> git.Repo:
+    node_repo_name = "cardano-cli"
+    cli_repo_dir = pl.Path("cardano_cli_dir")
+
+    if cli_repo_dir.is_dir():
+        repo = git.Repo(path=cli_repo_dir)
+        gitpython.git_checkout(repo, cli_rev)
+    else:
+        repo = gitpython.git_clone_iohk_repo(node_repo_name, cli_repo_dir, cli_rev)
+
+    return repo
+
+
+def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
+    test_directory = pl.Path.cwd()
+
+    node_repo = get_node_repo(node_rev=node_rev)
+    node_repo_dir = pl.Path(node_repo.git_dir)
 
     if build_tool == "nix":
         with temporary_chdir(path=node_repo_dir):
@@ -795,15 +812,8 @@ def get_node_files(
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
-
-        cli_rev = "main"
-        cli_repo_name = "cardano-cli"
-        cli_repo_dir = test_directory / "cardano_cli_dir"
-
-        if cli_repo_dir.is_dir() and repository:
-            gitpython.git_checkout(repository, cli_rev)
-        else:
-            gitpython.git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
+        cli_repo = get_cli_repo(cli_rev="main")
+        cli_repo_dir = pl.Path(cli_repo.git_dir)
 
         # Build cli
         with temporary_chdir(path=cli_repo_dir):
@@ -815,6 +825,7 @@ def get_node_files(
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-cli")
         copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
+        gitpython.git_checkout(cli_repo, "cabal.project")
 
         # Build node
         with temporary_chdir(path=node_repo_dir):
@@ -826,9 +837,53 @@ def get_node_files(
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-node")
         copy_cabal_cli_exe(repo_dir=node_repo_dir, dst_location=test_directory)
-        gitpython.git_checkout(repo, "cabal.project")
+        gitpython.git_checkout(node_repo, "cabal.project")
 
-    return repo
+    return node_repo
+
+
+def config_sync(
+    env: str,
+    conf_dir: pl.Path,
+    node_build_mode: str,
+    node_rev: str,
+    node_topology_type: str,
+    use_genesis_mode: bool,
+) -> None:
+    print("--- Get the cardano-node files", flush=True)
+    helpers.print_message(
+        type="info",
+        message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
+    )
+    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+
+    platform_system = platform.system().lower()
+    if "windows" not in platform_system:
+        get_node_files(node_rev)
+    elif "windows" in platform_system:
+        get_node_files(node_rev, build_tool="cabal")
+    else:
+        err = f"Only building with NIX is supported at this moment - {node_build_mode}"
+        raise exceptions.SyncError(err)
+
+    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+    helpers.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
+    helpers.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
+
+    print("--- Get the node configuration files")
+    rm_node_config_files(conf_dir=conf_dir)
+    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
+    get_node_config_files(
+        env=env,
+        node_topology_type=node_topology_type,
+        conf_dir=conf_dir,
+        use_genesis_mode=use_genesis_mode,
+    )
+
+    print("Configure node")
+    configure_node(config_file=conf_dir / "config.json")
+    if env == "mainnet" and node_topology_type == "legacy":
+        disable_p2p_node_config(config_file=conf_dir / "config.json")
 
 
 def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str) -> SyncRec | None:
@@ -891,8 +946,6 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
 
 
 def run_test(args: argparse.Namespace) -> None:
-    repository = None
-
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
 
@@ -930,47 +983,19 @@ def run_test(args: argparse.Namespace) -> None:
     print(f"- platform: {platform_system, platform_release, platform_version}")
 
     print("--- Get the cardano-node files", flush=True)
-    helpers.print_message(
-        type="info",
-        message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
+    config_sync(
+        env=env,
+        conf_dir=conf_dir,
+        node_build_mode=node_build_mode,
+        node_rev=node_rev1,
+        node_topology_type=node_topology_type1,
+        use_genesis_mode=use_genesis_mode,
     )
-    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    if "windows" not in platform_system.lower():
-        repository = get_node_files(node_rev1)
-    elif "windows" in platform_system.lower():
-        repository = get_node_files(node_rev1, build_tool="cabal")
-    else:
-        helpers.print_message(
-            type="error",
-            message=(
-                f"ERROR: method not implemented yet!!! "
-                f"Only building with NIX is supported at this moment - {node_build_mode}"
-            ),
-        )
-        sys.exit(1)
-    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    helpers.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
-    helpers.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
 
     helpers.print_message(type="warn", message="--- node version ")
     cli_version1, cli_git_rev1 = get_node_version()
     print(f"  - cardano_cli_version1: {cli_version1}")
     print(f"  - cardano_cli_git_rev1: {cli_git_rev1}")
-
-    print("--- Get the node configuration files")
-    rm_node_config_files(conf_dir=conf_dir)
-    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
-    get_node_config_files(
-        env=env,
-        node_topology_type=node_topology_type1,
-        conf_dir=conf_dir,
-        use_genesis_mode=use_genesis_mode,
-    )
-
-    print("Configure node")
-    configure_node(config_file=conf_dir / "config.json")
-    if env == "mainnet" and node_topology_type1 == "legacy":
-        disable_p2p_node_config(config_file=conf_dir / "config.json")
 
     print(f"--- Start node sync test using node_rev1: {node_rev1}")
     helpers.print_message(
@@ -1023,27 +1048,14 @@ def run_test(args: argparse.Namespace) -> None:
         )
 
         print("Get the cardano-node and cardano-cli files")
-        if "windows" not in platform_system.lower():
-            get_node_files(node_rev2, repository)
-        elif "windows" in platform_system.lower():
-            get_node_files(node_rev2, repository, build_tool="cabal")
-        else:
-            helpers.print_message(
-                type="error",
-                message=(
-                    "ERROR: method not implemented yet!!! "
-                    f"Only building with NIX is supported at this moment - {node_build_mode}"
-                ),
-            )
-            sys.exit(1)
-
-        if env == "mainnet" and (node_topology_type1 != node_topology_type2):
-            helpers.print_message(type="warn", message="remove the previous topology")
-            (conf_dir / "topology.json").unlink()
-            print("Getting the node configuration files")
-            get_node_config_files(
-                env=env, node_topology_type=node_topology_type2, conf_dir=conf_dir
-            )
+        config_sync(
+            env=env,
+            conf_dir=conf_dir,
+            node_build_mode=node_build_mode,
+            node_rev=node_rev2,
+            node_topology_type=node_topology_type2,
+            use_genesis_mode=use_genesis_mode,
+        )
 
         helpers.print_message(type="warn", message="node version")
         cli_version2, cli_git_rev2 = get_node_version()
