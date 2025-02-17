@@ -1036,7 +1036,7 @@ def run_test(args: argparse.Namespace) -> None:
     test_values_dict: dict[str, tp.Any] = {}
     print("--- Parse the node logs and get the relevant data")
     logs_details_dict = get_data_from_logs(log_file=base_dir / NODE_LOG_FILE_NAME)
-    test_values_dict["log_values"] = json.dumps(logs_details_dict)
+    test_values_dict["log_values"] = logs_details_dict
 
     sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
@@ -1126,8 +1126,8 @@ def run_test(args: argparse.Namespace) -> None:
     test_values_dict["platform_release"] = platform_release
     test_values_dict["platform_version"] = platform_version
     test_values_dict["chain_size_bytes"] = chain_size
-    test_values_dict["sync_duration_per_epoch"] = json.dumps(epoch_details)
-    test_values_dict["eras_in_test"] = json.dumps(list(sync1_rec.era_details.keys()))
+    test_values_dict["sync_duration_per_epoch"] = epoch_details
+    test_values_dict["eras_in_test"] = list(sync1_rec.era_details.keys())
     test_values_dict["no_of_cpu_cores"] = os.cpu_count()
     test_values_dict["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
     test_values_dict["epoch_no_d_zero"] = get_epoch_no_d_zero(env=env)

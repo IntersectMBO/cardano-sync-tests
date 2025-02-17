@@ -1,5 +1,4 @@
 import argparse
-import ast
 import json
 import logging
 import os
@@ -44,13 +43,7 @@ def main() -> None:
 
     utils.print_message(type="info", message="Check if there are DB columns for all the eras")
     print("Get the list of the existing eras in test")
-    eras_in_test = (
-        sync_test_results_dict["eras_in_test"]
-        .replace("[", "")
-        .replace("]", "")
-        .replace('"', "")
-        .split(", ")
-    )
+    eras_in_test = sync_test_results_dict["eras_in_test"]
     print(f"eras_in_test: {eras_in_test}")
 
     utils.print_message(type="info", message=f"Get the column names inside the {env} DB tables")
@@ -107,7 +100,7 @@ def main() -> None:
         type="info",
         message=f"  ==== Write test values into the {env + '_logs'} DB table",
     )
-    log_values_dict = ast.literal_eval(str(sync_test_results_dict["log_values"]))
+    log_values_dict = sync_test_results_dict["log_values"]
 
     df1_column_names = [
         "identifier",
@@ -144,9 +137,7 @@ def main() -> None:
         type="info",
         message=f"  ==== Write test values into the {env + '_epoch_duration'} DB table",
     )
-    sync_duration_values_dict = ast.literal_eval(
-        str(sync_test_results_dict["sync_duration_per_epoch"])
-    )
+    sync_duration_values_dict = sync_test_results_dict["sync_duration_per_epoch"]
     epoch_list = list(sync_duration_values_dict.keys())
 
     df2_column_names = ["identifier", "epoch_no", "sync_duration_secs"]
