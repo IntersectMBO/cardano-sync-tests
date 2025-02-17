@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import dataclasses
 import datetime
 import fileinput
 import heapq
@@ -21,6 +22,8 @@ import urllib.request
 import git
 
 from sync_tests.utils import blockfrost
+from sync_tests.utils import cli
+from sync_tests.utils import exceptions
 from sync_tests.utils import explorer
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
@@ -29,10 +32,22 @@ LOGGER = logging.getLogger(__name__)
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = pl.Path.cwd() / "cardano-node"
-CLI = pl.Path.cwd() / "cardano-cli"
+CLI = str(pl.Path.cwd() / "cardano-cli")
 NODE_LOG_FILE_NAME = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
+
+
+@dataclasses.dataclass(frozen=True)
+class SyncRec:
+    secs_to_start: int
+    sync_time_sec: int
+    last_slot_no: int
+    latest_chunk_no: int
+    era_details: dict
+    epoch_details: dict
+    start_sync_time: str
+    end_sync_time: str
 
 
 @contextlib.contextmanager
@@ -188,23 +203,21 @@ def get_start_slot_no_d_zero(env: str) -> int:
     return -1
 
 
-def get_testnet_value(env: str) -> str:
-    arg = ""
+def get_testnet_args(env: str) -> list[str]:
+    arg = []
     if env == "mainnet":
-        arg = "--mainnet"
+        arg = ["--mainnet"]
     if env == "preview":
-        arg = "--testnet-magic 2"
+        arg = ["--testnet-magic", "2"]
     if env == "preprod":
-        arg = "--testnet-magic 1"
+        arg = ["--testnet-magic", "1"]
     return arg
 
 
 def get_current_tip(env: str) -> tuple:
-    cmd = f"{CLI} latest query tip {get_testnet_value(env=env)}"
+    cmd = [CLI, "latest", "query", "tip", *get_testnet_args(env=env)]
 
-    output = (
-        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
-    )
+    output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
     output_json = json.loads(output)
     epoch = int(output_json.get("epoch", 0))
     block = int(output_json.get("block", 0))
@@ -212,7 +225,7 @@ def get_current_tip(env: str) -> tuple:
     slot = int(output_json.get("slot", 0))
     era = output_json.get("era", "").lower()
     sync_progress = (
-        int(float(output_json.get("syncProgress", 0.0))) if "syncProgress" in output_json else None
+        float(output_json.get("syncProgress", 0.0)) if "syncProgress" in output_json else None
     )
 
     return epoch, block, hash_value, slot, era, sync_progress
@@ -224,27 +237,21 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
     # replaying the ledger)
     start_counter = time.perf_counter()
 
+    str_err = ""
     for i in range(timeout_minutes):
         try:
             get_current_tip(env=env)
             break
-        except subprocess.CalledProcessError as e:
+        except exceptions.SyncError as e:
+            str_err = str(e)
+            if "Invalid argument" in str_err:
+                raise
             now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
             print(f" === {now} - Waiting 60s before retrying to get the tip again - {i}")
-            helpers.print_message(
-                type="error",
-                message=(
-                    f"     !!! ERROR: command {e.cmd} returned with error "
-                    f"(code {e.returncode}): {' '.join(str(e.output.decode('utf-8')).split())}"
-                ),
-            )
-            if "Invalid argument" in str(e.output):
-                print(f" -- exiting on - {e.output.decode('utf-8')}")
-                sys.exit(1)
         time.sleep(60)
     else:
-        helpers.print_message(type="error", message="     !!! ERROR: failed to get tip")
-        sys.exit(1)
+        err_raise = f"Failed to wait for tip: {str_err}"
+        raise exceptions.SyncError(err_raise)
 
     stop_counter = time.perf_counter()
     start_time_seconds = int(stop_counter - start_counter)
@@ -313,13 +320,8 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
         time.sleep(1)
         count += 1
         if count > count_timeout:
-            helpers.print_message(
-                type="error",
-                message=(
-                    f"ERROR: waited {count_timeout} seconds and the DB folder was not created yet"
-                ),
-            )
-            sys.exit(1)
+            err_raise = f"Waited {count_timeout} seconds and the DB folder was not created yet"
+            raise exceptions.SyncError(err_raise)
 
     helpers.print_message(type="ok", message=f"DB folder was created after {count} seconds")
     secs_to_start = wait_query_tip_available(env=env, timeout_minutes=timeout_minutes)
@@ -768,20 +770,37 @@ def ln_nix_node_from_repo(repo_dir: pl.Path, dst_location: pl.Path) -> None:
     )
 
 
-# TODO: refactor completely
-def get_node_files(
-    node_rev: str, repository: git.Repo | None = None, build_tool: str = "nix"
-) -> git.Repo:
-    test_directory = pl.Path.cwd()
-    repo = None
-
+def get_node_repo(node_rev: str) -> git.Repo:
     node_repo_name = "cardano-node"
     node_repo_dir = pl.Path("cardano_node_dir")
 
-    if node_repo_dir.is_dir() and repository:
-        repo = gitpython.git_checkout(repository, node_rev)
+    if node_repo_dir.is_dir():
+        repo = git.Repo(path=node_repo_dir)
+        gitpython.git_checkout(repo, node_rev)
     else:
         repo = gitpython.git_clone_iohk_repo(node_repo_name, node_repo_dir, node_rev)
+
+    return repo
+
+
+def get_cli_repo(cli_rev: str) -> git.Repo:
+    node_repo_name = "cardano-cli"
+    cli_repo_dir = pl.Path("cardano_cli_dir")
+
+    if cli_repo_dir.is_dir():
+        repo = git.Repo(path=cli_repo_dir)
+        gitpython.git_checkout(repo, cli_rev)
+    else:
+        repo = gitpython.git_clone_iohk_repo(node_repo_name, cli_repo_dir, cli_rev)
+
+    return repo
+
+
+def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
+    test_directory = pl.Path.cwd()
+
+    node_repo = get_node_repo(node_rev=node_rev)
+    node_repo_dir = pl.Path(node_repo.git_dir)
 
     if build_tool == "nix":
         with temporary_chdir(path=node_repo_dir):
@@ -793,15 +812,8 @@ def get_node_files(
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
-
-        cli_rev = "main"
-        cli_repo_name = "cardano-cli"
-        cli_repo_dir = test_directory / "cardano_cli_dir"
-
-        if cli_repo_dir.is_dir() and repository:
-            gitpython.git_checkout(repository, cli_rev)
-        else:
-            gitpython.git_clone_iohk_repo(cli_repo_name, cli_repo_dir, cli_rev)
+        cli_repo = get_cli_repo(cli_rev="main")
+        cli_repo_dir = pl.Path(cli_repo.git_dir)
 
         # Build cli
         with temporary_chdir(path=cli_repo_dir):
@@ -813,6 +825,7 @@ def get_node_files(
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-cli")
         copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
+        gitpython.git_checkout(cli_repo, "cabal.project")
 
         # Build node
         with temporary_chdir(path=node_repo_dir):
@@ -824,15 +837,115 @@ def get_node_files(
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-node")
         copy_cabal_cli_exe(repo_dir=node_repo_dir, dst_location=test_directory)
-        gitpython.git_checkout(repo, "cabal.project")
+        gitpython.git_checkout(node_repo, "cabal.project")
 
-    return repo
+    return node_repo
 
 
-def run_sync_test(args: argparse.Namespace) -> None:
-    repository = None
-    secs_to_start1, secs_to_start2 = 0, 0
+def config_sync(
+    env: str,
+    conf_dir: pl.Path,
+    node_build_mode: str,
+    node_rev: str,
+    node_topology_type: str,
+    use_genesis_mode: bool,
+) -> None:
+    print("--- Get the cardano-node files", flush=True)
+    helpers.print_message(
+        type="info",
+        message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
+    )
+    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
+    platform_system = platform.system().lower()
+    if "windows" not in platform_system:
+        get_node_files(node_rev)
+    elif "windows" in platform_system:
+        get_node_files(node_rev, build_tool="cabal")
+    else:
+        err = f"Only building with NIX is supported at this moment - {node_build_mode}"
+        raise exceptions.SyncError(err)
+
+    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+    helpers.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
+    helpers.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
+
+    print("--- Get the node configuration files")
+    rm_node_config_files(conf_dir=conf_dir)
+    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
+    get_node_config_files(
+        env=env,
+        node_topology_type=node_topology_type,
+        conf_dir=conf_dir,
+        use_genesis_mode=use_genesis_mode,
+    )
+
+    print("Configure node")
+    configure_node(config_file=conf_dir / "config.json")
+    if env == "mainnet" and node_topology_type == "legacy":
+        disable_p2p_node_config(config_file=conf_dir / "config.json")
+
+
+def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str) -> SyncRec | None:
+    if "None" in node_start_arguments:
+        node_start_arguments = []
+
+    start_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+
+    node_proc = None
+    logfile = None
+    try:
+        node_proc, logfile = start_node(
+            cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments
+        )
+        secs_to_start = wait_node_start(env=env, timeout_minutes=10)
+
+        helpers.print_message(type="info", message=" - waiting for the node to sync")
+        (
+            sync_time_seconds,
+            last_slot_no,
+            latest_chunk_no,
+            era_details_dict,
+            epoch_details_dict,
+        ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
+    except Exception as e:
+        helpers.print_message(
+            type="error",
+            message=f" !!! ERROR - could not finish sync - {e}",
+        )
+        return None
+    finally:
+        end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%d/%m/%Y %H:%M:%S"
+        )
+        if node_proc:
+            node_status = get_node_exit_code(proc=node_proc)
+            if node_status != -1:
+                helpers.print_message(
+                    type="error", message=f"Node exited unexpectedly with code: {node_status}"
+                )
+            else:
+                exit_code = stop_node(proc=node_proc)
+                helpers.print_message(
+                    type="warn", message=f"Node stopped with exit code: {exit_code}"
+                )
+        if logfile:
+            logfile.flush()
+            logfile.close()
+
+    return SyncRec(
+        secs_to_start=secs_to_start,
+        sync_time_sec=sync_time_seconds,
+        last_slot_no=last_slot_no,
+        latest_chunk_no=latest_chunk_no,
+        era_details=era_details_dict,
+        epoch_details=epoch_details_dict,
+        start_sync_time=start_sync_time,
+        end_sync_time=end_sync_time,
+    )
+
+
+def run_test(args: argparse.Namespace) -> None:
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
 
@@ -870,47 +983,19 @@ def run_sync_test(args: argparse.Namespace) -> None:
     print(f"- platform: {platform_system, platform_release, platform_version}")
 
     print("--- Get the cardano-node files", flush=True)
-    helpers.print_message(
-        type="info",
-        message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
+    config_sync(
+        env=env,
+        conf_dir=conf_dir,
+        node_build_mode=node_build_mode,
+        node_rev=node_rev1,
+        node_topology_type=node_topology_type1,
+        use_genesis_mode=use_genesis_mode,
     )
-    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    if "windows" not in platform_system.lower():
-        repository = get_node_files(node_rev1)
-    elif "windows" in platform_system.lower():
-        repository = get_node_files(node_rev1, build_tool="cabal")
-    else:
-        helpers.print_message(
-            type="error",
-            message=(
-                f"ERROR: method not implemented yet!!! "
-                f"Only building with NIX is supported at this moment - {node_build_mode}"
-            ),
-        )
-        sys.exit(1)
-    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    helpers.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
-    helpers.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
 
     helpers.print_message(type="warn", message="--- node version ")
     cli_version1, cli_git_rev1 = get_node_version()
     print(f"  - cardano_cli_version1: {cli_version1}")
     print(f"  - cardano_cli_git_rev1: {cli_git_rev1}")
-
-    print("--- Get the node configuration files")
-    rm_node_config_files(conf_dir=conf_dir)
-    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
-    get_node_config_files(
-        env=env,
-        node_topology_type=node_topology_type1,
-        conf_dir=conf_dir,
-        use_genesis_mode=use_genesis_mode,
-    )
-
-    print("Configure node")
-    configure_node(config_file=conf_dir / "config.json")
-    if env == "mainnet" and node_topology_type1 == "legacy":
-        disable_p2p_node_config(config_file=conf_dir / "config.json")
 
     print(f"--- Start node sync test using node_rev1: {node_rev1}")
     helpers.print_message(
@@ -928,53 +1013,13 @@ def run_sync_test(args: argparse.Namespace) -> None:
         message="===================================================================================",
     )
     print()
-    start_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    if "None" in node_start_arguments1:
-        node_start_arguments1 = []
-    node_proc1, logfile1 = start_node(
-        cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments1
-    )
-    secs_to_start1 = wait_node_start(env=env, timeout_minutes=10)
-
-    helpers.print_message(type="info", message=" - waiting for the node to sync")
-
-    sync1_error = False
-    try:
-        (
-            sync_time_seconds1,
-            last_slot_no1,
-            latest_chunk_no1,
-            era_details_dict1,
-            epoch_details_dict1,
-        ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
-    except Exception as e:
-        sync1_error = True
-        helpers.print_message(
-            type="error",
-            message=f" !!! ERROR - could not finish sync1 - {e}",
-        )
-    finally:
-        end_sync_time1 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-            "%d/%m/%Y %H:%M:%S"
-        )
-        node_status1 = get_node_exit_code(proc=node_proc1)
-        if node_status1 != -1:
-            helpers.print_message(
-                type="error", message=f"Node exited unexpectedly with code: {node_status1}"
-            )
-        else:
-            helpers.print_message(type="warn", message=f"Stop node for: {node_rev1}")
-            exit_code1 = stop_node(proc=node_proc1)
-            helpers.print_message(type="warn", message=f"Node exit code: {exit_code1}")
-        logfile1.flush()
-        logfile1.close()
-
-    if sync1_error:
+    sync1_rec = run_sync(node_start_arguments=node_start_arguments1, base_dir=base_dir, env=env)
+    if not sync1_rec:
         sys.exit(1)
 
-    print(f"secs_to_start1: {secs_to_start1}")
-    print(f"start_sync_time1: {start_sync_time1}")
-    print(f"end_sync_time1: {end_sync_time1}")
+    print(f"secs_to_start1: {sync1_rec.secs_to_start}")
+    print(f"start_sync_time1: {sync1_rec.start_sync_time}")
+    print(f"end_sync_time1: {sync1_rec.end_sync_time}")
 
     # we are interested in the node logs only for the main sync - using tag_no1
     test_values_dict: dict[str, tp.Any] = {}
@@ -982,40 +1027,8 @@ def run_sync_test(args: argparse.Namespace) -> None:
     logs_details_dict = get_data_from_logs(log_file=base_dir / NODE_LOG_FILE_NAME)
     test_values_dict["log_values"] = json.dumps(logs_details_dict)
 
+    sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
-    (
-        _cardano_cli_version2,
-        _cardano_cli_git_rev2,
-        _shelley_sync_time_seconds2,
-        _total_chunks2,
-        _latest_block_no2,
-        _latest_slot_no2,
-        start_sync_time2,
-        end_sync_time2,
-        _start_sync_time3,
-        _sync_time_after_restart_seconds,
-        cli_version2,
-        cli_git_rev2,
-        last_slot_no2,
-        latest_chunk_no2,
-        sync_time_seconds2,
-    ) = (
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        0,
-    )
     if tag_no2 and tag_no2 != "None":
         delete_node_files()
         print()
@@ -1035,27 +1048,14 @@ def run_sync_test(args: argparse.Namespace) -> None:
         )
 
         print("Get the cardano-node and cardano-cli files")
-        if "windows" not in platform_system.lower():
-            get_node_files(node_rev2, repository)
-        elif "windows" in platform_system.lower():
-            get_node_files(node_rev2, repository, build_tool="cabal")
-        else:
-            helpers.print_message(
-                type="error",
-                message=(
-                    "ERROR: method not implemented yet!!! "
-                    f"Only building with NIX is supported at this moment - {node_build_mode}"
-                ),
-            )
-            sys.exit(1)
-
-        if env == "mainnet" and (node_topology_type1 != node_topology_type2):
-            helpers.print_message(type="warn", message="remove the previous topology")
-            (conf_dir / "topology.json").unlink()
-            print("Getting the node configuration files")
-            get_node_config_files(
-                env=env, node_topology_type=node_topology_type2, conf_dir=conf_dir
-            )
+        config_sync(
+            env=env,
+            conf_dir=conf_dir,
+            node_build_mode=node_build_mode,
+            node_rev=node_rev2,
+            node_topology_type=node_topology_type2,
+            use_genesis_mode=use_genesis_mode,
+        )
 
         helpers.print_message(type="warn", message="node version")
         cli_version2, cli_git_rev2 = get_node_version()
@@ -1063,53 +1063,8 @@ def run_sync_test(args: argparse.Namespace) -> None:
         print(f" - cardano_cli_git_rev2: {cli_git_rev2}")
         print()
         print(f"================ Start node using node_rev2: {node_rev2} ====================")
-        start_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-            "%d/%m/%Y %H:%M:%S"
-        )
-        if "None" in node_start_arguments1:
-            node_start_arguments2 = []
-        node_proc2, logfile2 = start_node(
-            cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments2
-        )
-        secs_to_start2 = wait_node_start(env=env)
-
-        helpers.print_message(
-            type="info",
-            message=f" - waiting for the node to sync - using node_rev2: {node_rev2}",
-        )
-
-        sync2_error = False
-        try:
-            (
-                sync_time_seconds2,
-                last_slot_no2,
-                latest_chunk_no2,
-                era_details_dict2,
-                epoch_details_dict2,
-            ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
-        except Exception as e:
-            sync2_error = True
-            helpers.print_message(
-                type="error",
-                message=f" !!! ERROR - could not finish sync2 - {e}",
-            )
-        finally:
-            end_sync_time2 = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                "%d/%m/%Y %H:%M:%S"
-            )
-            node_status2 = get_node_exit_code(proc=node_proc2)
-            if node_status2 != -1:
-                helpers.print_message(
-                    type="error", message=f"Node exited unexpectedly with code: {node_status2}"
-                )
-            else:
-                helpers.print_message(type="warn", message=f"Stop node for: {node_rev2}")
-                exit_code2 = stop_node(proc=node_proc2)
-                helpers.print_message(type="warn", message=f"Node exit code: {exit_code2}")
-            logfile2.flush()
-            logfile2.close()
-
-        if sync2_error:
+        sync2_rec = run_sync(node_start_arguments=node_start_arguments2, base_dir=base_dir, env=env)
+        if not sync2_rec:
             sys.exit(1)
 
     chain_size = helpers.get_directory_size(base_dir / "db")
@@ -1117,50 +1072,51 @@ def run_sync_test(args: argparse.Namespace) -> None:
     print("--- Node sync test completed")
     print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
     print("++++++++++++++++++++++++++++++++++++++++++++++")
-    for era in era_details_dict1:
-        print(f"  *** {era} --> {era_details_dict1[era]}")
-        test_values_dict[str(era + "_start_time")] = era_details_dict1[era]["start_time"]
-        test_values_dict[str(era + "_start_epoch")] = era_details_dict1[era]["start_epoch"]
-        test_values_dict[str(era + "_slots_in_era")] = era_details_dict1[era]["slots_in_era"]
-        test_values_dict[str(era + "_start_sync_time")] = era_details_dict1[era]["start_sync_time"]
-        test_values_dict[str(era + "_end_sync_time")] = era_details_dict1[era]["end_sync_time"]
-        test_values_dict[str(era + "_sync_duration_secs")] = era_details_dict1[era][
-            "sync_duration_secs"
-        ]
-        test_values_dict[str(era + "_sync_speed_sps")] = era_details_dict1[era]["sync_speed_sps"]
+    for era, era_data in sync1_rec.era_details.items():
+        print(f"  *** {era} --> {era_data}")
+        test_values_dict[f"{era}_start_time"] = era_data["start_time"]
+        test_values_dict[f"{era}_start_epoch"] = era_data["start_epoch"]
+        test_values_dict[f"{era}_slots_in_era"] = era_data["slots_in_era"]
+        test_values_dict[f"{era}_start_sync_time"] = era_data["start_sync_time"]
+        test_values_dict[f"{era}_end_sync_time"] = era_data["end_sync_time"]
+        test_values_dict[f"{era}_sync_duration_secs"] = era_data["sync_duration_secs"]
+        test_values_dict[f"{era}_sync_speed_sps"] = era_data["sync_speed_sps"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
+
     epoch_details = {}
-    for epoch in epoch_details_dict1:
-        print(f"{epoch} --> {epoch_details_dict1[epoch]}")
-        epoch_details[epoch] = epoch_details_dict1[epoch]["sync_duration_secs"]
+    for epoch, epoch_data in sync1_rec.epoch_details.items():
+        epoch_details[epoch] = epoch_data["sync_duration_secs"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
+
     test_values_dict["env"] = env
     test_values_dict["tag_no1"] = tag_no1
     test_values_dict["tag_no2"] = tag_no2
     test_values_dict["cli_version1"] = cli_version1
-    test_values_dict["cli_version2"] = cli_version2
+    test_values_dict["cli_version2"] = cli_version2 if sync2_rec else None
     test_values_dict["cli_git_rev1"] = cli_git_rev1
-    test_values_dict["cli_git_rev2"] = cli_git_rev2
-    test_values_dict["start_sync_time1"] = start_sync_time1
-    test_values_dict["end_sync_time1"] = end_sync_time1
-    test_values_dict["start_sync_time2"] = start_sync_time2
-    test_values_dict["end_sync_time2"] = end_sync_time2
-    test_values_dict["last_slot_no1"] = last_slot_no1
-    test_values_dict["last_slot_no2"] = last_slot_no2
-    test_values_dict["start_node_secs1"] = secs_to_start1
-    test_values_dict["start_node_secs2"] = secs_to_start2
-    test_values_dict["sync_time_seconds1"] = sync_time_seconds1
-    test_values_dict["sync_time1"] = str(datetime.timedelta(seconds=int(sync_time_seconds1)))
-    test_values_dict["sync_time_seconds2"] = sync_time_seconds2
-    test_values_dict["sync_time2"] = str(datetime.timedelta(seconds=int(sync_time_seconds2)))
-    test_values_dict["total_chunks1"] = latest_chunk_no1
-    test_values_dict["total_chunks2"] = latest_chunk_no2
+    test_values_dict["cli_git_rev2"] = cli_git_rev2 if sync2_rec else None
+    test_values_dict["start_sync_time1"] = sync1_rec.start_sync_time
+    test_values_dict["end_sync_time1"] = sync1_rec.end_sync_time
+    test_values_dict["start_sync_time2"] = sync2_rec.start_sync_time if sync2_rec else None
+    test_values_dict["end_sync_time2"] = sync2_rec.end_sync_time if sync2_rec else None
+    test_values_dict["last_slot_no1"] = sync1_rec.last_slot_no
+    test_values_dict["last_slot_no2"] = sync2_rec.last_slot_no if sync2_rec else None
+    test_values_dict["start_node_secs1"] = sync1_rec.secs_to_start
+    test_values_dict["start_node_secs2"] = sync2_rec.secs_to_start if sync2_rec else None
+    test_values_dict["sync_time_seconds1"] = sync1_rec.sync_time_sec
+    test_values_dict["sync_time1"] = str(datetime.timedelta(seconds=sync1_rec.sync_time_sec))
+    test_values_dict["sync_time_seconds2"] = sync2_rec.sync_time_sec if sync2_rec else None
+    test_values_dict["sync_time2"] = (
+        str(datetime.timedelta(seconds=int(sync2_rec.sync_time_sec))) if sync2_rec else None
+    )
+    test_values_dict["total_chunks1"] = sync1_rec.latest_chunk_no
+    test_values_dict["total_chunks2"] = sync2_rec.latest_chunk_no if sync2_rec else None
     test_values_dict["platform_system"] = platform_system
     test_values_dict["platform_release"] = platform_release
     test_values_dict["platform_version"] = platform_version
     test_values_dict["chain_size_bytes"] = chain_size
     test_values_dict["sync_duration_per_epoch"] = json.dumps(epoch_details)
-    test_values_dict["eras_in_test"] = json.dumps(list(era_details_dict1.keys()))
+    test_values_dict["eras_in_test"] = json.dumps(list(sync1_rec.era_details.keys()))
     test_values_dict["no_of_cpu_cores"] = os.cpu_count()
     test_values_dict["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
     test_values_dict["epoch_no_d_zero"] = get_epoch_no_d_zero(env=env)
@@ -1266,7 +1222,7 @@ def main() -> int:
         level=logging.INFO,
     )
     args = get_args()
-    run_sync_test(args=args)
+    run_test(args=args)
 
     return 0
 
