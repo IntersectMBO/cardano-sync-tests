@@ -466,6 +466,10 @@ def get_args() -> argparse.Namespace:
 
 def main() -> int:
     logging.setLoggerClass(ColorLogger)
+    logging.basicConfig(
+        format="%(name)s:%(levelname)s:%(message)s",
+        level=logging.INFO,
+    )
     args = get_args()
     run_test(args=args)
 

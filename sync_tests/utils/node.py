@@ -49,7 +49,7 @@ def enable_genesis_mode(config_file: pl.Path, topology_file: pl.Path) -> None:
 
 def download_config_file(config_slug: str, save_as: pl.Path) -> None:
     url = f"{CONFIGS_BASE_URL}/{config_slug}"
-    print(f"Downloading {url} and saving as {save_as}...")
+    LOGGER.info(f"Downloading '{url}' and saving as '{save_as}'")
     urllib.request.urlretrieve(url, save_as)
 
 
@@ -57,6 +57,7 @@ def get_node_config_files(
     env: str, conf_dir: pl.Path, node_topology_type: str = "", use_genesis_mode: bool = False
 ) -> None:
     """Download Cardano node configuration files for the specified environment."""
+    LOGGER.info("Getting the node configuration files")
     config_file_path = conf_dir / "config.json"
     topology_file_path = conf_dir / "topology.json"
 
@@ -93,14 +94,15 @@ def get_node_config_files(
 def delete_node_files() -> None:
     for p in pl.Path("..").glob("cardano-*"):
         if p.is_dir():
-            helpers.print_message(type="info_warn", message=f"deleting directory: {p}")
+            LOGGER.info(f"deleting directory: {p}")
             shutil.rmtree(p)  # Use shutil.rmtree to delete directories
         else:
-            helpers.print_message(type="info_warn", message=f"deleting file: {p}")
+            LOGGER.info(f"deleting file: {p}")
             p.unlink(missing_ok=True)
 
 
 def configure_node(config_file: pl.Path) -> None:
+    LOGGER.info("Configuring node")
     with open(config_file) as json_file:
         node_config_json = json.load(json_file)
 
@@ -169,7 +171,7 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
     start_counter = time.perf_counter()
 
     str_err = ""
-    for _ in range(timeout_minutes):
+    for i in range(timeout_minutes):
         try:
             get_current_tip(env=env)
             break
@@ -177,6 +179,8 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
             str_err = str(e)
             if "Invalid argument" in str_err:
                 raise
+        now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+        LOGGER.warning(f"{now} - Waiting 60s before retrying to get the tip again - {i}")
         time.sleep(60)
     else:
         err_raise = f"Failed to wait for tip: {str_err}"
@@ -184,10 +188,7 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
 
     stop_counter = time.perf_counter()
     start_time_seconds = int(stop_counter - start_counter)
-    helpers.print_message(
-        type="ok",
-        message=f"It took {start_time_seconds} seconds for the QUERY TIP command to be available",
-    )
+    LOGGER.info(f"It took {start_time_seconds} seconds for the QUERY TIP command to be available")
     return start_time_seconds
 
 
@@ -232,7 +233,7 @@ def start_node(
             f"config.json --socket-path {socket_path} {start_args}"
         ).strip()
 
-    helpers.print_message(type="info_warn", message=f"start node cmd: {cmd}")
+    LOGGER.info(f"Starting node with cmd: {cmd}")
     logfile = open(base_dir / NODE_LOG_FILE_NAME, "w+")
 
     proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
@@ -246,7 +247,7 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
     # replaying the ledger)
     current_directory = pl.Path.cwd()
 
-    helpers.print_message(type="info", message="waiting for db folder to be created")
+    LOGGER.info("Waiting for db folder to be created")
     count = 0
     count_timeout = 299
     while not pl.Path.is_dir(current_directory / "db"):
@@ -256,10 +257,10 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
             err_raise = f"Waited {count_timeout} seconds and the DB folder was not created yet"
             raise exceptions.SyncError(err_raise)
 
-    helpers.print_message(type="ok", message=f"DB folder was created after {count} seconds")
+    LOGGER.info(f"DB folder was created after {count} seconds")
     secs_to_start = wait_query_tip_available(env=env, timeout_minutes=timeout_minutes)
-    print(f" - listdir current_directory: {os.listdir(current_directory)}")
-    print(f" - listdir db: {os.listdir(current_directory / 'db')}")
+    LOGGER.debug(f" - listdir current_directory: {os.listdir(current_directory)}")
+    LOGGER.debug(f" - listdir db: {os.listdir(current_directory / 'db')}")
     return secs_to_start
 
 
@@ -278,7 +279,7 @@ def stop_node(proc: subprocess.Popen) -> int:
 
 
 def rm_node_config_files(conf_dir: pl.Path) -> None:
-    helpers.print_message(type="info_warn", message="Removing existing config files")
+    LOGGER.info("Removing existing config files")
     for gen in conf_dir.glob("*-genesis.json"):
         pl.Path(gen).unlink(missing_ok=True)
     for f in ("config.json", "topology.json"):
@@ -348,6 +349,7 @@ def get_no_of_slots_in_era(env: str, era_name: str, no_of_epochs_in_era: int) ->
 
 def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     """Wait for the Cardano node to start."""
+    LOGGER.info("Waiting for the node to sync")
     era_details_dict = {}
     epoch_details_dict = {}
 
@@ -362,9 +364,8 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         while sync_progress < 100:
             if count % 60 == 0:
                 now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-                helpers.print_message(
-                    type="warn",
-                    message=f"{now} - actual_era  : {actual_era} "
+                LOGGER.warning(
+                    f"{now} - actual_era  : {actual_era} "
                     f" - actual_epoch: {actual_epoch} "
                     f" - actual_block: {actual_block} "
                     f" - actual_slot : {actual_slot} "
@@ -408,9 +409,8 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         while actual_slot <= last_slot_no:
             if count % 60 == 0:
                 now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-                helpers.print_message(
-                    type="warn",
-                    message=f"{now} - actual_era  : {actual_era} "
+                LOGGER.warning(
+                    f"{now} - actual_era  : {actual_era} "
                     f" - actual_epoch: {actual_epoch} "
                     f" - actual_block: {actual_block} "
                     f" - actual_slot : {actual_slot} "
@@ -451,11 +451,11 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
 
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
-    print(f"sync_time_seconds: {sync_time_seconds}")
+    LOGGER.info(f"sync_time_seconds: {sync_time_seconds}")
 
     chunk_files = sorted((base_dir / "db" / "immutable").iterdir(), key=lambda f: f.stat().st_mtime)
     latest_chunk_no = chunk_files[-1].stem
-    helpers.print_message(type="ok", message=f"Sync done!; latest_chunk_no: {latest_chunk_no}")
+    LOGGER.info(f"Sync done!; latest_chunk_no: {latest_chunk_no}")
 
     # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
     # for the last/current era, "end_sync_time" = current_utc_time / end_of_sync_time
@@ -648,10 +648,10 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
         # Build cli
         with helpers.temporary_chdir(path=cli_repo_dir):
             shutil.copy2(cabal_local_file, cli_repo_dir)
-            print(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
+            LOGGER.debug(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
             shutil.rmtree("dist-newstyle", ignore_errors=True)
             for line in fileinput.input("cabal.project", inplace=True):
-                print(line.replace("tests: True", "tests: False"), end="")
+                LOGGER.debug(line.replace("tests: True", "tests: False"))
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-cli")
         copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
@@ -659,10 +659,10 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
         # Build node
         with helpers.temporary_chdir(path=node_repo_dir):
             shutil.copy2(cabal_local_file, node_repo_dir)
-            print(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
+            LOGGER.debug(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
             shutil.rmtree("dist-newstyle", ignore_errors=True)
             for line in fileinput.input("cabal.project", inplace=True):
-                print(line.replace("tests: True", "tests: False"), end="")
+                LOGGER.debug(line.replace("tests: True", "tests: False"))
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-node")
         copy_cabal_cli_exe(repo_dir=node_repo_dir, dst_location=test_directory)
@@ -679,11 +679,7 @@ def config_sync(
     node_topology_type: str,
     use_genesis_mode: bool,
 ) -> None:
-    print("--- Get the cardano-node files", flush=True)
-    helpers.print_message(
-        type="info",
-        message=f"Get the cardano-node and cardano-cli files using - {node_build_mode}",
-    )
+    LOGGER.info(f"Get the cardano-node and cardano-cli files using - {node_build_mode}")
     start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
     platform_system = platform.system().lower()
@@ -696,10 +692,9 @@ def config_sync(
         raise exceptions.SyncError(err)
 
     end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    helpers.print_message(type="info", message=f"  - start_build_time: {start_build_time}")
-    helpers.print_message(type="info", message=f"  - end_build_time: {end_build_time}")
+    LOGGER.info(f"  - start_build_time: {start_build_time}")
+    LOGGER.info(f"  - end_build_time: {end_build_time}")
 
-    print("--- Get the node configuration files")
     rm_node_config_files(conf_dir=conf_dir)
     # TO DO: change the default to P2P when full P2P will be supported on Mainnet
     get_node_config_files(
@@ -709,7 +704,6 @@ def config_sync(
         use_genesis_mode=use_genesis_mode,
     )
 
-    print("Configure node")
     configure_node(config_file=conf_dir / "config.json")
     if env == "mainnet" and node_topology_type == "legacy":
         disable_p2p_node_config(config_file=conf_dir / "config.json")
@@ -750,8 +744,6 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
             cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments
         )
         secs_to_start = wait_node_start(env=env, timeout_minutes=10)
-
-        helpers.print_message(type="info", message=" - waiting for the node to sync")
         (
             sync_time_seconds,
             last_slot_no,
@@ -759,11 +751,8 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
             era_details_dict,
             epoch_details_dict,
         ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
-    except Exception as e:
-        helpers.print_message(
-            type="error",
-            message=f" !!! ERROR - could not finish sync - {e}",
-        )
+    except Exception:
+        LOGGER.exception("Could not finish sync.")
         return None
     finally:
         end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
@@ -772,14 +761,10 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
         if node_proc:
             node_status = get_node_exit_code(proc=node_proc)
             if node_status != -1:
-                helpers.print_message(
-                    type="error", message=f"Node exited unexpectedly with code: {node_status}"
-                )
+                LOGGER.error(f"Node exited unexpectedly with code: {node_status}")
             else:
                 exit_code = stop_node(proc=node_proc)
-                helpers.print_message(
-                    type="warn", message=f"Node stopped with exit code: {exit_code}"
-                )
+                LOGGER.warning(f"Node stopped with exit code: {exit_code}")
         if logfile:
             logfile.flush()
             logfile.close()
