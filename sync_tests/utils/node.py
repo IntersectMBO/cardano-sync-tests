@@ -16,6 +16,7 @@ import urllib.request
 import git
 
 from sync_tests.utils import blockfrost
+from sync_tests.utils import cli
 from sync_tests.utils import exceptions
 from sync_tests.utils import explorer
 from sync_tests.utils import gitpython
@@ -25,7 +26,7 @@ LOGGER = logging.getLogger(__name__)
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = pl.Path.cwd() / "cardano-node"
-CLI = pl.Path.cwd() / "cardano-cli"
+CLI = str(pl.Path.cwd() / "cardano-cli")
 NODE_LOG_FILE_NAME = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
@@ -133,24 +134,22 @@ def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
-def get_testnet_args(env: str) -> str:
-    arg = ""
+def get_testnet_args(env: str) -> list[str]:
+    arg = []
     if env == "mainnet":
-        arg = "--mainnet"
+        arg = ["--mainnet"]
     if env == "preview":
-        arg = "--testnet-magic 2"
+        arg = ["--testnet-magic", "2"]
     if env == "preprod":
-        arg = "--testnet-magic 1"
+        arg = ["--testnet-magic", "1"]
     return arg
 
 
 def get_current_tip(env: str) -> tuple:
     """Retrieve the current tip of the Cardano node."""
-    cmd = f"{CLI} latest query tip {get_testnet_args(env=env)}"
+    cmd = [CLI, "latest", "query", "tip", *get_testnet_args(env=env)]
 
-    output = (
-        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
-    )
+    output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
     output_json = json.loads(output)
     epoch = int(output_json.get("epoch", 0))
     block = int(output_json.get("block", 0))
