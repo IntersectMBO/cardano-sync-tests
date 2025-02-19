@@ -8,7 +8,6 @@ import pathlib as pl
 import platform
 import shutil
 import subprocess
-import sys
 import time
 import typing as tp
 import urllib.request
@@ -55,34 +54,32 @@ def download_config_file(config_slug: str, save_as: pl.Path) -> None:
 
 
 def get_node_config_files(
-    env: str, conf_dir: pl.Path, node_topology_type: str = "", use_genesis_mode: bool = False
+    env: str, node_topology_type: str, conf_dir: pl.Path, use_genesis_mode: bool = False
 ) -> None:
     """Download Cardano node configuration files for the specified environment."""
     LOGGER.info("Getting the node configuration files")
     config_file_path = conf_dir / "config.json"
     topology_file_path = conf_dir / "topology.json"
 
-    filenames = [
-        (env + "/config.json", config_file_path),
-        (env + "/byron-genesis.json", conf_dir / "byron-genesis.json"),
-        (env + "/shelley-genesis.json", conf_dir / "shelley-genesis.json"),
-        (env + "/alonzo-genesis.json", conf_dir / "alonzo-genesis.json"),
-        (env + "/conway-genesis.json", conf_dir / "conway-genesis.json"),
-    ]
-
-    for slug, filename in filenames:
-        try:
-            download_config_file(config_slug=slug, save_as=filename)
-        except Exception:
-            logging.exception(f"Error downloading {slug}")
-            sys.exit(1)
+    download_config_file(config_slug=f"{env}/config.json", save_as=config_file_path)
+    download_config_file(
+        config_slug=f"{env}/byron-genesis.json", save_as=conf_dir / "byron-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/shelley-genesis.json", save_as=conf_dir / "shelley-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/alonzo-genesis.json", save_as=conf_dir / "alonzo-genesis.json"
+    )
+    download_config_file(
+        config_slug=f"{env}/conway-genesis.json", save_as=conf_dir / "conway-genesis.json"
+    )
 
     if env == "mainnet" and node_topology_type == "non-bootstrap-peers":
         download_config_file(
             config_slug=f"{env}/topology-non-bootstrap-peers.json",
             save_as=topology_file_path,
         )
-
     elif env == "mainnet" and node_topology_type == "legacy":
         download_config_file(config_slug=f"{env}/topology-legacy.json", save_as=topology_file_path)
     else:
@@ -178,8 +175,8 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
             str_err = str(e)
             if "Invalid argument" in str_err:
                 raise
-        now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-        LOGGER.warning(f"{now} - Waiting 60s before retrying to get the tip again - {i}")
+            now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+            LOGGER.warning(f"{now} - Waiting 60s before retrying to get the tip again - {i}")
         time.sleep(60)
     else:
         err_raise = f"Failed to wait for tip: {str_err}"
@@ -210,7 +207,7 @@ def get_node_version() -> tuple[str, str]:
 
 
 def start_node(
-    cardano_node: pl.Path, base_dir: pl.Path, node_start_arguments: tp.Iterable[str] = ""
+    cardano_node: pl.Path, base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
 ) -> tuple[subprocess.Popen, tp.IO[str]]:
     start_args = " ".join(node_start_arguments)
 
@@ -640,7 +637,6 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
-
         cli_repo = get_cli_repo(cli_rev="main")
         cli_repo_dir = pl.Path(cli_repo.git_dir)
 
@@ -654,6 +650,7 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-cli")
         copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
+        gitpython.git_checkout(cli_repo, "cabal.project")
 
         # Build node
         with helpers.temporary_chdir(path=node_repo_dir):
@@ -695,7 +692,7 @@ def config_sync(
     LOGGER.info(f"  - end_build_time: {end_build_time}")
 
     rm_node_config_files(conf_dir=conf_dir)
-    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
+    # TODO: change the default to P2P when full P2P will be supported on Mainnet
     get_node_config_files(
         env=env,
         node_topology_type=node_topology_type,
