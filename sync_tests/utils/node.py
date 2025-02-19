@@ -27,8 +27,18 @@ CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = pl.Path.cwd() / "cardano-node"
 CLI = str(pl.Path.cwd() / "cardano-cli")
 NODE_LOG_FILE_NAME = "logfile.log"
-NODE_LOG_FILE_ARTIFACT = "node.log"
-RESULTS_FILE_NAME = "sync_results.json"
+
+
+@dataclasses.dataclass(frozen=True)
+class SyncRec:
+    secs_to_start: int
+    sync_time_sec: int
+    last_slot_no: int
+    latest_chunk_no: int
+    era_details: dict
+    epoch_details: dict
+    start_sync_time: str
+    end_sync_time: str
 
 
 def disable_p2p_node_config(config_file: pl.Path) -> None:
@@ -713,18 +723,6 @@ def get_node_exit_code(proc: subprocess.Popen) -> int:
     # Get and report the exit code
     exit_code = proc.returncode
     return exit_code
-
-
-@dataclasses.dataclass(frozen=True)
-class SyncRec:
-    secs_to_start: int
-    sync_time_sec: int
-    last_slot_no: int
-    latest_chunk_no: int
-    era_details: dict
-    epoch_details: dict
-    start_sync_time: str
-    end_sync_time: str
 
 
 def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str) -> SyncRec | None:

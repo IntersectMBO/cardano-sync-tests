@@ -19,10 +19,6 @@ from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
 
-CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
-NODE = pl.Path.cwd() / "cardano-node"
-CLI = pl.Path.cwd() / "cardano-cli"
-NODE_LOG_FILE_NAME = "logfile.log"
 NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
 
@@ -272,7 +268,7 @@ def run_test(args: argparse.Namespace) -> None:
     # we are interested in the node logs only for the main sync - using tag_no1
     test_values_dict: dict[str, tp.Any] = {}
     print("--- Parse the node logs and get the relevant data")
-    logs_details_dict = get_data_from_logs(log_file=base_dir / NODE_LOG_FILE_NAME)
+    logs_details_dict = get_data_from_logs(log_file=base_dir / node.NODE_LOG_FILE_NAME)
     test_values_dict["log_values"] = logs_details_dict
 
     sync2_rec = None
@@ -384,7 +380,7 @@ def run_test(args: argparse.Namespace) -> None:
     print("--- Copy the node logs")
     # sometimes uploading the artifacts fails because the node still writes into
     # the log file during the upload even though an attepmt to stop it was made
-    shutil.copy(base_dir / NODE_LOG_FILE_NAME, base_dir / NODE_LOG_FILE_ARTIFACT)
+    shutil.copy(base_dir / node.NODE_LOG_FILE_NAME, base_dir / NODE_LOG_FILE_ARTIFACT)
 
 
 def get_args() -> argparse.Namespace:
