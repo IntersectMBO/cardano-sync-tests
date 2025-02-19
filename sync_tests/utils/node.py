@@ -390,101 +390,68 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     era_details_dict = {}
     epoch_details_dict = {}
 
+    # Get the initial tip data and calculated slot
     actual_epoch, actual_block, actual_hash, actual_slot, actual_era, sync_progress = (
         get_current_tip(env=env)
     )
-    last_slot_no = get_calculated_slot_no(env)
+    last_slot_no = get_calculated_slot_no(env=env) if sync_progress is None else -1
     start_sync = time.perf_counter()
-
     count = 0
-    if sync_progress is not None:
-        while sync_progress < 100:
-            if count % 60 == 0:
-                now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-                LOGGER.warning(
-                    f"{now} - actual_era  : {actual_era} "
-                    f" - actual_epoch: {actual_epoch} "
-                    f" - actual_block: {actual_block} "
-                    f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {sync_progress}",
-                )
-            if actual_era not in era_details_dict:
-                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
-                if env == "mainnet":
-                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
-                else:
-                    actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
-                        env, actual_epoch
-                    )
-                actual_era_dict = {
-                    "start_epoch": actual_epoch,
-                    "start_time": actual_era_start_time,
-                    "start_sync_time": current_time,
-                }
-                era_details_dict[actual_era] = actual_era_dict
-            if actual_epoch not in epoch_details_dict:
-                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
-                actual_epoch_dict: dict[str, tp.Any] = {"start_sync_time": current_time}
-                epoch_details_dict[actual_epoch] = actual_epoch_dict
 
-            time.sleep(5)
-            count += 1
-            (
-                actual_epoch,
-                actual_block,
-                actual_hash,
-                actual_slot,
-                actual_era,
-                sync_progress,
-            ) = get_current_tip(env=env)
+    while True:
+        # Log status every 60 iterations.
+        if count % 60 == 0:
+            now_log = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+            LOGGER.warning(
+                f"{now_log} - actual_era  : {actual_era} "
+                f" - actual_epoch: {actual_epoch} "
+                f" - actual_block: {actual_block} "
+                f" - actual_slot : {actual_slot} "
+                f" - syncProgress: {sync_progress}",
+            )
 
-    else:
-        while actual_slot <= last_slot_no:
-            if count % 60 == 0:
-                now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-                LOGGER.warning(
-                    f"{now} - actual_era  : {actual_era} "
-                    f" - actual_epoch: {actual_epoch} "
-                    f" - actual_block: {actual_block} "
-                    f" - actual_slot : {actual_slot} "
-                    f" - syncProgress: {sync_progress}",
+        # Use the same current time for both era and epoch updates.
+        current_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+        # If we see a new era, record its starting details.
+        if actual_era not in era_details_dict:
+            if env == "mainnet":
+                actual_era_start_time = blockfrost.get_epoch_start_datetime(epoch_no=actual_epoch)
+            else:
+                actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
+                    env=env, epoch_no=actual_epoch
                 )
-            if actual_era not in era_details_dict:
-                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
-                if env == "mainnet":
-                    actual_era_start_time = blockfrost.get_epoch_start_datetime(actual_epoch)
-                else:
-                    actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
-                        env, actual_epoch
-                    )
-                actual_era_dict = {
-                    "start_epoch": actual_epoch,
-                    "start_time": actual_era_start_time,
-                    "start_sync_time": current_time,
-                }
-                era_details_dict[actual_era] = actual_era_dict
-            if actual_epoch not in epoch_details_dict:
-                current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
-                actual_epoch_dict = {"start_sync_time": current_time}
-                epoch_details_dict[actual_epoch] = actual_epoch_dict
-            time.sleep(1)
-            count += 1
-            (
-                actual_epoch,
-                actual_block,
-                actual_hash,
-                actual_slot,
-                actual_era,
-                sync_progress,
-            ) = get_current_tip(env=env)
+            era_details_dict[actual_era] = {
+                "start_epoch": actual_epoch,
+                "start_time": actual_era_start_time,
+                "start_sync_time": current_time_str,
+            }
+
+        # If we see a new epoch, record its starting sync time.
+        if actual_epoch not in epoch_details_dict:
+            epoch_details_dict[actual_epoch] = {"start_sync_time": current_time_str}
+
+        # Check termination condition:
+        # For nodes reporting sync progress, we wait until progress reaches 100.
+        if sync_progress is not None and sync_progress >= 100:
+            break
+        # Otherwise (for nodes without sync progress) wait until the slot number passes
+        # the calculated value.
+        if sync_progress is None and actual_slot > last_slot_no:
+            break
+
+        time.sleep(5)
+        count += 1
+        (
+            actual_epoch,
+            actual_block,
+            actual_hash,
+            actual_slot,
+            actual_era,
+            sync_progress,
+        ) = get_current_tip(env=env)
 
     done_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -536,7 +503,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     epoch_last_idx = len(epoch_list) - 1
 
     for i, epoch in enumerate(epoch_list):
-        epoch_dict = epoch_details_dict[epoch]
+        epoch_dict: dict[str, tp.Any] = epoch_details_dict[epoch]
 
         if i == epoch_last_idx:
             epoch_end_sync_time = done_time_str
