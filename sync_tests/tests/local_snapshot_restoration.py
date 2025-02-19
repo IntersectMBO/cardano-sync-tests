@@ -18,7 +18,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoration.zip"
-NODE = pl.Path.cwd() / "cardano-node"
 
 
 def main() -> int:
@@ -84,6 +83,9 @@ def main() -> int:
     # cardano-node setup
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
+    bin_dir = pl.Path("bin")
+    bin_dir.mkdir(exist_ok=True)
+    node.add_to_path(path=bin_dir)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
     node.get_node_files(node_rev=node_version_from_gh_action)
@@ -97,7 +99,7 @@ def main() -> int:
         use_genesis_mode=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(cardano_node=NODE, base_dir=base_dir, node_start_arguments=())
+    node.start_node(base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, timeout_minutes=10)
     db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
     node.wait_for_node_to_sync(env=env, base_dir=base_dir)

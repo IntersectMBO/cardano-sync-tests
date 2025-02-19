@@ -20,7 +20,6 @@ from sync_tests.utils import node
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 TEST_RESULTS = "db_sync_iohk_snapshot_restoration_test_results.json"
-NODE = pl.Path.cwd() / "cardano-node"
 
 
 def upload_snapshot_restoration_results_to_aws(env: str) -> None:
@@ -79,9 +78,11 @@ def main() -> None:
     print(f"Snapshot url: {snapshot_url}")
 
     # cardano-node setup
-    # cardano-node setup
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
+    bin_dir = pl.Path("bin")
+    bin_dir.mkdir(exist_ok=True)
+    node.add_to_path(path=bin_dir)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
     node.get_node_files(node_rev=node_version_from_gh_action)
@@ -95,7 +96,7 @@ def main() -> None:
         use_genesis_mode=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(cardano_node=NODE, base_dir=base_dir, node_start_arguments=())
+    node.start_node(base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, timeout_minutes=10)
     print("--- Node startup", flush=True)
     db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
