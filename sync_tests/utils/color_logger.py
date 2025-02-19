@@ -3,11 +3,6 @@ import typing as tp
 
 import colorama
 
-LOGGER = logging.getLogger(__name__)
-
-NODE_LOG_FILE_ARTIFACT = "node.log"
-RESULTS_FILE_NAME = "sync_results.json"
-
 
 class ColorFormatter(logging.Formatter):
     COLORS: tp.ClassVar[dict[str, str]] = {
