@@ -486,6 +486,8 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
                 sync_progress,
             ) = get_current_tip(env=env)
 
+    done_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
     LOGGER.info(f"sync_time_seconds: {sync_time_seconds}")
@@ -494,75 +496,65 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     latest_chunk_no = chunk_files[-1].stem
     LOGGER.info(f"Sync done!; latest_chunk_no: {latest_chunk_no}")
 
-    # add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era;
-    # for the last/current era, "end_sync_time" = current_utc_time / end_of_sync_time
+    # Add "end_sync_time", "slots_in_era", "sync_duration_secs" and "sync_speed_sps" for each era
     eras_list = list(era_details_dict.keys())
-    for era in eras_list:
-        if era == eras_list[-1]:
-            end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+    eras_last_idx = len(eras_list) - 1
+
+    for i, era in enumerate(eras_list):
+        era_dict = era_details_dict[era]
+
+        if i == eras_last_idx:
+            end_sync_time = done_time_str
             last_epoch = actual_epoch
         else:
-            end_sync_time = era_details_dict[eras_list[eras_list.index(era) + 1]]["start_sync_time"]
-            last_epoch = (
-                int(era_details_dict[eras_list[eras_list.index(era) + 1]]["start_epoch"]) - 1
-            )
+            next_era = era_details_dict[eras_list[i + 1]]
+            end_sync_time = next_era["start_sync_time"]
+            last_epoch = int(next_era["start_epoch"]) - 1
 
-        actual_era_dict = era_details_dict[era]
-        actual_era_dict["last_epoch"] = last_epoch
-        actual_era_dict["end_sync_time"] = end_sync_time
+        era_dict["last_epoch"] = last_epoch
+        era_dict["end_sync_time"] = end_sync_time
 
-        no_of_epochs_in_era = (
-            int(last_epoch)
-            - int(era_details_dict[eras_list[eras_list.index(era)]]["start_epoch"])
-            + 1
-        )
-        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(
+        start_epoch = int(era_dict["start_epoch"])
+        no_of_epochs_in_era = last_epoch - start_epoch + 1
+        era_dict["slots_in_era"] = get_no_of_slots_in_era(
             era_name=era, no_of_epochs_in_era=no_of_epochs_in_era
         )
 
-        actual_era_dict["sync_duration_secs"] = int(
-            (
-                datetime.datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
-                    tzinfo=datetime.timezone.utc
-                )
-                - datetime.datetime.strptime(
-                    actual_era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.timezone.utc)
-            ).total_seconds()
+        start_dt = datetime.datetime.strptime(
+            era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+        end_dt = datetime.datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=datetime.timezone.utc
         )
+        sync_duration_secs = int((end_dt - start_dt).total_seconds())
+        era_dict["sync_duration_secs"] = sync_duration_secs
 
-        actual_era_dict["sync_speed_sps"] = int(
-            actual_era_dict["slots_in_era"] / actual_era_dict["sync_duration_secs"]
-        )
+        era_dict["sync_speed_sps"] = int(era_dict["slots_in_era"] / sync_duration_secs)
 
-        era_details_dict[era] = actual_era_dict
-
-    # calculate and add "end_sync_time" and "sync_duration_secs" for each epoch;
+    # Calculate and add "end_sync_time" and "sync_duration_secs" for each epoch
     epoch_list = list(epoch_details_dict.keys())
-    for epoch in epoch_list:
-        if epoch == epoch_list[-1]:
-            epoch_end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+    epoch_last_idx = len(epoch_list) - 1
+
+    for i, epoch in enumerate(epoch_list):
+        epoch_dict = epoch_details_dict[epoch]
+
+        if i == epoch_last_idx:
+            epoch_end_sync_time = done_time_str
         else:
-            epoch_end_sync_time = epoch_details_dict[epoch_list[epoch_list.index(epoch) + 1]][
-                "start_sync_time"
-            ]
-        actual_epoch_dict = epoch_details_dict[epoch]
-        actual_epoch_dict["end_sync_time"] = epoch_end_sync_time
-        actual_epoch_dict["sync_duration_secs"] = int(
-            (
-                datetime.datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
-                    tzinfo=datetime.timezone.utc
-                )
-                - datetime.datetime.strptime(
-                    actual_epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.timezone.utc)
-            ).total_seconds()
+            next_epoch = epoch_details_dict[epoch_list[i + 1]]
+            epoch_end_sync_time = next_epoch["start_sync_time"]
+
+        epoch_dict["end_sync_time"] = epoch_end_sync_time
+
+        start_dt = datetime.datetime.strptime(
+            epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+        end_dt = datetime.datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=datetime.timezone.utc
         )
-        epoch_details_dict[epoch] = actual_epoch_dict
+        sync_duration_secs = int((end_dt - start_dt).total_seconds())
+        epoch_dict["sync_duration_secs"] = sync_duration_secs
+
     return (
         sync_time_seconds,
         last_slot_no,
