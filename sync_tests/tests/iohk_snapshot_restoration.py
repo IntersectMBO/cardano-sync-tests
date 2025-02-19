@@ -87,13 +87,15 @@ def main() -> None:
     node.get_node_files(node_rev=node_version_from_gh_action)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
-    # TO DO: change the default to P2P when full P2P will be supported on Mainnet
+    # TODO: change the default to P2P when full P2P will be supported on Mainnet
     node.get_node_config_files(
         env=env,
+        node_topology_type="",
         conf_dir=conf_dir,
+        use_genesis_mode=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(cardano_node=NODE, base_dir=base_dir)
+    node.start_node(cardano_node=NODE, base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, timeout_minutes=10)
     print("--- Node startup", flush=True)
     db_sync.print_file(db_sync.NODE_LOG_FILE, 80)

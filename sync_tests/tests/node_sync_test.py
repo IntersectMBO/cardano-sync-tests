@@ -275,6 +275,7 @@ def run_test(args: argparse.Namespace) -> None:
     logs_details_dict = get_data_from_logs(log_file=base_dir / NODE_LOG_FILE_NAME)
     test_values_dict["log_values"] = logs_details_dict
 
+    sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
     if tag_no2 and tag_no2 != "None":
         node.delete_node_files()
@@ -310,7 +311,6 @@ def run_test(args: argparse.Namespace) -> None:
         print(f" - cardano_cli_git_rev2: {cli_git_rev2}")
         print()
         print(f"================ Start node using node_rev2: {node_rev2} ====================")
-
         sync2_rec = node.run_sync(
             node_start_arguments=node_start_arguments2, base_dir=base_dir, env=env
         )
@@ -332,10 +332,12 @@ def run_test(args: argparse.Namespace) -> None:
         test_values_dict[f"{era}_sync_duration_secs"] = era_data["sync_duration_secs"]
         test_values_dict[f"{era}_sync_speed_sps"] = era_data["sync_speed_sps"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
+
     epoch_details = {}
     for epoch, epoch_data in sync1_rec.epoch_details.items():
         epoch_details[epoch] = epoch_data["sync_duration_secs"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
+
     test_values_dict["env"] = env
     test_values_dict["tag_no1"] = tag_no1
     test_values_dict["tag_no2"] = tag_no2
@@ -466,10 +468,6 @@ def get_args() -> argparse.Namespace:
 
 def main() -> int:
     logging.setLoggerClass(ColorLogger)
-    logging.basicConfig(
-        format="%(name)s:%(levelname)s:%(message)s",
-        level=logging.INFO,
-    )
     args = get_args()
     run_test(args=args)
 
