@@ -171,7 +171,7 @@ def print_report(db_schema: Exception | None, db_indexes: Exception | None) -> N
         db_sync.print_color_log(db_sync.sh_colors.WARNING, "NO Db indexes issues")
 
 
-def main() -> None:
+def run_test(args: argparse.Namespace) -> None:
     # system and software versions details
     print("--- Sync from clean state - setup")
     platform_system, platform_release, platform_version = helpers.get_os_type()
@@ -339,7 +339,9 @@ def main() -> None:
     print_report(db_schema, db_indexes)
 
 
-if __name__ == "__main__":
+def get_args() -> argparse.Namespace:
+    """Get command line arguments."""
+    parser = argparse.ArgumentParser(description="Execute DB Sync sync test\n\n")
 
     def hyphenated(db_sync_start_args: str) -> str:
         start_args = db_sync_start_args.split(" ")
@@ -349,8 +351,6 @@ if __name__ == "__main__":
             final_args_string += str("--" + arg + " ")
 
         return final_args_string
-
-    parser = argparse.ArgumentParser(description="Execute basic sync test\n\n")
 
     parser.add_argument("-npr", "--node_pr", help="node pr number")
     parser.add_argument("-nbr", "--node_branch", help="node branch or tag")
@@ -385,6 +385,15 @@ if __name__ == "__main__":
         help="the environment on which to run the tests - shelley_qa, testnet, staging or mainnet.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    main()
+
+def main() -> int:
+    args = get_args()
+    run_test(args=args)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

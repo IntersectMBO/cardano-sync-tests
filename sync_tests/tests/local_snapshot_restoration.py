@@ -20,7 +20,7 @@ TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_local_snapshot_restoration_test_r
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoration.zip"
 
 
-def main() -> int:
+def run_test(args: argparse.Namespace) -> int:
     if helpers.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot restoration")
         return 0
@@ -201,12 +201,13 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+def get_args() -> argparse.Namespace:
+    """Get command line arguments."""
 
     def hyphenated(string: str) -> str:
         return "--" + string
 
-    parser = argparse.ArgumentParser(description="Execute basic sync test\n\n")
+    parser = argparse.ArgumentParser(description="Db Sync restoration from local snapshot test\n\n")
 
     parser.add_argument("-npr", "--node_pr", help="node pr number")
     parser.add_argument("-nbr", "--node_branch", help="node branch or tag")
@@ -242,6 +243,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("-rosc", "--run_only_sync_test", help="should run only sync test ?")
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    main()
+
+def main() -> int:
+    args = get_args()
+    run_test(args=args)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
