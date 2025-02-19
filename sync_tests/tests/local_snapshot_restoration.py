@@ -9,12 +9,12 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
+from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
 DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoration.zip"
@@ -22,42 +22,42 @@ DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoratio
 
 def run_test(args: argparse.Namespace) -> int:
     if helpers.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
-        print("--- Skipping Db sync snapshot restoration")
+        LOGGER.info("--- Skipping Db sync snapshot restoration")
         return 0
 
-    print("--- Db sync snapshot restoration")
+    LOGGER.info("--- Db sync snapshot restoration")
 
     # system and software versions details
     platform_system, platform_release, platform_version = helpers.get_os_type()
-    print(f"Platform: {platform_system, platform_release, platform_version}")
+    LOGGER.info(f"Platform: {platform_system, platform_release, platform_version}")
 
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    print(f"Test start time: {start_test_time}")
+    LOGGER.info(f"Test start time: {start_test_time}")
 
     env = helpers.get_arg_value(args=args, key="environment")
-    print(f"Environment: {env}")
+    LOGGER.info(f"Environment: {env}")
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
-    print(f"Node PR number: {node_pr}")
+    LOGGER.info(f"Node PR number: {node_pr}")
 
     node_branch = helpers.get_arg_value(args=args, key="node_branch", default="")
-    print(f"Node branch: {node_branch}")
+    LOGGER.info(f"Node branch: {node_branch}")
 
     node_version_from_gh_action = helpers.get_arg_value(
         args=args, key="node_version_gh_action", default=""
     )
-    print(f"Node version: {node_version_from_gh_action}")
+    LOGGER.info(f"Node version: {node_version_from_gh_action}")
 
     db_branch = helpers.get_arg_value(args=args, key="db_sync_branch", default="")
-    print(f"DB sync branch: {db_branch}")
+    LOGGER.info(f"DB sync branch: {db_branch}")
 
     db_sync_version_from_gh_action = helpers.get_arg_value(
         args=args, key="db_sync_version_gh_action", default=""
     )
-    print(f"DB sync version: {db_sync_version_from_gh_action}")
+    LOGGER.info(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # database setup
-    print("--- Local snapshot restoration - postgres and database setup")
+    LOGGER.info("--- Local snapshot restoration - postgres and database setup")
     db_sync.setup_postgres(pg_port="5433")
     db_sync.create_pgpass_file(env)
     db_sync.create_database()
@@ -66,20 +66,20 @@ def run_test(args: argparse.Namespace) -> int:
     os.chdir(db_sync.ROOT_TEST_PATH)
     os.chdir(pl.Path.cwd() / "cardano-db-sync")
     snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
-    print("--- Local snapshot restoration - restoration process")
-    print(f"Snapshot file from key-store: {snapshot_file}")
+    LOGGER.info("--- Local snapshot restoration - restoration process")
+    LOGGER.info(f"Snapshot file from key-store: {snapshot_file}")
     restoration_time = db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
-    print(f"Restoration time [sec]: {restoration_time}")
+    LOGGER.info(f"Restoration time [sec]: {restoration_time}")
     db_sync_tip = db_sync.get_db_sync_tip(env)
     assert db_sync_tip is not None  # TODO: refactor
     snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = db_sync_tip
-    print(
+    LOGGER.info(
         f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, "
         f"block: {snapshot_block_no}, slot: {snapshot_slot_no}"
     )
 
     # start node
-    print("--- Node startup after snapshot restoration")
+    LOGGER.info("--- Node startup after snapshot restoration")
     # cardano-node setup
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
@@ -105,7 +105,7 @@ def run_test(args: argparse.Namespace) -> int:
     node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
     # start db-sync
-    print("--- Db-sync startup after snapshot restoration")
+    LOGGER.info("--- Db-sync startup after snapshot restoration")
     os.chdir(db_sync.ROOT_TEST_PATH)
     os.chdir(pl.Path.cwd() / "cardano-db-sync")
     db_sync.export_env_var("PGPORT", "5433")
@@ -116,21 +116,21 @@ def run_test(args: argparse.Namespace) -> int:
     db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
-    print(f"Waiting for additional {wait_time} minutes to continue syncying...")
+    LOGGER.info(f"Waiting for additional {wait_time} minutes to continue syncying...")
     db_sync.wait(wait_time * db_sync.ONE_MINUTE)
     db_sync_tip = db_sync.get_db_sync_tip(env)
     assert db_sync_tip is not None  # TODO: refactor
     epoch_no, block_no, slot_no = db_sync_tip
-    print(f"Test end time: {end_test_time}")
+    LOGGER.info(f"Test end time: {end_test_time}")
     db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 60)
 
     # stop cardano-node and cardano-db-sync
-    print("--- Stop cardano services")
+    LOGGER.info("--- Stop cardano services")
     helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
     helpers.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
-    print("--- Gathering end results")
+    LOGGER.info("--- Gathering end results")
     test_data: OrderedDict[str, tp.Any] = OrderedDict()
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
@@ -175,7 +175,7 @@ def run_test(args: argparse.Namespace) -> int:
     db_sync.upload_artifact(TEST_RESULTS)
 
     # search db-sync log for issues
-    print("--- Summary: Rollbacks, errors and other isssues")
+    LOGGER.info("--- Summary: Rollbacks, errors and other isssues")
 
     log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
     db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
@@ -247,6 +247,7 @@ def get_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.setLoggerClass(color_logger.ColorLogger)
     args = get_args()
     run_test(args=args)
 

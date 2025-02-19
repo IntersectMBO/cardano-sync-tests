@@ -11,13 +11,13 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 
 from sync_tests.utils import aws_db
+from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 sys.path.append(os.getcwd())
 
@@ -62,7 +62,7 @@ def upload_sync_results_to_aws(env: str) -> None:
     os.chdir(db_sync.ROOT_TEST_PATH)
     os.chdir(pl.Path.cwd() / "cardano-db-sync")
 
-    print("--- Write full sync results to AWS Database")
+    LOGGER.info("Writing full sync results to AWS Database")
     with open(TEST_RESULTS) as json_file:
         sync_test_results_dict = json.load(json_file)
 
@@ -73,7 +73,7 @@ def upload_sync_results_to_aws(env: str) -> None:
     identifier = env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
-    print(f"  ==== Write test values into the {test_summary_table} DB table:")
+    LOGGER.info(f"Writing test values into {test_summary_table} DB table")
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
@@ -82,15 +82,14 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_names_list=col_to_insert,
         col_values_list=val_to_insert,
     ):
-        print(f"col_to_insert: {col_to_insert}")
-        print(f"val_to_insert: {val_to_insert}")
+        LOGGER.error(f"Failed to insert values into {test_summary_table}")
         sys.exit(1)
 
     with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
     epoch_duration_table = env + "_epoch_duration_db_sync"
-    print(f"  ==== Write test values into the {epoch_duration_table} DB table:")
+    LOGGER.info(f"  ==== Write test values into the {epoch_duration_table} DB table:")
     col_to_insert = ["identifier", "epoch_no", "sync_duration_secs"]
     val_to_insert = [(identifier, e["no"], e["seconds"]) for e in epoch_sync_times]
 
@@ -100,15 +99,14 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_values_list=val_to_insert,
         bulk=True,
     ):
-        print(f"col_to_insert: {col_to_insert}")
-        print(f"val_to_insert: {val_to_insert}")
+        LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
         sys.exit(1)
 
     with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
         db_sync_performance_stats = json.load(json_perf_stats_file)
 
     db_sync_performance_stats_table = env + "_performance_stats_db_sync"
-    print(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
+    LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
     col_to_insert = [
         "identifier",
         "time",
@@ -133,69 +131,62 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_values_list=val_to_insert,
         bulk=True,
     ):
-        print(f"col_to_insert: {col_to_insert}")
-        print(f"val_to_insert: {val_to_insert}")
+        LOGGER.error(f"Failed to insert values into {db_sync_performance_stats_table}")
         sys.exit(1)
 
 
 def print_report(db_schema: Exception | None, db_indexes: Exception | None) -> None:
     log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
+    LOGGER.warning(f"Are errors present: {log_errors}")
 
     rollbacks = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
+    LOGGER.warning(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
 
     failed_rollbacks = db_sync.is_string_present_in_file(
         db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
     )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are failed rollbacks present: {failed_rollbacks}",
-    )
+    LOGGER.warning(f"Are failed rollbacks present: {failed_rollbacks}")
 
     corrupted_ledger_files = db_sync.is_string_present_in_file(
         db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
     )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are corrupted ledger files present: {corrupted_ledger_files}",
-    )
+    LOGGER.warning(f"Are corrupted ledger files present: {corrupted_ledger_files}")
 
     if db_schema:
-        db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Db schema issues: {db_schema}")
+        LOGGER.warning(f"Db schema issues: {db_schema}")
     else:
-        db_sync.print_color_log(db_sync.sh_colors.WARNING, "NO Db schema issues")
+        LOGGER.warning("NO Db schema issues")
     if db_indexes:
-        db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Db indexes issues: {db_indexes}")
+        LOGGER.warning(f"Db indexes issues: {db_indexes}")
     else:
-        db_sync.print_color_log(db_sync.sh_colors.WARNING, "NO Db indexes issues")
+        LOGGER.warning("NO Db indexes issues")
 
 
 def run_test(args: argparse.Namespace) -> None:
     # system and software versions details
-    print("--- Sync from clean state - setup")
+    LOGGER.info("--- Sync from clean state - setup")
     platform_system, platform_release, platform_version = helpers.get_os_type()
-    print(f"Platform: {platform_system, platform_release, platform_version}")
+    LOGGER.info(f"Platform: {platform_system, platform_release, platform_version}")
 
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    print(f"Test start time: {start_test_time}")
+    LOGGER.info(f"Test start time: {start_test_time}")
 
     env = helpers.get_arg_value(args=args, key="environment")
-    print(f"Environment: {env}")
+    LOGGER.info(f"Environment: {env}")
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
-    print(f"Node PR number: {node_pr}")
+    LOGGER.info(f"Node PR number: {node_pr}")
 
     node_branch = helpers.get_arg_value(args=args, key="node_branch", default="")
-    print(f"Node branch: {node_branch}")
+    LOGGER.info(f"Node branch: {node_branch}")
 
     node_version_from_gh_action = helpers.get_arg_value(
         args=args, key="node_version_gh_action", default=""
     )
-    print(f"Node version: {node_version_from_gh_action}")
+    LOGGER.info(f"Node version: {node_version_from_gh_action}")
 
     db_branch = helpers.get_arg_value(args=args, key="db_sync_branch", default="")
-    print(f"DB sync branch: {db_branch}")
+    LOGGER.info(f"DB sync branch: {db_branch}")
 
     db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="")
 
@@ -204,7 +195,7 @@ def run_test(args: argparse.Namespace) -> None:
         + " "
         + db_start_options
     )
-    print(f"DB sync version: {db_sync_version_from_gh_action}")
+    LOGGER.info(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # cardano-node setup
     conf_dir = pl.Path.cwd()
@@ -228,26 +219,26 @@ def run_test(args: argparse.Namespace) -> None:
     node.start_node(base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, timeout_minutes=10)
 
-    print("--- Node startup", flush=True)
+    LOGGER.info("--- Node startup")
     db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
 
     # cardano-db sync setup
     os.chdir(db_sync.ROOT_TEST_PATH)
     db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
     os.chdir(db_sync_dir)
-    print("--- Db sync setup")
+    LOGGER.info("--- Db sync setup")
     db_sync.setup_postgres()  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
     db_sync.create_pgpass_file(env)
     db_sync.create_database()
     helpers.execute_command("nix build -v .#cardano-db-sync -o db-sync-node")
     helpers.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool")
     db_sync.copy_db_sync_executables(build_method="nix")
-    print("--- Db sync startup", flush=True)
+    LOGGER.info("--- Db sync startup")
     db_sync.start_db_sync(env, start_args=db_start_options)
     db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version()
     db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 30)
     db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
-    print("--- Db sync schema and indexes check for erors")
+    LOGGER.info("--- Db sync schema and indexes check for erors")
     db_schema = db_sync.check_database(
         db_sync.get_db_schema, "DB schema is incorrect", EXPECTED_DB_SCHEMA
     )
@@ -259,12 +250,12 @@ def run_test(args: argparse.Namespace) -> None:
     epoch_no, block_no, slot_no = db_sync_tip
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
-    print("--- Summary & Artifacts uploading")
-    print(
+    LOGGER.info("--- Summary & Artifacts uploading")
+    LOGGER.info(
         f"FINAL db-sync progress: {db_sync.get_db_sync_progress(env)}, "
         f"epoch: {epoch_no}, block: {block_no}"
     )
-    print(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
+    LOGGER.info(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
 
     # shut down services
     helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
@@ -335,7 +326,7 @@ def run_test(args: argparse.Namespace) -> None:
         db_sync.upload_artifact(node_db)
 
     # search db-sync log for issues
-    print("--- Summary: Rollbacks, errors and other isssues")
+    LOGGER.info("--- Summary: Rollbacks, errors and other isssues")
     print_report(db_schema, db_indexes)
 
 
@@ -389,6 +380,7 @@ def get_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.setLoggerClass(color_logger.ColorLogger)
     args = get_args()
     run_test(args=args)
 
