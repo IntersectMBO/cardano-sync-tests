@@ -30,13 +30,11 @@
                 postgresql_14
                 wget
                 curl
-                pkgs.gcc  # <-- Fixes missing libstdc++.so.6
-                pkgs.stdenv.cc.cc  # <-- Ensures C++ standard library
-                py3Pkgs.numpy  # <-- Ensure NumPy is installed correctly
-                py3Pkgs.matplotlib
-                py3Pkgs.pandas
+                pkgs.stdenv.cc.cc
+                pkgs.zlib
               ];
               shellHook = ''
+                export LD_LIBRARY_PATH="${pkgs.zlib.out}/lib:${pkgs.stdenv.cc.cc.lib}/lib/:$LD_LIBRARY_PATH"
                 echo "Setting up Python environment..."
                 python3 -m venv .venv_nix || true
                 source .venv_nix/bin/activate
