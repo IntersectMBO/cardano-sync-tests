@@ -24,8 +24,6 @@ from sync_tests.utils import helpers
 LOGGER = logging.getLogger(__name__)
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
-NODE = pl.Path.cwd() / "cardano-node"
-CLI = str(pl.Path.cwd() / "cardano-cli")
 NODE_LOG_FILE_NAME = "logfile.log"
 
 
@@ -39,6 +37,11 @@ class SyncRec:
     epoch_details: dict
     start_sync_time: str
     end_sync_time: str
+
+
+def add_to_path(path: pl.Path) -> None:
+    """Add a directory to the system PATH environment variable."""
+    os.environ["PATH"] = str(path.absolute()) + os.pathsep + os.environ["PATH"]
 
 
 def disable_p2p_node_config(config_file: pl.Path) -> None:
@@ -154,7 +157,7 @@ def get_testnet_args(env: str) -> list[str]:
 
 def get_current_tip(env: str) -> tuple:
     """Retrieve the current tip of the Cardano node."""
-    cmd = [CLI, "latest", "query", "tip", *get_testnet_args(env=env)]
+    cmd = ["cardano-cli", "latest", "query", "tip", *get_testnet_args(env=env)]
 
     output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
     output_json = json.loads(output)
@@ -200,7 +203,7 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
 
 def get_node_version() -> tuple[str, str]:
     try:
-        cmd = f"{CLI} --version"
+        cmd = "cardano-cli --version"
         output = (
             subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
             .decode("utf-8")
@@ -217,13 +220,13 @@ def get_node_version() -> tuple[str, str]:
 
 
 def start_node(
-    cardano_node: pl.Path, base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
+    base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
 ) -> tuple[subprocess.Popen, tp.IO[str]]:
     start_args = " ".join(node_start_arguments)
 
     if platform.system().lower() == "windows":
         cmd = (
-            f"{cardano_node} run --topology topology.json "
+            "cardano-node run --topology topology.json "
             f"--database-path {base_dir / 'db'} "
             "--host-addr 0.0.0.0 "
             "--port 3000 "
@@ -233,7 +236,7 @@ def start_node(
     else:
         socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
         cmd = (
-            f"{cardano_node} run --topology topology.json --database-path "
+            "cardano-node run --topology topology.json --database-path "
             f"{base_dir / 'db'} "
             "--host-addr 0.0.0.0 --port 3000 --config "
             f"config.json --socket-path {socket_path} {start_args}"
@@ -575,33 +578,33 @@ def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | Non
     return None
 
 
-def copy_cabal_node_exe(repo_dir: pl.Path, dst_location: pl.Path) -> None:
+def copy_cabal_node_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     node_binary_location_tmp = get_node_executable_path_built_with_cabal(repo_dir=repo_dir)
     assert node_binary_location_tmp is not None  # TODO: refactor
     node_binary_location = node_binary_location_tmp
-    shutil.copy2(node_binary_location, dst_location / "cardano-node")
-    helpers.make_executable(path=dst_location / "cardano-node")
+    shutil.copy2(node_binary_location, dst_dir / "cardano-node")
+    helpers.make_executable(path=dst_dir / "cardano-node")
 
 
-def copy_cabal_cli_exe(repo_dir: pl.Path, dst_location: pl.Path) -> None:
+def copy_cabal_cli_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     cli_binary_location_tmp = get_cli_executable_path_built_with_cabal(repo_dir=repo_dir)
     assert cli_binary_location_tmp is not None  # TODO: refactor
     cli_binary_location = cli_binary_location_tmp
-    shutil.copy2(cli_binary_location, dst_location / "cardano-cli")
-    helpers.make_executable(path=dst_location / "cardano-cli")
+    shutil.copy2(cli_binary_location, dst_dir / "cardano-cli")
+    helpers.make_executable(path=dst_dir / "cardano-cli")
 
 
-def ln_nix_node_from_repo(repo_dir: pl.Path, dst_location: pl.Path) -> None:
-    (dst_location / "cardano-node").unlink(missing_ok=True)  # Remove existing file if any
+def ln_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
+    (dst_dir / "cardano-node").unlink(missing_ok=True)  # Remove existing file if any
     os.symlink(
         repo_dir / "cardano-node-bin" / "bin" / "cardano-node",
-        dst_location / "cardano-node",
+        dst_dir / "cardano-node",
     )
 
-    (dst_location / "cardano-cli").unlink(missing_ok=True)  # Remove existing file if any
+    (dst_dir / "cardano-cli").unlink(missing_ok=True)  # Remove existing file if any
     os.symlink(
         repo_dir / "cardano-cli-bin" / "bin" / "cardano-cli",
-        dst_location / "cardano-cli",
+        dst_dir / "cardano-cli",
     )
 
 
@@ -632,7 +635,7 @@ def get_cli_repo(cli_rev: str) -> git.Repo:
 
 
 def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
-    test_directory = pl.Path.cwd()
+    bin_directory = pl.Path("bin")
 
     node_repo = get_node_repo(node_rev=node_rev)
     node_repo_dir = pl.Path(node_repo.git_dir)
@@ -643,10 +646,10 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
             pl.Path("cardano-cli-bin").unlink(missing_ok=True)
             helpers.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
             helpers.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
-        ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_location=test_directory)
+        ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     elif build_tool == "cabal":
-        cabal_local_file = pl.Path(test_directory) / "sync_tests" / "cabal.project.local"
+        cabal_local_file = pl.Path("sync_tests") / "cabal.project.local"
         cli_repo = get_cli_repo(cli_rev="main")
         cli_repo_dir = pl.Path(cli_repo.git_dir)
 
@@ -659,7 +662,7 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
                 LOGGER.debug(line.replace("tests: True", "tests: False"))
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-cli")
-        copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_location=test_directory)
+        copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_dir=bin_directory)
         gitpython.git_checkout(cli_repo, "cabal.project")
 
         # Build node
@@ -671,7 +674,7 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
                 LOGGER.debug(line.replace("tests: True", "tests: False"))
             helpers.execute_command("cabal update")
             helpers.execute_command("cabal build cardano-node")
-        copy_cabal_cli_exe(repo_dir=node_repo_dir, dst_location=test_directory)
+        copy_cabal_node_exe(repo_dir=node_repo_dir, dst_dir=bin_directory)
         gitpython.git_checkout(node_repo, "cabal.project")
 
     return node_repo
@@ -687,6 +690,10 @@ def config_sync(
 ) -> None:
     LOGGER.info(f"Get the cardano-node and cardano-cli files using - {node_build_mode}")
     start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+
+    bin_dir = pl.Path("bin")
+    bin_dir.mkdir(exist_ok=True)
+    add_to_path(path=bin_dir)
 
     platform_system = platform.system().lower()
     if "windows" not in platform_system:
@@ -735,7 +742,8 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
     logfile = None
     try:
         node_proc, logfile = start_node(
-            cardano_node=NODE, base_dir=base_dir, node_start_arguments=node_start_arguments
+            base_dir=base_dir,
+            node_start_arguments=node_start_arguments,
         )
         secs_to_start = wait_node_start(env=env, timeout_minutes=10)
         (

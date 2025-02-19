@@ -24,7 +24,6 @@ sys.path.append(os.getcwd())
 TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
 CHART = f"full_sync_{db_sync.ENVIRONMENT}_stats_chart.png"
 EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
-NODE = pl.Path.cwd() / "cardano-node"
 
 
 def create_sync_stats_chart() -> None:
@@ -210,6 +209,9 @@ def main() -> None:
     # cardano-node setup
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
+    bin_dir = pl.Path("bin")
+    bin_dir.mkdir(exist_ok=True)
+    node.add_to_path(path=bin_dir)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
     node.get_node_files(node_rev=node_version_from_gh_action)
@@ -223,7 +225,7 @@ def main() -> None:
         use_genesis_mode=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(cardano_node=NODE, base_dir=base_dir, node_start_arguments=())
+    node.start_node(base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, timeout_minutes=10)
 
     print("--- Node startup", flush=True)
