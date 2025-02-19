@@ -44,7 +44,7 @@ def upload_snapshot_restoration_results_to_aws(env: str) -> None:
         sys.exit(1)
 
 
-def main() -> None:
+def run_test(args: argparse.Namespace) -> None:
     print("--- Db-sync restoration from IOHK official snapshot")
     platform_system, platform_release, platform_version = helpers.get_os_type()
     print(f"Platform: {platform_system, platform_release, platform_version}")
@@ -251,8 +251,11 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Execute basic sync test\n\n")
+def get_args() -> argparse.Namespace:
+    """Get command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Db Sync restoration from IOHK official snapshot test\n\n"
+    )
 
     parser.add_argument("-npr", "--node_pr", help="node pr number")
     parser.add_argument("-nbr", "--node_branch", help="node branch or tag")
@@ -282,6 +285,15 @@ if __name__ == "__main__":
         help="the environment on which to run the tests - shelley_qa, testnet, staging or mainnet.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    main()
+
+def main() -> int:
+    args = get_args()
+    run_test(args=args)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
