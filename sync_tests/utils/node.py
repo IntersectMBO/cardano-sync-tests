@@ -27,8 +27,6 @@ CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE = pl.Path.cwd() / "cardano-node"
 CLI = str(pl.Path.cwd() / "cardano-cli")
 NODE_LOG_FILE_NAME = "logfile.log"
-NODE_LOG_FILE_ARTIFACT = "node.log"
-RESULTS_FILE_NAME = "sync_results.json"
 
 
 def disable_p2p_node_config(config_file: pl.Path) -> None:
