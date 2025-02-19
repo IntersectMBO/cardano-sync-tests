@@ -1,6 +1,7 @@
 import dataclasses
 import datetime
 import fileinput
+import functools
 import json
 import logging
 import os
@@ -341,19 +342,46 @@ def get_calculated_slot_no(env: str) -> int:
     return last_slot_no
 
 
-def get_no_of_slots_in_era(env: str, era_name: str, no_of_epochs_in_era: int) -> int:
-    slot_length_secs = 1
-    epoch_length_slots = 432000
+def find_genesis_json(era_name: str) -> pl.Path:
+    """Find genesis JSON file in state dir."""
+    cwd = pl.Path.cwd()
+    potential = [
+        *cwd.glob(f"*{era_name}*genesis.json"),
+        *cwd.glob(f"*genesis*{era_name}.json"),
+    ]
+    if not potential:
+        msg = f"The genesis JSON file not found in `{cwd}`."
+        raise exceptions.SyncError(msg)
 
-    if era_name.lower() == "byron":
-        slot_length_secs = 20
-    if env == "shelley-qa":
-        epoch_length_slots = 7200
-    if env == "preview":
-        epoch_length_slots = 86400
+    genesis_json = potential[0]
+    LOGGER.debug(f"Using genesis JSON file `{genesis_json}")
+    return genesis_json
 
-    epoch_length_secs = int(epoch_length_slots / slot_length_secs)
-    return int(epoch_length_secs * no_of_epochs_in_era)
+
+def get_genesis(era_name: str) -> dict:
+    genesis_file = find_genesis_json(era_name=era_name)
+    with open(genesis_file, encoding="utf-8") as in_json:
+        genesis_dict: dict = json.load(in_json)
+    return genesis_dict
+
+
+@functools.cache
+def get_byron_slot_ln() -> int:
+    genesis = get_genesis(era_name="byron")
+    return int(genesis["protocolConsts"]["k"]) * 10
+
+
+@functools.cache
+def get_shelley_slot_ln() -> int:
+    genesis = get_genesis(era_name="shelley")
+    return int(genesis["epochLength"])
+
+
+def get_no_of_slots_in_era(era_name: str, no_of_epochs_in_era: int) -> int:
+    """Get the number of slots in an era."""
+    era_name = era_name.lower()
+    epoch_length_slots = get_byron_slot_ln() if era_name == "byron" else get_shelley_slot_ln()
+    return int(epoch_length_slots * no_of_epochs_in_era)
 
 
 def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
@@ -490,7 +518,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
             - int(era_details_dict[eras_list[eras_list.index(era)]]["start_epoch"])
             + 1
         )
-        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(env, era, no_of_epochs_in_era)
+        actual_era_dict["slots_in_era"] = get_no_of_slots_in_era(
+            era_name=era, no_of_epochs_in_era=no_of_epochs_in_era
+        )
 
         actual_era_dict["sync_duration_secs"] = int(
             (
