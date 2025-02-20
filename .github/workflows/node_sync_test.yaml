@@ -11,12 +11,6 @@ on:
         - preprod
         - preview
         default: preprod
-      build_mode:
-        description: "build-mode"
-        type: choice
-        options:
-        - nix
-        default: nix
       tag_no1:
         description: "Initial sync - Graph axis label"
         required: true
@@ -97,7 +91,6 @@ jobs:
           BLOCKFROST_API_KEY: ${{ secrets.BLOCKFROST_API_KEY }}
           BUILD_ENV_VARS: '{
           "env":"${{ github.event.inputs.environment }}",
-          "build_mode":"${{ github.event.inputs.build_mode }}",
           "node_rev1":"${{ steps.get_tag.outputs.node_rev1 }}",
           "node_rev2":"${{ github.event.inputs.node_rev2 }}",
           "tag_no1":"${{ github.event.inputs.tag_no1 }}",
