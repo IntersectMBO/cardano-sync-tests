@@ -15,6 +15,7 @@ from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
+from sync_tests.utils import log_analyzer
 from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
@@ -199,8 +200,12 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
     test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = db_sync.get_total_db_size(env)
-    test_data["rollbacks"] = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    test_data["errors"] = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
+    test_data["rollbacks"] = log_analyzer.are_rollbacks_present_in_logs(
+        log_file=db_sync.DB_SYNC_LOG_FILE
+    )
+    test_data["errors"] = log_analyzer.is_string_present_in_file(
+        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+    )
 
     db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
     db_sync.write_data_as_json_to_file(db_sync.DB_SYNC_PERF_STATS_FILE, db_sync.db_sync_perf_stats)
@@ -225,29 +230,7 @@ def run_test(args: argparse.Namespace) -> None:
     upload_snapshot_restoration_results_to_aws(env)
 
     # search db-sync log for issues
-    LOGGER.info("--- Summary: Rollbacks, errors and other isssues")
-
-    log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
-
-    rollbacks = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
-
-    failed_rollbacks = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
-    )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are failed rollbacks present: {failed_rollbacks}",
-    )
-
-    corrupted_ledger_files = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
-    )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are corrupted ledger files present: {corrupted_ledger_files}",
-    )
+    log_analyzer.check_db_sync_logs()
 
 
 def get_args() -> argparse.Namespace:

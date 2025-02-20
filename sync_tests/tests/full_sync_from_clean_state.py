@@ -15,6 +15,7 @@ from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
+from sync_tests.utils import log_analyzer
 from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
@@ -135,33 +136,6 @@ def upload_sync_results_to_aws(env: str) -> None:
         sys.exit(1)
 
 
-def print_report(db_schema: Exception | None, db_indexes: Exception | None) -> None:
-    log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    LOGGER.warning(f"Are errors present: {log_errors}")
-
-    rollbacks = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    LOGGER.warning(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
-
-    failed_rollbacks = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
-    )
-    LOGGER.warning(f"Are failed rollbacks present: {failed_rollbacks}")
-
-    corrupted_ledger_files = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
-    )
-    LOGGER.warning(f"Are corrupted ledger files present: {corrupted_ledger_files}")
-
-    if db_schema:
-        LOGGER.warning(f"Db schema issues: {db_schema}")
-    else:
-        LOGGER.warning("NO Db schema issues")
-    if db_indexes:
-        LOGGER.warning(f"Db indexes issues: {db_indexes}")
-    else:
-        LOGGER.warning("NO Db indexes issues")
-
-
 def run_test(args: argparse.Namespace) -> None:
     # system and software versions details
     LOGGER.info("--- Sync from clean state - setup")
@@ -239,12 +213,8 @@ def run_test(args: argparse.Namespace) -> None:
     db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 30)
     db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
     LOGGER.info("--- Db sync schema and indexes check for erors")
-    db_schema = db_sync.check_database(
-        db_sync.get_db_schema, "DB schema is incorrect", EXPECTED_DB_SCHEMA
-    )
-    db_indexes = db_sync.check_database(
-        db_sync.get_db_indexes, "DB indexes are incorrect", EXPECTED_DB_INDEXES
-    )
+    db_sync.check_database(db_sync.get_db_schema, "DB schema is incorrect", EXPECTED_DB_SCHEMA)
+    db_sync.check_database(db_sync.get_db_indexes, "DB indexes are incorrect", EXPECTED_DB_INDEXES)
     db_sync_tip = db_sync.get_db_sync_tip(env)
     assert db_sync_tip is not None  # TODO: refactor
     epoch_no, block_no, slot_no = db_sync_tip
@@ -291,8 +261,12 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
     test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = db_sync.get_total_db_size(env)
-    test_data["rollbacks"] = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    test_data["errors"] = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
+    test_data["rollbacks"] = log_analyzer.are_rollbacks_present_in_logs(
+        log_file=db_sync.DB_SYNC_LOG_FILE
+    )
+    test_data["errors"] = log_analyzer.is_string_present_in_file(
+        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+    )
 
     db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
     db_sync.write_data_as_json_to_file(db_sync.DB_SYNC_PERF_STATS_FILE, db_sync.db_sync_perf_stats)
@@ -326,8 +300,7 @@ def run_test(args: argparse.Namespace) -> None:
         db_sync.upload_artifact(node_db)
 
     # search db-sync log for issues
-    LOGGER.info("--- Summary: Rollbacks, errors and other isssues")
-    print_report(db_schema, db_indexes)
+    log_analyzer.check_db_sync_logs()
 
 
 def get_args() -> argparse.Namespace:
