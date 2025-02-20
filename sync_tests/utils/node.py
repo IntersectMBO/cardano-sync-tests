@@ -544,7 +544,7 @@ def get_cabal_build_files(repo_dir: pl.Path) -> list[pl.Path]:
     return node_build_files
 
 
-def get_node_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | None:
+def get_node_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path:
     for f in get_cabal_build_files(repo_dir=repo_dir):
         if (
             "x" in f.parts
@@ -554,10 +554,11 @@ def get_node_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | No
             and "autogen" not in f.name
         ):
             return f
-    return None
+    err = "Could not find the cardano-node executable built with cabal"
+    raise exceptions.SyncError(err)
 
 
-def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | None:
+def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path:
     for f in get_cabal_build_files(repo_dir=repo_dir):
         if (
             "x" in f.parts
@@ -567,12 +568,12 @@ def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path | Non
             and "autogen" not in f.name
         ):
             return f
-    return None
+    err = "Could not find the cardano-cli executable built with cabal"
+    raise exceptions.SyncError(err)
 
 
 def copy_cabal_node_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     node_binary_location_tmp = get_node_executable_path_built_with_cabal(repo_dir=repo_dir)
-    assert node_binary_location_tmp is not None  # TODO: refactor
     node_binary_location = node_binary_location_tmp
     shutil.copy2(node_binary_location, dst_dir / "cardano-node")
     helpers.make_executable(path=dst_dir / "cardano-node")
@@ -580,7 +581,6 @@ def copy_cabal_node_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
 
 def copy_cabal_cli_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     cli_binary_location_tmp = get_cli_executable_path_built_with_cabal(repo_dir=repo_dir)
-    assert cli_binary_location_tmp is not None  # TODO: refactor
     cli_binary_location = cli_binary_location_tmp
     shutil.copy2(cli_binary_location, dst_dir / "cardano-cli")
     helpers.make_executable(path=dst_dir / "cardano-cli")
