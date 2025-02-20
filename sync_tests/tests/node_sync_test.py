@@ -29,16 +29,16 @@ def run_test(args: argparse.Namespace) -> None:
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     helpers.print_message(type="info", message=f"Test start time: {start_test_time}")
     helpers.print_message(type="warn", message="Test parameters:")
-    env = helpers.get_arg_value(args=args, key="environment")
-    node_rev1 = helpers.get_arg_value(args=args, key="node_rev1")
-    node_rev2 = helpers.get_arg_value(args=args, key="node_rev2")
-    tag_no1 = helpers.get_arg_value(args=args, key="tag_no1")
-    tag_no2 = helpers.get_arg_value(args=args, key="tag_no2")
-    node_topology_type1 = helpers.get_arg_value(args=args, key="node_topology1")
-    node_topology_type2 = helpers.get_arg_value(args=args, key="node_topology2")
-    node_start_arguments1 = helpers.get_arg_value(args=args, key="node_start_arguments1")
-    node_start_arguments2 = helpers.get_arg_value(args=args, key="node_start_arguments2")
-    use_genesis_mode = helpers.get_arg_value(args=args, key="use_genesis_mode")
+    env = args.environment
+    node_rev1 = args.node_rev1
+    node_rev2 = args.node_rev2
+    tag_no1 = args.tag_no1
+    tag_no2 = args.tag_no2
+    node_topology_type1 = args.node_topology1
+    node_topology_type2 = args.node_topology2
+    node_start_arguments1 = args.node_start_arguments1 or ()
+    node_start_arguments2 = args.node_start_arguments2 or ()
+    use_genesis_mode = args.use_genesis_mode
 
     print(f"- env: {env}")
     print(f"- tag_no1: {tag_no1}")
@@ -104,7 +104,7 @@ def run_test(args: argparse.Namespace) -> None:
 
     sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
-    if tag_no2 and tag_no2 != "None":
+    if tag_no2:
         node.delete_node_files()
         print()
         helpers.print_message(
@@ -220,70 +220,75 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "-e",
         "--environment",
-        help="the environment on which to run the sync test - preview, preprod, mainnet",
+        required=True,
+        help="The environment on which to run the sync test - preview, preprod, mainnet",
     )
     parser.add_argument(
         "-r1",
-        "--node_rev1",
+        "--node-rev1",
+        required=True,
         help=(
-            "desired cardano-node revision - cardano-node tag or branch "
+            "Desired cardano-node revision - cardano-node tag or branch "
             "(used for initial sync, from clean state)"
         ),
     )
     parser.add_argument(
         "-r2",
-        "--node_rev2",
+        "--node-rev2",
         help=(
-            "desired cardano-node revision - cardano-node tag or branch "
+            "Desired cardano-node revision - cardano-node tag or branch "
             "(used for final sync, from existing state)"
         ),
     )
     parser.add_argument(
         "-t1",
-        "--tag_no1",
-        help="tag_no1 label as it will be shown in the db/visuals",
+        "--tag-no1",
+        required=True,
+        help="The 'tag_no1' label as it will be shown in the db/visuals",
     )
     parser.add_argument(
         "-t2",
-        "--tag_no2",
-        help="tag_no2 label as it will be shown in the db/visuals",
+        "--tag-no2",
+        help="The 'tag_no2' label as it will be shown in the db/visuals",
     )
     parser.add_argument(
         "-n1",
-        "--node_topology1",
+        "--node-topology1",
+        default="non-bootstrap-peers",
         help=(
-            "type of node topology used for the initial sync - "
+            "Type of node topology used for the initial sync - "
             "legacy, non-bootstrap-peers, bootstrap-peers"
         ),
     )
     parser.add_argument(
         "-n2",
-        "--node_topology2",
+        "--node-topology2",
+        default="non-bootstrap-peers",
         help=(
-            "type of node topology used for final sync (after restart) - "
+            "Type of node topology used for final sync (after restart) - "
             "legacy, non-bootstrap-peers, bootstrap-peers"
         ),
     )
     parser.add_argument(
         "-a1",
-        "--node_start_arguments1",
+        "--node-start-arguments1",
         nargs="+",
         type=str,
-        help="arguments to be passed when starting the node from clean state (first tag_no)",
+        help="Arguments to be passed when starting the node from clean state (first tag_no)",
     )
     parser.add_argument(
         "-a2",
-        "--node_start_arguments2",
+        "--node-start-arguments2",
         nargs="+",
         type=str,
-        help="arguments to be passed when starting the node from existing state (second tag_no)",
+        help="Arguments to be passed when starting the node from existing state (second tag_no)",
     )
     parser.add_argument(
         "-g",
-        "--use_genesis_mode",
-        type=lambda x: x.lower() == "true",
+        "--use-genesis-mode",
+        action="store_true",
         default=False,
-        help="use_genesis_mode",
+        help="Use genesis mode",
     )
 
     return parser.parse_args()

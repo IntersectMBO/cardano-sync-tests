@@ -15,11 +15,11 @@ on:
       tag_no1:
         description: "Initial sync - Graph axis label"
         required: true
-        default: "10.2.0"
+        default: "10.2.1"
       node_rev1:
         description: "Initial sync - cardano-node revision"
         required: true
-        default: "tags/10.2.0"
+        default: "tags/10.2.1"
       node_topology1:
         description: "Initial sync - cardano-node topology"
         type: choice
@@ -101,9 +101,8 @@ jobs:
           "node_topology2":"None",
           "node_start_arguments1":"None",
           "node_start_arguments2":"None",
-          "use_genesis_mode":"${{ github.event.inputs.use_genesis_mode }}",
+          "use_genesis_mode":"${{ github.event.inputs.use_genesis_mode == \"true\" && \"-g\" || \"\" }}",
           "queue_name":"${{ github.event.inputs.buildkite_queue_name }}",
-
           "CARDANO_NODE_SOCKET_PATH":"./db/node.socket",
           "BLOCKFROST_API_KEY":"${{ secrets.BLOCKFROST_API_KEY }}",
           "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
