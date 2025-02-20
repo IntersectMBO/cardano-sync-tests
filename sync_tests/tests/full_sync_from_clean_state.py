@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from sync_tests.utils import aws_db
 from sync_tests.utils import color_logger
+from sync_tests.utils import configuration
 from sync_tests.utils import db_sync
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
@@ -22,13 +23,13 @@ LOGGER = logging.getLogger(__name__)
 
 sys.path.append(os.getcwd())
 
-TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
-CHART = f"full_sync_{db_sync.ENVIRONMENT}_stats_chart.png"
+TEST_RESULTS = f"db_sync_{configuration.ENVIRONMENT}_full_sync_test_results.json"
+CHART = f"full_sync_{configuration.ENVIRONMENT}_stats_chart.png"
 EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
 
 
 def create_sync_stats_chart() -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     os.chdir(pl.Path.cwd() / "cardano-db-sync")
     fig = plt.figure(figsize=(14, 10))
 
@@ -37,7 +38,7 @@ def create_sync_stats_chart() -> None:
     ax_epochs.set(xlabel="epochs [number]", ylabel="time [min]")
     ax_epochs.set_title("Epochs Sync Times")
 
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+    with open(configuration.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
     epochs = [e["no"] for e in epoch_sync_times]
@@ -49,7 +50,7 @@ def create_sync_stats_chart() -> None:
     ax_perf.set(xlabel="time [min]", ylabel="RSS [B]")
     ax_perf.set_title("RSS usage")
 
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_db_dump_file:
+    with open(configuration.DB_SYNC_PERF_STATS_FILE) as json_db_dump_file:
         perf_stats = json.load(json_db_dump_file)
 
     times = [e["time"] / 60 for e in perf_stats]
@@ -60,7 +61,7 @@ def create_sync_stats_chart() -> None:
 
 
 def upload_sync_results_to_aws(env: str) -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     os.chdir(pl.Path.cwd() / "cardano-db-sync")
 
     LOGGER.info("Writing full sync results to AWS Database")
@@ -86,7 +87,7 @@ def upload_sync_results_to_aws(env: str) -> None:
         LOGGER.error(f"Failed to insert values into {test_summary_table}")
         sys.exit(1)
 
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+    with open(configuration.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
     epoch_duration_table = env + "_epoch_duration_db_sync"
@@ -103,7 +104,7 @@ def upload_sync_results_to_aws(env: str) -> None:
         LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
         sys.exit(1)
 
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
+    with open(configuration.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
         db_sync_performance_stats = json.load(json_perf_stats_file)
 
     db_sync_performance_stats_table = env + "_performance_stats_db_sync"
@@ -194,10 +195,10 @@ def run_test(args: argparse.Namespace) -> None:
     node.wait_node_start(env=env, timeout_minutes=10)
 
     LOGGER.info("--- Node startup")
-    db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
+    db_sync.print_file(configuration.NODE_LOG_FILE, 80)
 
     # cardano-db sync setup
-    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
     os.chdir(db_sync_dir)
     LOGGER.info("--- Db sync setup")
@@ -210,7 +211,7 @@ def run_test(args: argparse.Namespace) -> None:
     LOGGER.info("--- Db sync startup")
     db_sync.start_db_sync(env, start_args=db_start_options)
     db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version()
-    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 30)
+    db_sync.print_file(configuration.DB_SYNC_LOG_FILE, 30)
     db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
     LOGGER.info("--- Db sync schema and indexes check for erors")
     db_sync.check_database(db_sync.get_db_schema, "DB schema is incorrect", EXPECTED_DB_SCHEMA)
@@ -262,29 +263,31 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
     test_data["total_database_size"] = db_sync.get_total_db_size(env)
     test_data["rollbacks"] = log_analyzer.are_rollbacks_present_in_logs(
-        log_file=db_sync.DB_SYNC_LOG_FILE
+        log_file=configuration.DB_SYNC_LOG_FILE
     )
     test_data["errors"] = log_analyzer.is_string_present_in_file(
-        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+        file_to_check=configuration.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
     )
 
     db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    db_sync.write_data_as_json_to_file(db_sync.DB_SYNC_PERF_STATS_FILE, db_sync.db_sync_perf_stats)
-    db_sync.export_epoch_sync_times_from_db(env, db_sync.EPOCH_SYNC_TIMES_FILE)
+    db_sync.write_data_as_json_to_file(
+        configuration.DB_SYNC_PERF_STATS_FILE, configuration.db_sync_perf_stats
+    )
+    db_sync.export_epoch_sync_times_from_db(env, configuration.EPOCH_SYNC_TIMES_FILE)
 
     db_sync.print_file(TEST_RESULTS)
 
     # compress artifacts
-    helpers.zip_file(db_sync.NODE_ARCHIVE_NAME, db_sync.NODE_LOG_FILE)
-    helpers.zip_file(db_sync.DB_SYNC_ARCHIVE_NAME, db_sync.DB_SYNC_LOG_FILE)
-    helpers.zip_file(db_sync.SYNC_DATA_ARCHIVE_NAME, db_sync.EPOCH_SYNC_TIMES_FILE)
-    helpers.zip_file(db_sync.PERF_STATS_ARCHIVE_NAME, db_sync.DB_SYNC_PERF_STATS_FILE)
+    helpers.zip_file(configuration.NODE_ARCHIVE_NAME, configuration.NODE_LOG_FILE)
+    helpers.zip_file(configuration.DB_SYNC_ARCHIVE_NAME, configuration.DB_SYNC_LOG_FILE)
+    helpers.zip_file(configuration.SYNC_DATA_ARCHIVE_NAME, configuration.EPOCH_SYNC_TIMES_FILE)
+    helpers.zip_file(configuration.PERF_STATS_ARCHIVE_NAME, configuration.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
-    db_sync.upload_artifact(db_sync.NODE_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.DB_SYNC_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.SYNC_DATA_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.PERF_STATS_ARCHIVE_NAME)
+    db_sync.upload_artifact(configuration.NODE_ARCHIVE_NAME)
+    db_sync.upload_artifact(configuration.DB_SYNC_ARCHIVE_NAME)
+    db_sync.upload_artifact(configuration.SYNC_DATA_ARCHIVE_NAME)
+    db_sync.upload_artifact(configuration.PERF_STATS_ARCHIVE_NAME)
     db_sync.upload_artifact(TEST_RESULTS)
 
     # send results to aws database
