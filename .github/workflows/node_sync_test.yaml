@@ -14,11 +14,11 @@ on:
       tag_no1:
         description: "Initial sync - Graph axis label"
         required: true
-        default: "9.2.1"
+        default: "10.2.1"
       node_rev1:
         description: "Initial sync - cardano-node revision"
         required: true
-        default: "tags/9.2.1"
+        default: "tags/10.2.1"
       node_topology1:
         description: "Initial sync - cardano-node topology"
         type: choice
@@ -29,26 +29,30 @@ on:
       node_start_arguments1:
         description: "Initial sync - Extra arguments when starting the node"
         required: false
-        default: "None"
+        default: ""
       tag_no2:
         description: "Upgrade node - Graph axis label"
         required: true
-        default: "None"
+        default: ""
       node_rev2:
         description: "Upgrade node - cardano-node revision"
         required: true
-        default: "None"
+        default: ""
       node_topology2:
         description: "Upgrade node - cardano-node topology"
         type: choice
         options:
-        - p2p
-        - legacy
-        default: p2p
+        - non-bootstrap-peers
+        - bootstrap-peers
+        default: non-bootstrap-peers
       node_start_arguments2:
         description: "Upgrade node - Extra arguments when starting the node"
         required: false
-        default: "None"
+        default: ""
+      use_genesis_mode:
+        description: "Use Ouroboros Genesis mode"
+        type: boolean
+        default: false
 
 jobs:
   node_sync_test_buildkite:
@@ -99,6 +103,7 @@ jobs:
           "node_topology2":"${{ github.event.inputs.node_topology2 }}",
           "node_start_arguments1":"${{ github.event.inputs.node_start_arguments1 }}",
           "node_start_arguments2":"${{ github.event.inputs.node_start_arguments2 }}",
+          "use_genesis_mode":"${{ github.event.inputs.use_genesis_mode == \"true\" && \"-g\" || \"\" }}",
           "BLOCKFROST_API_KEY":"${{ secrets.BLOCKFROST_API_KEY }}",
           "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
           "AWS_DB_PASS":"${{ secrets.AWS_DB_PASS }}",
