@@ -226,25 +226,22 @@ def get_node_version() -> tuple[str, str]:
 def start_node(
     base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
 ) -> tuple[subprocess.Popen, tp.IO[str]]:
-    start_args = " ".join(node_start_arguments)
+    socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
+    if not socket_path:
+        err = "CARDANO_NODE_SOCKET_PATH environment variable is not set"
+        raise exceptions.SyncError(err)
 
-    if platform.system().lower() == "windows":
-        cmd = (
-            "cardano-node run --topology topology.json "
-            f"--database-path {base_dir / 'db'} "
-            "--host-addr 0.0.0.0 "
-            "--port 3000 "
-            "--socket-path \\\\.\\pipe\\cardano-node "
-            f"--config config.json {start_args}"
-        ).strip()
-    else:
-        socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
-        cmd = (
-            "cardano-node run --topology topology.json --database-path "
-            f"{base_dir / 'db'} "
-            "--host-addr 0.0.0.0 --port 3000 --config "
-            f"config.json --socket-path {socket_path} {start_args}"
-        ).strip()
+    start_args = " ".join(node_start_arguments)
+    cmd = (
+        "cardano-node run "
+        "--topology topology.json "
+        f"--database-path {base_dir / 'db'} "
+        f"--socket-path {socket_path} "
+        "--config config.json "
+        "--host-addr 0.0.0.0 "
+        "--port 3000 "
+        f"{start_args}"
+    ).strip()
 
     LOGGER.info(f"Starting node with cmd: {cmd}")
     logfile = open(base_dir / NODE_LOG_FILE_NAME, "w+")
