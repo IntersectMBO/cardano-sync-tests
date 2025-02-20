@@ -27,7 +27,6 @@ jobs:
 
           BUILD_ENV_VARS: '{
           "env":"mainnet",
-          "build_mode":"nix",
           "node_rev1":"master",
           "tag_no1":"${{ steps.get_graph_label.outputs.tag_no1 }}",
           "node_topology1":"non-bootstrap-peers",
