@@ -1,14 +1,11 @@
 import logging
 import mmap
-import os
 import pathlib as pl
 import re
 
-LOGGER = logging.getLogger(__name__)
+from sync_tests.utils import configuration
 
-ROOT_TEST_PATH = pl.Path.cwd()
-ENVIRONMENT = os.getenv("environment")
-DB_SYNC_LOG_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
+LOGGER = logging.getLogger(__name__)
 
 
 def is_string_present_in_file(file_to_check: str | pl.Path, search_string: str) -> bool:
@@ -40,17 +37,19 @@ def check_db_sync_logs() -> None:
     """Search for error indicators in the database synchronization logs and logs the results."""
     LOGGER.info("Checking DB sync logs for errors, rollbacks, and other potential issues.")
     if is_string_present_in_file(
-        file_to_check=DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+        file_to_check=configuration.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
     ):
-        LOGGER.warning(f"Errors present in {DB_SYNC_LOG_FILE}")
+        LOGGER.warning(f"Errors present in {configuration.DB_SYNC_LOG_FILE}")
 
-    if are_rollbacks_present_in_logs(log_file=DB_SYNC_LOG_FILE):
-        LOGGER.warning(f"Rollbacks present in {DB_SYNC_LOG_FILE}")
-
-    if is_string_present_in_file(file_to_check=DB_SYNC_LOG_FILE, search_string="Rollback failed"):
-        LOGGER.warning(f"Failed rollbacks present in {DB_SYNC_LOG_FILE}")
+    if are_rollbacks_present_in_logs(log_file=configuration.DB_SYNC_LOG_FILE):
+        LOGGER.warning(f"Rollbacks present in {configuration.DB_SYNC_LOG_FILE}")
 
     if is_string_present_in_file(
-        file_to_check=DB_SYNC_LOG_FILE, search_string="Failed to parse ledger state"
+        file_to_check=configuration.DB_SYNC_LOG_FILE, search_string="Rollback failed"
     ):
-        LOGGER.warning(f"Corrupted ledger files present in {DB_SYNC_LOG_FILE}")
+        LOGGER.warning(f"Failed rollbacks present in {configuration.DB_SYNC_LOG_FILE}")
+
+    if is_string_present_in_file(
+        file_to_check=configuration.DB_SYNC_LOG_FILE, search_string="Failed to parse ledger state"
+    ):
+        LOGGER.warning(f"Corrupted ledger files present in {configuration.DB_SYNC_LOG_FILE}")
