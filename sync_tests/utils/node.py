@@ -27,6 +27,12 @@ LOGGER = logging.getLogger(__name__)
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
 NODE_LOG_FILE_NAME = "logfile.log"
 
+TESTNET_ARGS = {
+    "mainnet": ("--mainnet",),
+    "preview": ("--testnet-magic", "2"),
+    "preprod": ("--testnet-magic", "1"),
+}
+
 
 @dataclasses.dataclass(frozen=True)
 class SyncRec:
@@ -145,15 +151,12 @@ def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
-def get_testnet_args(env: str) -> list[str]:
-    arg = []
-    if env == "mainnet":
-        arg = ["--mainnet"]
-    if env == "preview":
-        arg = ["--testnet-magic", "2"]
-    if env == "preprod":
-        arg = ["--testnet-magic", "1"]
-    return arg
+def get_testnet_args(env: str) -> tp.Iterable[str]:
+    try:
+        return TESTNET_ARGS[env]
+    except KeyError as e:
+        msg = f"Unknown environment: {env}"
+        raise exceptions.SyncError(msg) from e
 
 
 def get_current_tip(env: str) -> tuple:
