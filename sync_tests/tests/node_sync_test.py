@@ -30,7 +30,6 @@ def run_test(args: argparse.Namespace) -> None:
     helpers.print_message(type="info", message=f"Test start time: {start_test_time}")
     helpers.print_message(type="warn", message="Test parameters:")
     env = helpers.get_arg_value(args=args, key="environment")
-    node_build_mode = helpers.get_arg_value(args=args, key="build_mode") or "nix"
     node_rev1 = helpers.get_arg_value(args=args, key="node_rev1")
     node_rev2 = helpers.get_arg_value(args=args, key="node_rev2")
     tag_no1 = helpers.get_arg_value(args=args, key="tag_no1")
@@ -42,7 +41,6 @@ def run_test(args: argparse.Namespace) -> None:
     use_genesis_mode = helpers.get_arg_value(args=args, key="use_genesis_mode")
 
     print(f"- env: {env}")
-    print(f"- node_build_mode: {node_build_mode}")
     print(f"- tag_no1: {tag_no1}")
     print(f"- tag_no2: {tag_no2}")
     print(f"- node_rev1: {node_rev1}")
@@ -60,7 +58,6 @@ def run_test(args: argparse.Namespace) -> None:
     node.config_sync(
         env=env,
         conf_dir=conf_dir,
-        node_build_mode=node_build_mode,
         node_rev=node_rev1,
         node_topology_type=node_topology_type1,
         use_genesis_mode=use_genesis_mode,
@@ -129,7 +126,6 @@ def run_test(args: argparse.Namespace) -> None:
         node.config_sync(
             env=env,
             conf_dir=conf_dir,
-            node_build_mode=node_build_mode,
             node_rev=node_rev2,
             node_topology_type=node_topology_type2,
             use_genesis_mode=use_genesis_mode,
@@ -221,9 +217,6 @@ def get_args() -> argparse.Namespace:
     """Get command line arguments."""
     parser = argparse.ArgumentParser(description="Run Cardano Node sync test\n\n")
 
-    parser.add_argument(
-        "-b", "--build_mode", help="how to get the node files - nix, cabal, prebuilt"
-    )
     parser.add_argument(
         "-e",
         "--environment",

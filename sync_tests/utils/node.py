@@ -672,12 +672,11 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
 def config_sync(
     env: str,
     conf_dir: pl.Path,
-    node_build_mode: str,
     node_rev: str,
     node_topology_type: str,
     use_genesis_mode: bool,
 ) -> None:
-    LOGGER.info(f"Get the cardano-node and cardano-cli files using - {node_build_mode}")
+    LOGGER.info("Get the cardano-node and cardano-cli files")
     start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
     bin_dir = pl.Path("bin")
@@ -685,20 +684,16 @@ def config_sync(
     add_to_path(path=bin_dir)
 
     platform_system = platform.system().lower()
-    if "windows" not in platform_system:
-        get_node_files(node_rev)
-    elif "windows" in platform_system:
-        get_node_files(node_rev, build_tool="cabal")
+    if "windows" in platform_system:
+        get_node_files(node_rev=node_rev, build_tool="cabal")
     else:
-        err = f"Only building with NIX is supported at this moment - {node_build_mode}"
-        raise exceptions.SyncError(err)
+        get_node_files(node_rev=node_rev)
 
     end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     LOGGER.info(f"  - start_build_time: {start_build_time}")
     LOGGER.info(f"  - end_build_time: {end_build_time}")
 
     rm_node_config_files(conf_dir=conf_dir)
-    # TODO: change the default to P2P when full P2P will be supported on Mainnet
     get_node_config_files(
         env=env,
         node_topology_type=node_topology_type,
