@@ -1,10 +1,8 @@
 import hashlib
 import json
 import logging
-import mmap
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -905,32 +903,6 @@ def get_file_size(file: str) -> int:
     file_stats = os.stat(file)
     file_size_in_mb = int(file_stats.st_size / (1000 * 1000))
     return file_size_in_mb
-
-
-def is_string_present_in_file(file_to_check: str | Path, search_string: str) -> bool:
-    """Check if a specific string is present in a given file."""
-    with open(file_to_check, encoding="utf-8") as file:
-        return bool(re.search(re.escape(search_string), file.read()))
-
-
-def are_errors_present_in_db_sync_logs(log_file: str | Path) -> bool:
-    """Check for errors in the DB Sync logs."""
-    return is_string_present_in_file(log_file, "db-sync-node:Error")
-
-
-def are_rollbacks_present_in_db_sync_logs(log_file: str | Path) -> str:
-    """Check for rollbacks in the DB Sync logs."""
-    with (
-        open(log_file, "rb", 0) as file,
-        mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s,
-    ):
-        initial_rollback_position = s.find(b"rolling")
-        offset = s.find(b"rolling", initial_rollback_position + len("rolling"))
-        if offset != -1:
-            s.seek(offset)
-            if s.find(b"rolling"):
-                return "Yes"
-        return "No"
 
 
 def setup_postgres(

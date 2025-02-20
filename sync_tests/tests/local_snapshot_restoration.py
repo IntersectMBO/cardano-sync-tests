@@ -12,6 +12,7 @@ sys.path.append(os.getcwd())
 from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
+from sync_tests.utils import log_analyzer
 from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
@@ -161,10 +162,13 @@ def run_test(args: argparse.Namespace) -> int:
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
     test_data["total_database_size"] = db_sync.get_total_db_size(env)
-    test_data["rollbacks"] = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "rolling back to"
+    test_data["rollbacks"] = log_analyzer.is_string_present_in_file(
+        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="rolling back to"
     )
-    test_data["errors"] = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
+
+    test_data["errors"] = log_analyzer.is_string_present_in_file(
+        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+    )
 
     db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
     db_sync.print_file(TEST_RESULTS)
@@ -175,29 +179,7 @@ def run_test(args: argparse.Namespace) -> int:
     db_sync.upload_artifact(TEST_RESULTS)
 
     # search db-sync log for issues
-    LOGGER.info("--- Summary: Rollbacks, errors and other isssues")
-
-    log_errors = db_sync.are_errors_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are errors present: {log_errors}")
-
-    rollbacks = db_sync.are_rollbacks_present_in_db_sync_logs(db_sync.DB_SYNC_LOG_FILE)
-    db_sync.print_color_log(db_sync.sh_colors.WARNING, f"Are rollbacks present: {rollbacks}")
-
-    failed_rollbacks = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Rollback failed"
-    )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are failed rollbacks present: {failed_rollbacks}",
-    )
-
-    corrupted_ledger_files = db_sync.is_string_present_in_file(
-        db_sync.DB_SYNC_LOG_FILE, "Failed to parse ledger state"
-    )
-    db_sync.print_color_log(
-        db_sync.sh_colors.WARNING,
-        f"Are corrupted ledger files present: {corrupted_ledger_files}",
-    )
+    log_analyzer.check_db_sync_logs()
     return 0
 
 
