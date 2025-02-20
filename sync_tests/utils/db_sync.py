@@ -20,6 +20,7 @@ import requests
 import xmltodict
 from assertpy import assert_that
 
+from sync_tests.utils import configuration
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 
@@ -27,36 +28,6 @@ from sync_tests.utils import node
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 ONE_MINUTE = 60
-ROOT_TEST_PATH = Path.cwd()
-
-# Environment Variables
-ENVIRONMENT = os.getenv("environment")
-NODE_PR = os.getenv("node_pr")
-NODE_BRANCH = os.getenv("node_branch")
-NODE_VERSION = os.getenv("node_version")
-DB_SYNC_BRANCH = os.getenv("db_sync_branch")
-DB_SYNC_VERSION = os.getenv("db_sync_version")
-
-# System Information
-POSTGRES_DIR = ROOT_TEST_PATH.parents[0]
-POSTGRES_USER = (
-    subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False).stdout.decode("utf-8").strip()
-)
-
-# Log and Stats Paths
-db_sync_perf_stats: list[dict] = []
-DB_SYNC_PERF_STATS_FILE = (
-    ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_performance_stats.json"
-)
-NODE_LOG_FILE = ROOT_TEST_PATH / f"cardano-node/node_{ENVIRONMENT}_logfile.log"
-DB_SYNC_LOG_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
-EPOCH_SYNC_TIMES_FILE = ROOT_TEST_PATH / f"cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
-
-# Archive Names
-NODE_ARCHIVE_NAME = f"cardano_node_{ENVIRONMENT}_logs.zip"
-DB_SYNC_ARCHIVE_NAME = f"cardano_db_sync_{ENVIRONMENT}_logs.zip"
-SYNC_DATA_ARCHIVE_NAME = f"epoch_sync_times_{ENVIRONMENT}_dump.zip"
-PERF_STATS_ARCHIVE_NAME = f"db_sync_{ENVIRONMENT}_perf_stats.zip"
 
 
 class sh_colors:
@@ -123,7 +94,7 @@ def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = 
 def create_node_database_archive(env: str) -> str:
     """Create an archive of the Cardano node database for the specified environment."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-node")
     node_directory = os.getcwd()
     node_db_archive = f"node-db-{env}.tar.gz"
@@ -199,7 +170,7 @@ def print_n_last_lines_from_file(n: int, file_name: str | Path) -> None:
 def get_last_perf_stats_point() -> dict[str, int]:
     """Retrieve the last performance statistics data point, or initializes one if none exists."""
     try:
-        last_perf_stats_point = db_sync_perf_stats[-1]
+        last_perf_stats_point = configuration.db_sync_perf_stats[-1]
     except Exception:
         logging.exception("Exception in get_last_perf_stats_point")
         stats_data_point = {
@@ -208,8 +179,8 @@ def get_last_perf_stats_point() -> dict[str, int]:
             "cpu_percent_usage": 0,
             "rss_mem_usage": 0,
         }
-        db_sync_perf_stats.append(stats_data_point)
-        last_perf_stats_point = db_sync_perf_stats[-1]
+        configuration.db_sync_perf_stats.append(stats_data_point)
+        last_perf_stats_point = configuration.db_sync_perf_stats[-1]
 
     return last_perf_stats_point
 
@@ -225,7 +196,7 @@ def export_epoch_sync_times_from_db(
     env: str, file: str | Path, snapshot_epoch_no: int | str = 0
 ) -> str | None:
     """Export epoch synchronization times from the database to a file."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    os.chdir(configuration.ROOT_TEST_PATH / "cardano-db-sync")
     try:
         p = subprocess.Popen(
             [
@@ -266,18 +237,20 @@ def export_epoch_sync_times_from_db(
 
 def emergency_upload_artifacts(env: str) -> None:
     """Upload artifacts for debugging in case of an emergency."""
-    write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
-    export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
+    write_data_as_json_to_file(
+        configuration.DB_SYNC_PERF_STATS_FILE, configuration.db_sync_perf_stats
+    )
+    export_epoch_sync_times_from_db(env, configuration.EPOCH_SYNC_TIMES_FILE)
 
-    helpers.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
-    helpers.zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
-    helpers.zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
-    helpers.zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
+    helpers.zip_file(configuration.PERF_STATS_ARCHIVE_NAME, configuration.DB_SYNC_PERF_STATS_FILE)
+    helpers.zip_file(configuration.SYNC_DATA_ARCHIVE_NAME, configuration.EPOCH_SYNC_TIMES_FILE)
+    helpers.zip_file(configuration.DB_SYNC_ARCHIVE_NAME, configuration.DB_SYNC_LOG_FILE)
+    helpers.zip_file(configuration.NODE_ARCHIVE_NAME, configuration.NODE_LOG_FILE)
 
-    upload_artifact(PERF_STATS_ARCHIVE_NAME)
-    upload_artifact(SYNC_DATA_ARCHIVE_NAME)
-    upload_artifact(DB_SYNC_ARCHIVE_NAME)
-    upload_artifact(NODE_ARCHIVE_NAME)
+    upload_artifact(configuration.PERF_STATS_ARCHIVE_NAME)
+    upload_artifact(configuration.SYNC_DATA_ARCHIVE_NAME)
+    upload_artifact(configuration.DB_SYNC_ARCHIVE_NAME)
+    upload_artifact(configuration.NODE_ARCHIVE_NAME)
 
     helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
     helpers.manage_process(proc_name="cardano-node", action="terminate")
@@ -315,7 +288,7 @@ def download_and_extract_node_snapshot(env: str) -> None:
 
 def set_node_socket_path_env_var_in_cwd() -> None:
     """Set the node socket path environment variable in the current working directory."""
-    os.chdir(ROOT_TEST_PATH / "cardano-node")
+    os.chdir(configuration.ROOT_TEST_PATH / "cardano-node")
     current_directory = os.getcwd()
     if basename(normpath(current_directory)) != "cardano-node":
         msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
@@ -327,13 +300,15 @@ def set_node_socket_path_env_var_in_cwd() -> None:
 def create_pgpass_file(env: str) -> None:
     """Create a PostgreSQL password file for the specified environment."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     db_sync_config_dir = Path.cwd() / "cardano-db-sync" / "config"
     os.chdir(db_sync_config_dir)
 
     pgpass_file = f"pgpass-{env}"
     postgres_port = os.getenv("PGPORT")
-    pgpass_content = f"{POSTGRES_DIR}:{postgres_port}:{env}:{POSTGRES_USER}:*"
+    pgpass_content = (
+        f"{configuration.POSTGRES_DIR}:{postgres_port}:{env}:{configuration.POSTGRES_USER}:*"
+    )
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     with open(pgpass_file, "w") as pgpass_text_file:
@@ -344,7 +319,7 @@ def create_pgpass_file(env: str) -> None:
 
 def create_database() -> None:
     """Set up the PostgreSQL database for use with Cardano DB Sync."""
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     db_sync_dir = Path.cwd() / "cardano-db-sync"
     os.chdir(db_sync_dir)
 
@@ -365,7 +340,7 @@ def create_database() -> None:
 def copy_db_sync_executables(build_method: str = "nix") -> None:
     """Copy the Cardano DB Sync executables built with the specified build method."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     db_sync_dir = Path.cwd() / "cardano-db-sync"
     os.chdir(db_sync_dir)
 
@@ -424,7 +399,7 @@ def copy_db_sync_executables(build_method: str = "nix") -> None:
 def get_db_sync_version() -> tuple[str, str]:
     """Retrieve the version of the Cardano DB Sync executable."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    os.chdir(configuration.ROOT_TEST_PATH / "cardano-db-sync")
     try:
         cmd = "./_cardano-db-sync --version"
         output = (
@@ -512,7 +487,7 @@ def restore_db_sync_from_snapshot(
     env: str, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
 ) -> int:
     """Restore the Cardano DB Sync database from a snapshot."""
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     if remove_ledger_dir == "yes":
         ledger_state_dir = Path.cwd() / "cardano-db-sync" / "ledger-state" / f"{env}"
         # TODO: Fix this, as it will not remove the directory. It is passing absolute path, so
@@ -572,7 +547,7 @@ def restore_db_sync_from_snapshot(
 
 def create_db_sync_snapshot_stage_1(env: str) -> str:
     """Perform the first stage of creating a DB Sync snapshot."""
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-db-sync")
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
@@ -602,7 +577,7 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
 
 def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
     """Perform the second stage of creating a DB Sync snapshot."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    os.chdir(configuration.ROOT_TEST_PATH / "cardano-db-sync")
     export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     try:
@@ -646,7 +621,7 @@ def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
             "pager=off",
             "-qt",
             "-U",
-            f"{POSTGRES_USER}",
+            f"{configuration.POSTGRES_USER}",
             "-d",
             f"{env}",
             "-c",
@@ -692,7 +667,7 @@ def get_db_sync_progress(env: str) -> float | None:
             "pager=off",
             "-qt",
             "-U",
-            f"{POSTGRES_USER}",
+            f"{configuration.POSTGRES_USER}",
             "-d",
             f"{env}",
             "-c",
@@ -732,7 +707,7 @@ def get_db_sync_progress(env: str) -> float | None:
 
 def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
     """Wait for the Cardano DB Sync database to fully synchronize."""
-    db_sync_perf_stats.clear()
+    configuration.db_sync_perf_stats.clear()
     start_sync = time.perf_counter()
     last_rollback_time = time.perf_counter()
     db_sync_progress = get_db_sync_progress(env)
@@ -760,7 +735,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                     f"{current_progress} VS previous: {db_sync_progress}."
                 )
                 logging.info("Possible rollback... Printing last 10 lines of log")
-                print_n_last_lines_from_file(10, DB_SYNC_LOG_FILE)
+                print_n_last_lines_from_file(10, configuration.DB_SYNC_LOG_FILE)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
                     logging.info(
                         "Resetting previous rollback counter as there was no progress decrease "
@@ -799,7 +774,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                 f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
                 f"epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
             )
-            print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
+            print_n_last_lines_from_file(5, configuration.DB_SYNC_LOG_FILE)
 
         try:
             time_point = int(time.perf_counter() - start_sync)
@@ -821,8 +796,10 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             "cpu_percent_usage": cpu_usage,
             "rss_mem_usage": rss_mem_usage,
         }
-        db_sync_perf_stats.append(stats_data_point)
-        write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
+        configuration.db_sync_perf_stats.append(stats_data_point)
+        write_data_as_json_to_file(
+            configuration.DB_SYNC_PERF_STATS_FILE, configuration.db_sync_perf_stats
+        )
         time.sleep(ONE_MINUTE)
         counter += 1
 
@@ -834,14 +811,14 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
 
 def get_total_db_size(env: str) -> str:
     """Fetch the total size of the Cardano DB Sync database."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    os.chdir(configuration.ROOT_TEST_PATH / "cardano-db-sync")
     cmd = [
         "psql",
         "-P",
         "pager=off",
         "-qt",
         "-U",
-        f"{POSTGRES_USER}",
+        f"{configuration.POSTGRES_USER}",
         "-d",
         f"{env}",
         "-c",
@@ -864,11 +841,11 @@ def get_total_db_size(env: str) -> str:
 def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> None:
     """Start the Cardano DB Sync process."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
     export_env_var("DB_SYNC_START_ARGS", start_args)
     export_env_var("FIRST_START", f"{first_start}")
     export_env_var("ENVIRONMENT", env)
-    export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
+    export_env_var("LOG_FILEPATH", configuration.DB_SYNC_LOG_FILE)
 
     try:
         cmd = "./sync_tests/scripts/db-sync-start.sh"
@@ -906,11 +883,13 @@ def get_file_size(file: str) -> int:
 
 
 def setup_postgres(
-    pg_dir: Path = POSTGRES_DIR, pg_user: str = POSTGRES_USER, pg_port: str = "5432"
+    pg_dir: Path = configuration.POSTGRES_DIR,
+    pg_user: str = configuration.POSTGRES_USER,
+    pg_port: str = "5432",
 ) -> None:
     """Set up PostgreSQL for use with Cardano DB Sync."""
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(configuration.ROOT_TEST_PATH)
 
     export_env_var("POSTGRES_DIR", pg_dir)
     export_env_var("PGHOST", "localhost")
@@ -931,7 +910,7 @@ def setup_postgres(
 
 def list_databases() -> None:
     """List all databases available in the PostgreSQL instance."""
-    cmd = ["psql", "-U", f"{POSTGRES_USER}", "-l"]
+    cmd = ["psql", "-U", f"{configuration.POSTGRES_USER}", "-l"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
 
     try:
@@ -947,7 +926,9 @@ def list_databases() -> None:
 def get_db_schema() -> dict:
     """Retrieve the schema of the Cardano DB Sync database."""
     try:
-        conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
+        conn = psycopg2.connect(
+            database=f"{configuration.ENVIRONMENT}", user=f"{configuration.POSTGRES_USER}"
+        )
         cursor = conn.cursor()
         get_all_tables = (
             "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
@@ -989,7 +970,9 @@ def get_db_schema() -> dict:
 def get_db_indexes() -> dict:
     """Fetch the indexes of tables in the Cardano DB Sync database."""
     try:
-        conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
+        conn = psycopg2.connect(
+            database=f"{configuration.ENVIRONMENT}", user=f"{configuration.POSTGRES_USER}"
+        )
         cursor = conn.cursor()
 
         get_all_tables = (
