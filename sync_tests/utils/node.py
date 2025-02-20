@@ -717,9 +717,6 @@ def get_node_exit_code(proc: subprocess.Popen) -> int:
 
 
 def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str) -> SyncRec | None:
-    if "None" in node_start_arguments:
-        node_start_arguments = []
-
     start_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
     node_proc = None
