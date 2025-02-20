@@ -32,11 +32,11 @@ on:
         default: ""
       tag_no2:
         description: "Upgrade node - Graph axis label"
-        required: true
+        required: false
         default: ""
       node_rev2:
         description: "Upgrade node - cardano-node revision"
-        required: true
+        required: false
         default: ""
       node_topology2:
         description: "Upgrade node - cardano-node topology"
