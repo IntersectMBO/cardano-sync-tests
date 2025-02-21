@@ -8,5 +8,4 @@ steps:
       queue: "${queue_name:-core-tech-bench}"
     artifact_paths:
       - 'logfile.log'
-      - 'node.log'
       - 'sync_results.json'
