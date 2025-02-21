@@ -18,10 +18,10 @@ RESULTS_FILE_NAME = "sync_results.json"
 
 
 def run_test(args: argparse.Namespace) -> None:
-    conf_dir = pl.Path.cwd()
-    base_dir = pl.Path.cwd()
-
-    node.set_node_socket_path_env_var(base_dir=base_dir)
+    """Run the node sync test."""
+    workdir: pl.Path = args.workdir
+    workdir.mkdir(exist_ok=True)
+    os.chdir(workdir)
 
     print("--- Test data information", flush=True)
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
@@ -37,6 +37,8 @@ def run_test(args: argparse.Namespace) -> None:
     node_start_arguments1 = args.node_start_arguments1 or ()
     node_start_arguments2 = args.node_start_arguments2 or ()
     use_genesis_mode = args.use_genesis_mode
+
+    node.set_node_socket_path_env_var(base_dir=workdir)
 
     print(f"- env: {env}")
     print(f"- tag_no1: {tag_no1}")
@@ -55,7 +57,7 @@ def run_test(args: argparse.Namespace) -> None:
     print("--- Get the cardano-node files", flush=True)
     node.config_sync(
         env=env,
-        conf_dir=conf_dir,
+        conf_dir=workdir,
         node_rev=node_rev1,
         node_topology_type=node_topology_type1,
         use_genesis_mode=use_genesis_mode,
@@ -82,9 +84,7 @@ def run_test(args: argparse.Namespace) -> None:
         message="===================================================================================",
     )
     print()
-    sync1_rec = node.run_sync(
-        node_start_arguments=node_start_arguments1, base_dir=base_dir, env=env
-    )
+    sync1_rec = node.run_sync(node_start_arguments=node_start_arguments1, base_dir=workdir, env=env)
     if not sync1_rec:
         sys.exit(1)
 
@@ -96,7 +96,7 @@ def run_test(args: argparse.Namespace) -> None:
     test_values_dict: dict[str, tp.Any] = {}
     print("--- Parse the node logs and get the relevant data")
     logs_details_dict = metrics_extractor.get_data_from_logs(
-        log_file=base_dir / node.NODE_LOG_FILE_NAME
+        log_file=workdir / node.NODE_LOG_FILE_NAME
     )
     test_values_dict["log_values"] = logs_details_dict
 
@@ -123,7 +123,7 @@ def run_test(args: argparse.Namespace) -> None:
         print("Get the cardano-node and cardano-cli files")
         node.config_sync(
             env=env,
-            conf_dir=conf_dir,
+            conf_dir=workdir,
             node_rev=node_rev2,
             node_topology_type=node_topology_type2,
             use_genesis_mode=use_genesis_mode,
@@ -136,12 +136,12 @@ def run_test(args: argparse.Namespace) -> None:
         print()
         print(f"================ Start node using node_rev2: {node_rev2} ====================")
         sync2_rec = node.run_sync(
-            node_start_arguments=node_start_arguments2, base_dir=base_dir, env=env
+            node_start_arguments=node_start_arguments2, base_dir=workdir, env=env
         )
         if not sync2_rec:
             sys.exit(1)
 
-    chain_size = helpers.get_directory_size(base_dir / "db")
+    chain_size = helpers.get_directory_size(workdir / "db")
 
     print("--- Node sync test completed")
     print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
@@ -215,6 +215,13 @@ def get_args() -> argparse.Namespace:
         "--environment",
         required=True,
         help="The environment on which to run the sync test - preview, preprod, mainnet",
+    )
+    parser.add_argument(
+        "-w",
+        "--workdir",
+        type=lambda p: pl.Path(p).absolute(),
+        default=".",
+        help="The working directory where the test will be run",
     )
     parser.add_argument(
         "-r1",
