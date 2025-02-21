@@ -119,8 +119,8 @@ def get_node_config_files(
         enable_genesis_mode(config_file=config_file_path, topology_file=topology_file_path)
 
 
-def delete_node_files() -> None:
-    for p in pl.Path("..").glob("cardano-*"):
+def delete_node_files(node_dir: pl.Path) -> None:
+    for p in node_dir.glob("cardano-*"):
         if p.is_dir():
             LOGGER.info(f"deleting directory: {p}")
             shutil.rmtree(p)  # Use shutil.rmtree to delete directories
@@ -260,17 +260,15 @@ def start_node(
     return proc, logfile
 
 
-def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
+def wait_node_start(env: str, base_dir: pl.Path, timeout_minutes: int = 20) -> int:
     """Wait for the Cardano node to start."""
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take >10 mins for the cli to work (opening db and
     # replaying the ledger)
-    current_directory = pl.Path.cwd()
-
     LOGGER.info("Waiting for db folder to be created")
     count = 0
     count_timeout = 299
-    while not pl.Path.is_dir(current_directory / "db"):
+    while not pl.Path.is_dir(base_dir / "db"):
         time.sleep(1)
         count += 1
         if count > count_timeout:
@@ -279,8 +277,8 @@ def wait_node_start(env: str, timeout_minutes: int = 20) -> int:
 
     LOGGER.info(f"DB folder was created after {count} seconds")
     secs_to_start = wait_query_tip_available(env=env, timeout_minutes=timeout_minutes)
-    LOGGER.debug(f" - listdir current_directory: {os.listdir(current_directory)}")
-    LOGGER.debug(f" - listdir db: {os.listdir(current_directory / 'db')}")
+    LOGGER.debug(f" - listdir current_directory: {os.listdir(base_dir)}")
+    LOGGER.debug(f" - listdir db: {os.listdir(base_dir / 'db')}")
     return secs_to_start
 
 
@@ -352,15 +350,14 @@ def get_calculated_slot_no(env: str) -> int:
     return last_slot_no
 
 
-def find_genesis_json(era_name: str) -> pl.Path:
+def find_genesis_json(era_name: str, conf_dir: pl.Path) -> pl.Path:
     """Find genesis JSON file in state dir."""
-    cwd = pl.Path.cwd()
     potential = [
-        *cwd.glob(f"*{era_name}*genesis.json"),
-        *cwd.glob(f"*genesis*{era_name}.json"),
+        *conf_dir.glob(f"*{era_name}*genesis.json"),
+        *conf_dir.glob(f"*genesis*{era_name}.json"),
     ]
     if not potential:
-        msg = f"The genesis JSON file not found in `{cwd}`."
+        msg = f"The genesis JSON file not found in `{conf_dir}`."
         raise exceptions.SyncError(msg)
 
     genesis_json = potential[0]
@@ -368,29 +365,33 @@ def find_genesis_json(era_name: str) -> pl.Path:
     return genesis_json
 
 
-def get_genesis(era_name: str) -> dict:
-    genesis_file = find_genesis_json(era_name=era_name)
+def get_genesis(era_name: str, conf_dir: pl.Path) -> dict:
+    genesis_file = find_genesis_json(era_name=era_name, conf_dir=conf_dir)
     with open(genesis_file, encoding="utf-8") as in_json:
         genesis_dict: dict = json.load(in_json)
     return genesis_dict
 
 
 @functools.cache
-def get_byron_slot_ln() -> int:
-    genesis = get_genesis(era_name="byron")
+def get_byron_slot_ln(conf_dir: pl.Path) -> int:
+    genesis = get_genesis(era_name="byron", conf_dir=conf_dir)
     return int(genesis["protocolConsts"]["k"]) * 10
 
 
 @functools.cache
-def get_shelley_slot_ln() -> int:
-    genesis = get_genesis(era_name="shelley")
+def get_shelley_slot_ln(conf_dir: pl.Path) -> int:
+    genesis = get_genesis(era_name="shelley", conf_dir=conf_dir)
     return int(genesis["epochLength"])
 
 
-def get_no_of_slots_in_era(era_name: str, no_of_epochs_in_era: int) -> int:
+def get_no_of_slots_in_era(era_name: str, conf_dir: pl.Path, no_of_epochs_in_era: int) -> int:
     """Get the number of slots in an era."""
     era_name = era_name.lower()
-    epoch_length_slots = get_byron_slot_ln() if era_name == "byron" else get_shelley_slot_ln()
+    epoch_length_slots = (
+        get_byron_slot_ln(conf_dir=conf_dir)
+        if era_name == "byron"
+        else get_shelley_slot_ln(conf_dir=conf_dir)
+    )
     return int(epoch_length_slots * no_of_epochs_in_era)
 
 
@@ -485,7 +486,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         start_epoch = int(era_dict["start_epoch"])
         no_of_epochs_in_era = last_epoch - start_epoch + 1
         era_dict["slots_in_era"] = get_no_of_slots_in_era(
-            era_name=era, no_of_epochs_in_era=no_of_epochs_in_era
+            era_name=era, conf_dir=base_dir, no_of_epochs_in_era=no_of_epochs_in_era
         )
 
         start_dt = datetime.datetime.strptime(
@@ -598,9 +599,9 @@ def ln_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     )
 
 
-def get_node_repo(node_rev: str) -> git.Repo:
+def get_node_repo(node_rev: str, base_dir: pl.Path) -> git.Repo:
     node_repo_name = "cardano-node"
-    node_repo_dir = pl.Path("cardano_node_dir")
+    node_repo_dir = base_dir / "cardano_node_dir"
 
     if node_repo_dir.is_dir():
         repo = git.Repo(path=node_repo_dir)
@@ -611,9 +612,9 @@ def get_node_repo(node_rev: str) -> git.Repo:
     return repo
 
 
-def get_cli_repo(cli_rev: str) -> git.Repo:
+def get_cli_repo(cli_rev: str, base_dir: pl.Path) -> git.Repo:
     node_repo_name = "cardano-cli"
-    cli_repo_dir = pl.Path("cardano_cli_dir")
+    cli_repo_dir = base_dir / "cardano_cli_dir"
 
     if cli_repo_dir.is_dir():
         repo = git.Repo(path=cli_repo_dir)
@@ -624,10 +625,10 @@ def get_cli_repo(cli_rev: str) -> git.Repo:
     return repo
 
 
-def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
+def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") -> git.Repo:
     bin_directory = pl.Path("bin")
 
-    node_repo = get_node_repo(node_rev=node_rev)
+    node_repo = get_node_repo(node_rev=node_rev, base_dir=base_dir)
     node_repo_dir = pl.Path(node_repo.git_dir)
 
     if build_tool == "nix":
@@ -640,7 +641,7 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path("sync_tests") / "cabal.project.local"
-        cli_repo = get_cli_repo(cli_rev="main")
+        cli_repo = get_cli_repo(cli_rev="main", base_dir=base_dir)
         cli_repo_dir = pl.Path(cli_repo.git_dir)
 
         # Build cli
@@ -672,7 +673,7 @@ def get_node_files(node_rev: str, build_tool: str = "nix") -> git.Repo:
 
 def config_sync(
     env: str,
-    conf_dir: pl.Path,
+    base_dir: pl.Path,
     node_rev: str,
     node_topology_type: str,
     use_genesis_mode: bool,
@@ -686,25 +687,25 @@ def config_sync(
 
     platform_system = platform.system().lower()
     if "windows" in platform_system:
-        get_node_files(node_rev=node_rev, build_tool="cabal")
+        get_node_files(node_rev=node_rev, base_dir=base_dir, build_tool="cabal")
     else:
-        get_node_files(node_rev=node_rev)
+        get_node_files(node_rev=node_rev, base_dir=base_dir)
 
     end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     LOGGER.info(f"  - start_build_time: {start_build_time}")
     LOGGER.info(f"  - end_build_time: {end_build_time}")
 
-    rm_node_config_files(conf_dir=conf_dir)
+    rm_node_config_files(conf_dir=base_dir)
     get_node_config_files(
         env=env,
         node_topology_type=node_topology_type,
-        conf_dir=conf_dir,
+        conf_dir=base_dir,
         use_genesis_mode=use_genesis_mode,
     )
 
-    configure_node(config_file=conf_dir / "config.json")
+    configure_node(config_file=base_dir / "config.json")
     if env == "mainnet" and node_topology_type == "legacy":
-        disable_p2p_node_config(config_file=conf_dir / "config.json")
+        disable_p2p_node_config(config_file=base_dir / "config.json")
 
 
 def get_node_exit_code(proc: subprocess.Popen) -> int:
@@ -727,7 +728,7 @@ def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str
             base_dir=base_dir,
             node_start_arguments=node_start_arguments,
         )
-        secs_to_start = wait_node_start(env=env, timeout_minutes=10)
+        secs_to_start = wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
         (
             sync_time_seconds,
             last_slot_no,

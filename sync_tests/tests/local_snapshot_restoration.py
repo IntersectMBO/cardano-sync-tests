@@ -89,7 +89,7 @@ def run_test(args: argparse.Namespace) -> int:
     node.add_to_path(path=bin_dir)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_version_from_gh_action)
+    node.get_node_files(node_rev=node_version_from_gh_action, base_dir=base_dir)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
     # TODO: change the default to P2P when full P2P will be supported on Mainnet
@@ -101,7 +101,7 @@ def run_test(args: argparse.Namespace) -> int:
     )
     node.configure_node(config_file=conf_dir / "config.json")
     node.start_node(base_dir=base_dir, node_start_arguments=())
-    node.wait_node_start(env=env, timeout_minutes=10)
+    node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
     db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
     node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 

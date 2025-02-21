@@ -57,7 +57,7 @@ def run_test(args: argparse.Namespace) -> None:
     print("--- Get the cardano-node files", flush=True)
     node.config_sync(
         env=env,
-        conf_dir=workdir,
+        base_dir=workdir,
         node_rev=node_rev1,
         node_topology_type=node_topology_type1,
         use_genesis_mode=use_genesis_mode,
@@ -103,7 +103,7 @@ def run_test(args: argparse.Namespace) -> None:
     sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
     if tag_no2:
-        node.delete_node_files()
+        node.delete_node_files(node_dir=workdir)
         print()
         helpers.print_message(
             type="ok",
@@ -123,7 +123,7 @@ def run_test(args: argparse.Namespace) -> None:
         print("Get the cardano-node and cardano-cli files")
         node.config_sync(
             env=env,
-            conf_dir=workdir,
+            base_dir=workdir,
             node_rev=node_rev2,
             node_topology_type=node_topology_type2,
             use_genesis_mode=use_genesis_mode,
