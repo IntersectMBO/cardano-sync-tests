@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import pathlib as pl
-import shutil
 import sys
 import typing as tp
 
@@ -15,7 +14,6 @@ from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
 
-NODE_LOG_FILE_ARTIFACT = "node.log"
 RESULTS_FILE_NAME = "sync_results.json"
 
 
@@ -206,11 +204,6 @@ def run_test(args: argparse.Namespace) -> None:
     print(f"Write the test values to the {current_directory / RESULTS_FILE_NAME} file")
     with open(RESULTS_FILE_NAME, "w") as results_file:
         json.dump(test_values_dict, results_file, indent=2)
-
-    print("--- Copy the node logs")
-    # sometimes uploading the artifacts fails because the node still writes into
-    # the log file during the upload even though an attepmt to stop it was made
-    shutil.copy(base_dir / node.NODE_LOG_FILE_NAME, base_dir / NODE_LOG_FILE_ARTIFACT)
 
 
 def get_args() -> argparse.Namespace:
