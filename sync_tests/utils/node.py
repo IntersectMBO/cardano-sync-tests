@@ -46,6 +46,16 @@ class SyncRec:
     end_sync_time: str
 
 
+@dataclasses.dataclass(frozen=True)
+class Tip:
+    epoch: int
+    block: int
+    hash_value: str
+    slot: int
+    era: str
+    sync_progress: float | None
+
+
 def add_to_path(path: pl.Path) -> None:
     """Add a directory to the system PATH environment variable."""
     os.environ["PATH"] = str(path.absolute()) + os.pathsep + os.environ["PATH"]
@@ -159,22 +169,22 @@ def get_testnet_args(env: str) -> tp.Iterable[str]:
         raise exceptions.SyncError(msg) from e
 
 
-def get_current_tip(env: str) -> tuple:
+def get_current_tip(env: str) -> Tip:
     """Retrieve the current tip of the Cardano node."""
     cmd = ["cardano-cli", "latest", "query", "tip", *get_testnet_args(env=env)]
-
     output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
     output_json = json.loads(output)
-    epoch = int(output_json.get("epoch", 0))
-    block = int(output_json.get("block", 0))
-    hash_value = output_json.get("hash", "")
-    slot = int(output_json.get("slot", 0))
-    era = output_json.get("era", "").lower()
-    sync_progress = (
-        float(output_json.get("syncProgress", 0.0)) if "syncProgress" in output_json else None
-    )
 
-    return epoch, block, hash_value, slot, era, sync_progress
+    return Tip(
+        epoch=int(output_json.get("epoch", 0)),
+        block=int(output_json.get("block", 0)),
+        hash_value=output_json.get("hash") or "",
+        slot=int(output_json.get("slot", 0)),
+        era=output_json.get("era", "").lower(),
+        sync_progress=float(output_json.get("syncProgress", 0.0))
+        if "syncProgress" in output_json
+        else None,
+    )
 
 
 def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
@@ -391,10 +401,8 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     epoch_details_dict = {}
 
     # Get the initial tip data and calculated slot
-    actual_epoch, actual_block, actual_hash, actual_slot, actual_era, sync_progress = (
-        get_current_tip(env=env)
-    )
-    last_slot_no = get_calculated_slot_no(env=env) if sync_progress is None else -1
+    tip = get_current_tip(env=env)
+    last_slot_no = get_calculated_slot_no(env=env) if tip.sync_progress is None else -1
     start_sync = time.perf_counter()
     count = 0
 
@@ -403,11 +411,11 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         if count % 60 == 0:
             now_log = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
             LOGGER.warning(
-                f"{now_log} - actual_era  : {actual_era} "
-                f" - actual_epoch: {actual_epoch} "
-                f" - actual_block: {actual_block} "
-                f" - actual_slot : {actual_slot} "
-                f" - syncProgress: {sync_progress}",
+                f"{now_log} - actual_era  : {tip.era} "
+                f" - actual_epoch: {tip.epoch} "
+                f" - actual_block: {tip.block} "
+                f" - actual_slot : {tip.slot} "
+                f" - syncProgress: {tip.sync_progress}",
             )
 
         # Use the same current time for both era and epoch updates.
@@ -416,42 +424,35 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         )
 
         # If we see a new era, record its starting details.
-        if actual_era not in era_details_dict:
+        if tip.era not in era_details_dict:
             if env == "mainnet":
-                actual_era_start_time = blockfrost.get_epoch_start_datetime(epoch_no=actual_epoch)
+                actual_era_start_time = blockfrost.get_epoch_start_datetime(epoch_no=tip.epoch)
             else:
                 actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
-                    env=env, epoch_no=actual_epoch
+                    env=env, epoch_no=tip.epoch
                 )
-            era_details_dict[actual_era] = {
-                "start_epoch": actual_epoch,
+            era_details_dict[tip.era] = {
+                "start_epoch": tip.epoch,
                 "start_time": actual_era_start_time,
                 "start_sync_time": current_time_str,
             }
 
         # If we see a new epoch, record its starting sync time.
-        if actual_epoch not in epoch_details_dict:
-            epoch_details_dict[actual_epoch] = {"start_sync_time": current_time_str}
+        if tip.epoch not in epoch_details_dict:
+            epoch_details_dict[tip.epoch] = {"start_sync_time": current_time_str}
 
         # Check termination condition:
         # For nodes reporting sync progress, we wait until progress reaches 100.
-        if sync_progress is not None and sync_progress >= 100:
+        if tip.sync_progress is not None and tip.sync_progress >= 100:
             break
         # Otherwise (for nodes without sync progress) wait until the slot number passes
         # the calculated value.
-        if sync_progress is None and actual_slot > last_slot_no:
+        if tip.sync_progress is None and tip.slot > last_slot_no:
             break
 
         time.sleep(5)
         count += 1
-        (
-            actual_epoch,
-            actual_block,
-            actual_hash,
-            actual_slot,
-            actual_era,
-            sync_progress,
-        ) = get_current_tip(env=env)
+        tip = get_current_tip(env=env)
 
     done_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -468,13 +469,13 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     eras_last_idx = len(eras_list) - 1
 
     for i, era in enumerate(eras_list):
-        era_dict = era_details_dict[era]
+        era_dict: dict[str, tp.Any] = era_details_dict[era]
 
         if i == eras_last_idx:
             end_sync_time = done_time_str
-            last_epoch = actual_epoch
+            last_epoch = tip.epoch
         else:
-            next_era = era_details_dict[eras_list[i + 1]]
+            next_era: dict[str, tp.Any] = era_details_dict[eras_list[i + 1]]
             end_sync_time = next_era["start_sync_time"]
             last_epoch = int(next_era["start_epoch"]) - 1
 

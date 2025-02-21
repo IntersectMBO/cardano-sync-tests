@@ -777,17 +777,10 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                 msg = "Rollback taking too long. Shutting down..."
                 raise Exception(msg)
         if counter % log_frequency == 0:
-            (
-                node_epoch_no,
-                node_block_no,
-                node_hash,
-                node_slot,
-                node_era,
-                node_sync_progress,
-            ) = node.get_current_tip(env)
+            tip = node.get_current_tip(env)
             logging.info(
-                f"node progress [%]: {node_sync_progress}, epoch: {node_epoch_no}, "
-                f"block: {node_block_no}, slot: {node_slot}, era: {node_era}"
+                f"node progress [%]: {tip.sync_progress}, epoch: {tip.epoch}, "
+                f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
             )
             db_sync_tip = get_db_sync_tip(env)
             assert db_sync_tip is not None  # TODO: refactor
