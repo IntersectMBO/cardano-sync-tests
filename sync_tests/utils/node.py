@@ -230,7 +230,7 @@ def get_node_version() -> tuple[str, str]:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
-        raise RuntimeError(msg) from e
+        raise exceptions.SyncError(msg) from e
 
 
 def start_node(
