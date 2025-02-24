@@ -304,16 +304,22 @@ def rm_node_config_files(conf_dir: pl.Path) -> None:
         (conf_dir / f).unlink(missing_ok=True)
 
 
-def get_epoch_no_d_zero(env: str) -> int:
+def get_epoch_no_d_zero(env: str) -> int | None:
+    """Get the epoch number when d=0."""
     if env == "mainnet":
         return 257
-    return -1
+    if env in ("preview", "preprod"):
+        return 0
+    return None
 
 
-def get_start_slot_no_d_zero(env: str) -> int:
+def get_start_slot_no_d_zero(env: str) -> int | None:
+    """Get the start slot number when d=0."""
     if env == "mainnet":
         return 25661009
-    return -1
+    if env in ("preview", "preprod"):
+        return 0
+    return None
 
 
 def get_calculated_slot_no(env: str) -> int:
