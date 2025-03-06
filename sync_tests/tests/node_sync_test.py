@@ -10,6 +10,7 @@ from sync_tests.utils import color_logger
 from sync_tests.utils import helpers
 from sync_tests.utils import metrics_extractor
 from sync_tests.utils import node
+from sync_tests.utils import sync_results_db
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +22,45 @@ def run_test(args: argparse.Namespace) -> None:
     workdir: pl.Path = args.workdir
     workdir.mkdir(exist_ok=True)
     os.chdir(workdir)
+
+    def _store_sync_results() -> None:
+        """Store sync results in the database."""
+        if sync1_rec is None:
+            LOGGER.error("Sync record (sync1_rec) is None. Skipping sync results storage.")
+            return
+
+        conn = sync_results_db.create_connection()
+
+        if not conn:
+            LOGGER.error(
+                "Failed to establish a database connection. Skipping sync results storage."
+            )
+            return
+
+        try:
+            with conn.cursor() as cursor:
+                sync_run_id = sync_results_db.insert_sync_run_entry(
+                    test_values=test_values_dict, cursor=cursor
+                )
+
+                sync_results_db.insert_details_per_era_entries(
+                    sync_run_id=sync_run_id, test_values=sync1_rec.era_details, cursor=cursor
+                )
+
+                sync_results_db.insert_epoch_duration_entries(
+                    sync_run_id=sync_run_id, test_values=epoch_details, cursor=cursor
+                )
+
+                sync_results_db.insert_system_metrics_entries(
+                    sync_run_id=sync_run_id, test_values=logs_details_dict, cursor=cursor
+                )
+
+            conn.commit()
+        except Exception:
+            LOGGER.exception("Error while storing sync results in the database.")
+            conn.rollback()
+        finally:
+            conn.close()
 
     print("--- Test data information", flush=True)
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
@@ -191,17 +231,19 @@ def run_test(args: argparse.Namespace) -> None:
     }
 
     for era, era_data in sync1_rec.era_details.items():
-        test_values_dict.update(
-            {
-                f"{era}_start_time": era_data["start_time"],
-                f"{era}_start_epoch": era_data["start_epoch"],
-                f"{era}_slots_in_era": era_data["slots_in_era"],
-                f"{era}_start_sync_time": era_data["start_sync_time"],
-                f"{era}_end_sync_time": era_data["end_sync_time"],
-                f"{era}_sync_duration_secs": era_data["sync_duration_secs"],
-                f"{era}_sync_speed_sps": era_data["sync_speed_sps"],
-            }
-        )
+        era_details = {
+            f"{era}_start_time": era_data["start_time"],
+            f"{era}_start_epoch": era_data["start_epoch"],
+            f"{era}_slots_in_era": era_data["slots_in_era"],
+            f"{era}_start_sync_time": era_data["start_sync_time"],
+            f"{era}_end_sync_time": era_data["end_sync_time"],
+            f"{era}_sync_duration_secs": era_data["sync_duration_secs"],
+            f"{era}_sync_speed_sps": era_data["sync_speed_sps"],
+        }
+        test_values_dict.update(era_details)
+
+    # insert sync results in the database
+    _store_sync_results()
 
     print("--- Write tests results to file")
     current_directory = pl.Path.cwd()
@@ -294,6 +336,13 @@ def get_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Use genesis mode",
+    )
+    parser.add_argument(
+        "-s",
+        "--store_sync_results",
+        action="store_true",
+        default=False,
+        help="Store sync results into the database",
     )
 
     return parser.parse_args()
