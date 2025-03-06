@@ -10,6 +10,7 @@ from sync_tests.utils import color_logger
 from sync_tests.utils import helpers
 from sync_tests.utils import metrics_extractor
 from sync_tests.utils import node
+from sync_tests.utils import sync_results_db
 
 LOGGER = logging.getLogger(__name__)
 
@@ -191,17 +192,26 @@ def run_test(args: argparse.Namespace) -> None:
     }
 
     for era, era_data in sync1_rec.era_details.items():
-        test_values_dict.update(
-            {
-                f"{era}_start_time": era_data["start_time"],
-                f"{era}_start_epoch": era_data["start_epoch"],
-                f"{era}_slots_in_era": era_data["slots_in_era"],
-                f"{era}_start_sync_time": era_data["start_sync_time"],
-                f"{era}_end_sync_time": era_data["end_sync_time"],
-                f"{era}_sync_duration_secs": era_data["sync_duration_secs"],
-                f"{era}_sync_speed_sps": era_data["sync_speed_sps"],
-            }
-        )
+        era_details = {
+            f"{era}_start_time": era_data["start_time"],
+            f"{era}_start_epoch": era_data["start_epoch"],
+            f"{era}_slots_in_era": era_data["slots_in_era"],
+            f"{era}_start_sync_time": era_data["start_sync_time"],
+            f"{era}_end_sync_time": era_data["end_sync_time"],
+            f"{era}_sync_duration_secs": era_data["sync_duration_secs"],
+            f"{era}_sync_speed_sps": era_data["sync_speed_sps"],
+        }
+        test_values_dict.update(era_details)
+
+    # Store sync results in the database
+    sync_data = {
+        "sync_run_data": test_values_dict,
+        "era_details": sync1_rec.era_details,
+        "epoch_data": epoch_details,
+        "system_metrics": logs_details_dict,
+    }
+
+    sync_results_db.store_sync_results(sync_data=sync_data)
 
     print("--- Write tests results to file")
     current_directory = pl.Path.cwd()
@@ -294,6 +304,13 @@ def get_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Use genesis mode",
+    )
+    parser.add_argument(
+        "-s",
+        "--store_sync_results",
+        action="store_true",
+        default=False,
+        help="Store sync results into the database",
     )
 
     return parser.parse_args()
