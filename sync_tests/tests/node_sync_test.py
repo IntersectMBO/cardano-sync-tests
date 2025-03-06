@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib as pl
 import sys
-import typing as tp
 
 from sync_tests.utils import color_logger
 from sync_tests.utils import helpers
@@ -92,14 +91,6 @@ def run_test(args: argparse.Namespace) -> None:
     print(f"start_sync_time1: {sync1_rec.start_sync_time}")
     print(f"end_sync_time1: {sync1_rec.end_sync_time}")
 
-    # we are interested in the node logs only for the main sync - using tag_no1
-    test_values_dict: dict[str, tp.Any] = {}
-    print("--- Parse the node logs and get the relevant data")
-    logs_details_dict = metrics_extractor.get_data_from_logs(
-        log_file=workdir / node.NODE_LOG_FILE_NAME
-    )
-    test_values_dict["log_values"] = logs_details_dict
-
     sync2_rec = None
     print(f"--- Start node using tag_no2: {tag_no2}")
     if tag_no2:
@@ -144,59 +135,73 @@ def run_test(args: argparse.Namespace) -> None:
     chain_size = helpers.get_directory_size(workdir / "db")
 
     print("--- Node sync test completed")
+
     print("Node sync test ended; Creating the `test_values_dict` dict with the test values")
-    print("++++++++++++++++++++++++++++++++++++++++++++++")
-    for era, era_data in sync1_rec.era_details.items():
-        print(f"  *** {era} --> {era_data}")
-        test_values_dict[f"{era}_start_time"] = era_data["start_time"]
-        test_values_dict[f"{era}_start_epoch"] = era_data["start_epoch"]
-        test_values_dict[f"{era}_slots_in_era"] = era_data["slots_in_era"]
-        test_values_dict[f"{era}_start_sync_time"] = era_data["start_sync_time"]
-        test_values_dict[f"{era}_end_sync_time"] = era_data["end_sync_time"]
-        test_values_dict[f"{era}_sync_duration_secs"] = era_data["sync_duration_secs"]
-        test_values_dict[f"{era}_sync_speed_sps"] = era_data["sync_speed_sps"]
     print("++++++++++++++++++++++++++++++++++++++++++++++")
 
     epoch_details = {}
     for epoch, epoch_data in sync1_rec.epoch_details.items():
         epoch_details[epoch] = epoch_data["sync_duration_secs"]
-    print("++++++++++++++++++++++++++++++++++++++++++++++")
 
-    test_values_dict["env"] = env
-    test_values_dict["tag_no1"] = tag_no1
-    test_values_dict["tag_no2"] = tag_no2
-    test_values_dict["cli_version1"] = cli_version1
-    test_values_dict["cli_version2"] = cli_version2 if sync2_rec else None
-    test_values_dict["cli_git_rev1"] = cli_git_rev1
-    test_values_dict["cli_git_rev2"] = cli_git_rev2 if sync2_rec else None
-    test_values_dict["start_sync_time1"] = sync1_rec.start_sync_time
-    test_values_dict["end_sync_time1"] = sync1_rec.end_sync_time
-    test_values_dict["start_sync_time2"] = sync2_rec.start_sync_time if sync2_rec else None
-    test_values_dict["end_sync_time2"] = sync2_rec.end_sync_time if sync2_rec else None
-    test_values_dict["last_slot_no1"] = sync1_rec.last_slot_no
-    test_values_dict["last_slot_no2"] = sync2_rec.last_slot_no if sync2_rec else None
-    test_values_dict["start_node_secs1"] = sync1_rec.secs_to_start
-    test_values_dict["start_node_secs2"] = sync2_rec.secs_to_start if sync2_rec else None
-    test_values_dict["sync_time_seconds1"] = sync1_rec.sync_time_sec
-    test_values_dict["sync_time1"] = str(datetime.timedelta(seconds=sync1_rec.sync_time_sec))
-    test_values_dict["sync_time_seconds2"] = sync2_rec.sync_time_sec if sync2_rec else None
-    test_values_dict["sync_time2"] = (
-        str(datetime.timedelta(seconds=int(sync2_rec.sync_time_sec))) if sync2_rec else None
+    logs_details_dict = metrics_extractor.get_data_from_logs(
+        log_file=workdir / node.NODE_LOG_FILE_NAME
     )
-    test_values_dict["total_chunks1"] = sync1_rec.latest_chunk_no
-    test_values_dict["total_chunks2"] = sync2_rec.latest_chunk_no if sync2_rec else None
-    test_values_dict["platform_system"] = platform_system
-    test_values_dict["platform_release"] = platform_release
-    test_values_dict["platform_version"] = platform_version
-    test_values_dict["chain_size_bytes"] = chain_size
-    test_values_dict["sync_duration_per_epoch"] = epoch_details
-    test_values_dict["eras_in_test"] = list(sync1_rec.era_details.keys())
-    test_values_dict["no_of_cpu_cores"] = os.cpu_count()
-    test_values_dict["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
-    test_values_dict["epoch_no_d_zero"] = node.get_epoch_no_d_zero(env=env)
-    test_values_dict["start_slot_no_d_zero"] = node.get_start_slot_no_d_zero(env=env)
-    test_values_dict["hydra_eval_no1"] = node_rev1
-    test_values_dict["hydra_eval_no2"] = node_rev2
+
+    test_values_dict = {
+        "env": env,
+        "tag_no1": tag_no1,
+        "tag_no2": tag_no2,
+        "cli_version1": cli_version1,
+        "cli_version2": cli_version2 if sync2_rec else None,
+        "cli_git_rev1": cli_git_rev1,
+        "cli_git_rev2": cli_git_rev2 if sync2_rec else None,
+        "cli_revision1": cli_version1,
+        "cli_revision2": cli_version2 if sync2_rec else None,
+        "start_sync_time1": sync1_rec.start_sync_time,
+        "end_sync_time1": sync1_rec.end_sync_time,
+        "start_sync_time2": sync2_rec.start_sync_time if sync2_rec else None,
+        "end_sync_time2": sync2_rec.end_sync_time if sync2_rec else None,
+        "last_slot_no1": sync1_rec.last_slot_no,
+        "last_slot_no2": sync2_rec.last_slot_no if sync2_rec else None,
+        "start_node_secs1": sync1_rec.secs_to_start,
+        "start_node_secs2": sync2_rec.secs_to_start if sync2_rec else None,
+        "sync_time_seconds1": sync1_rec.sync_time_sec,
+        "sync_time1": str(datetime.timedelta(seconds=sync1_rec.sync_time_sec)),
+        "sync_time_seconds2": sync2_rec.sync_time_sec if sync2_rec else None,
+        "sync_time2": str(datetime.timedelta(seconds=int(sync2_rec.sync_time_sec)))
+        if sync2_rec
+        else None,
+        "total_chunks1": sync1_rec.latest_chunk_no,
+        "total_chunks2": sync2_rec.latest_chunk_no if sync2_rec else None,
+        "platform_system": platform_system,
+        "platform_release": platform_release,
+        "platform_version": platform_version,
+        "chain_size_bytes": chain_size,
+        "sync_duration_per_epoch": epoch_details,
+        "eras_in_test": list(sync1_rec.era_details.keys()),
+        "no_of_cpu_cores": os.cpu_count(),
+        "total_ram_in_GB": helpers.get_total_ram_in_gb(),
+        "epoch_no_d_zero": node.get_epoch_no_d_zero(env=env),
+        "start_slot_no_d_zero": node.get_start_slot_no_d_zero(env=env),
+        "hydra_eval_no1": node_rev1,
+        "hydra_eval_no2": node_rev2,
+        "node_revision1": node_rev1,
+        "node_revision2": node_rev2,
+        "log_values": logs_details_dict,
+    }
+
+    for era, era_data in sync1_rec.era_details.items():
+        test_values_dict.update(
+            {
+                f"{era}_start_time": era_data["start_time"],
+                f"{era}_start_epoch": era_data["start_epoch"],
+                f"{era}_slots_in_era": era_data["slots_in_era"],
+                f"{era}_start_sync_time": era_data["start_sync_time"],
+                f"{era}_end_sync_time": era_data["end_sync_time"],
+                f"{era}_sync_duration_secs": era_data["sync_duration_secs"],
+                f"{era}_sync_speed_sps": era_data["sync_speed_sps"],
+            }
+        )
 
     print("--- Write tests results to file")
     current_directory = pl.Path.cwd()
