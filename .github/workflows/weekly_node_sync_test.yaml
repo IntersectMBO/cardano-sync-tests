@@ -19,29 +19,28 @@ jobs:
 
       - name: Trigger Buildkite pipeline for Mainnet sync tests
         uses: 'buildkite/trigger-pipeline-action@v2.3.0'
-        env:
-          BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
-          PIPELINE: 'input-output-hk/node-sync-tests'
-          BRANCH: ${{ github.ref_name || 'main' }}
-          MESSAGE: ':github: Triggered by GitHub Action'
-
-          BUILD_ENV_VARS: '{
-          "env":"mainnet",
-          "node_rev1":"master",
-          "tag_no1":"${{ steps.get_graph_label.outputs.tag_no1 }}",
-          "node_topology1":"non-bootstrap-peers",
-          "node_start_arguments1":"",
-          "node_rev2":"",
-          "tag_no2":"",
-          "node_topology2":"",
-          "node_start_arguments2":"",
-          "BLOCKFROST_API_KEY":"${{ secrets.BLOCKFROST_API_KEY }}",
-          "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
-          "AWS_DB_PASS":"${{ secrets.AWS_DB_PASS }}",
-          "AWS_DB_NAME":"${{ secrets.AWS_DB_NAME }}",
-          "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}",
-          "BUILDKITE_API_ACCESS_TOKEN":"${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}"
-          }'
+        with:
+          buildkite_api_access_token: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
+          pipeline: 'input-output-hk/node-sync-tests'
+          branch: ${{ github.ref_name || 'main' }}
+          message: ':github: Triggered by GitHub Action'
+          build_env_vars: |
+            {
+              "env": "mainnet",
+              "node_rev1": "master",
+              "tag_no1": "${{ steps.get_graph_label.outputs.tag_no1 }}",
+              "node_topology1": "non-bootstrap-peers",
+              "node_start_arguments1": "",
+              "node_rev2": "",
+              "tag_no2": "",
+              "node_topology2": "",
+              "node_start_arguments2": "",
+              "BLOCKFROST_API_KEY": "${{ secrets.BLOCKFROST_API_KEY }}",
+              "AWS_DB_USERNAME": "${{ secrets.AWS_DB_USERNAME }}",
+              "AWS_DB_PASS": "${{ secrets.AWS_DB_PASS }}",
+              "AWS_DB_NAME": "${{ secrets.AWS_DB_NAME }}",
+              "AWS_DB_HOSTNAME": "${{ secrets.AWS_DB_HOSTNAME }}"
+            }
 
       - name: Finalize sync
         run: echo "Sync job finished."
