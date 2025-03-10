@@ -39,7 +39,8 @@ jobs:
           "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
           "AWS_DB_PASS":"${{ secrets.AWS_DB_PASS }}",
           "AWS_DB_NAME":"${{ secrets.AWS_DB_NAME }}",
-          "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}"
+          "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}",
+          "BUILDKITE_API_ACCESS_TOKEN":"${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}"
           }'
 
       - name: Finalize sync
