@@ -15,7 +15,7 @@ jobs:
           ref: ${{ github.ref_name || 'main' }}
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v30
+        uses: cachix/install-nix-action@v31
         if: matrix.sys.os != 'windows-latest'
         with:
           extra_nix_config: |
