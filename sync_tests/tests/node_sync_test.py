@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import pathlib as pl
+import shutil
 import sys
 
 from sync_tests.utils import color_logger
@@ -86,6 +87,10 @@ def run_test(args: argparse.Namespace) -> None:
     print()
     sync1_rec = node.run_sync(node_start_arguments=node_start_arguments1, base_dir=workdir, env=env)
     if not sync1_rec:
+        last_failed_workdir = pl.Path("/var/tmp/sync_tests_workdir")
+        shutil.rmtree(last_failed_workdir, ignore_errors=True)
+        last_failed_workdir.mkdir()
+        shutil.move(workdir, last_failed_workdir)
         sys.exit(1)
 
     print(f"secs_to_start1: {sync1_rec.secs_to_start}")
