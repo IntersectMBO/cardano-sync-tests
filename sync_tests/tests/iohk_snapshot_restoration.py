@@ -271,7 +271,7 @@ def get_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    logging.setLoggerClass(color_logger.ColorLogger)
+    color_logger.configure_logging()
     args = get_args()
     run_test(args=args)
 
