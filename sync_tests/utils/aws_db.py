@@ -1,8 +1,15 @@
+import json
 import logging
 import os
+import pathlib as pl
+import sys
 import typing as tp
 
 import pymysql.cursors
+
+from sync_tests.utils import db_sync
+
+TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -162,3 +169,80 @@ def get_max_epoch(table_name: str) -> int | None:
         return result[0] if result else 0
     finally:
         conn.close()
+
+
+def upload_sync_results_to_aws(env: str) -> None:
+    os.chdir(db_sync.ROOT_TEST_PATH)
+    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+
+    LOGGER.info("Writing full sync results to AWS Database")
+    with open(TEST_RESULTS) as json_file:
+        sync_test_results_dict = json.load(json_file)
+
+    test_summary_table = env + "_db_sync"
+    last_identifier = get_last_identifier(test_summary_table)
+    assert last_identifier is not None  # TODO: refactor
+    test_id = str(int(last_identifier.split("_")[-1]) + 1)
+    identifier = env + "_" + test_id
+    sync_test_results_dict["identifier"] = identifier
+
+    LOGGER.info(f"Writing test values into {test_summary_table} DB table")
+    col_to_insert = list(sync_test_results_dict.keys())
+    val_to_insert = list(sync_test_results_dict.values())
+
+    if not insert_values_into_db(
+        table_name=test_summary_table,
+        col_names_list=col_to_insert,
+        col_values_list=val_to_insert,
+    ):
+        LOGGER.error(f"Failed to insert values into {test_summary_table}")
+        sys.exit(1)
+
+    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+        epoch_sync_times = json.load(json_db_dump_file)
+
+    epoch_duration_table = env + "_epoch_duration_db_sync"
+    LOGGER.info(f"  ==== Write test values into the {epoch_duration_table} DB table:")
+    col_to_insert = ["identifier", "epoch_no", "sync_duration_secs"]
+    val_to_insert = [(identifier, e["no"], e["seconds"]) for e in epoch_sync_times]
+
+    if not insert_values_into_db(
+        table_name=epoch_duration_table,
+        col_names_list=col_to_insert,
+        col_values_list=val_to_insert,
+        bulk=True,
+    ):
+        LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
+        sys.exit(1)
+
+    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
+        db_sync_performance_stats = json.load(json_perf_stats_file)
+
+    db_sync_performance_stats_table = env + "_performance_stats_db_sync"
+    LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
+    col_to_insert = [
+        "identifier",
+        "time",
+        "slot_no",
+        "cpu_percent_usage",
+        "rss_mem_usage",
+    ]
+    val_to_insert = [
+        (
+            identifier,
+            e["time"],
+            e["slot_no"],
+            e["cpu_percent_usage"],
+            e["rss_mem_usage"],
+        )
+        for e in db_sync_performance_stats
+    ]
+
+    if not insert_values_into_db(
+        table_name=db_sync_performance_stats_table,
+        col_names_list=col_to_insert,
+        col_values_list=val_to_insert,
+        bulk=True,
+    ):
+        LOGGER.error(f"Failed to insert values into {db_sync_performance_stats_table}")
+        sys.exit(1)

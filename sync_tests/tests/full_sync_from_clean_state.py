@@ -1,14 +1,11 @@
 import argparse
 import datetime
-import json
 import logging
 import os
 import pathlib as pl
 import sys
 import typing as tp
 from collections import OrderedDict
-
-import matplotlib.pyplot as plt
 
 from sync_tests.utils import aws_db
 from sync_tests.utils import color_logger
@@ -23,117 +20,7 @@ LOGGER = logging.getLogger(__name__)
 sys.path.append(os.getcwd())
 
 TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
-CHART = f"full_sync_{db_sync.ENVIRONMENT}_stats_chart.png"
 EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
-
-
-def create_sync_stats_chart() -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
-    fig = plt.figure(figsize=(14, 10))
-
-    # define epochs sync times chart
-    ax_epochs = fig.add_axes((0.05, 0.05, 0.9, 0.35))
-    ax_epochs.set(xlabel="epochs [number]", ylabel="time [min]")
-    ax_epochs.set_title("Epochs Sync Times")
-
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
-        epoch_sync_times = json.load(json_db_dump_file)
-
-    epochs = [e["no"] for e in epoch_sync_times]
-    epoch_times = [e["seconds"] / 60 for e in epoch_sync_times]
-    ax_epochs.bar(epochs, epoch_times)
-
-    # define performance chart
-    ax_perf = fig.add_axes((0.05, 0.5, 0.9, 0.45))
-    ax_perf.set(xlabel="time [min]", ylabel="RSS [B]")
-    ax_perf.set_title("RSS usage")
-
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_db_dump_file:
-        perf_stats = json.load(json_db_dump_file)
-
-    times = [e["time"] / 60 for e in perf_stats]
-    rss_mem_usage = [e["rss_mem_usage"] for e in perf_stats]
-
-    ax_perf.plot(times, rss_mem_usage)
-    fig.savefig(CHART)
-
-
-def upload_sync_results_to_aws(env: str) -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
-
-    LOGGER.info("Writing full sync results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
-        sync_test_results_dict = json.load(json_file)
-
-    test_summary_table = env + "_db_sync"
-    last_identifier = aws_db.get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
-    test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_" + test_id
-    sync_test_results_dict["identifier"] = identifier
-
-    LOGGER.info(f"Writing test values into {test_summary_table} DB table")
-    col_to_insert = list(sync_test_results_dict.keys())
-    val_to_insert = list(sync_test_results_dict.values())
-
-    if not aws_db.insert_values_into_db(
-        table_name=test_summary_table,
-        col_names_list=col_to_insert,
-        col_values_list=val_to_insert,
-    ):
-        LOGGER.error(f"Failed to insert values into {test_summary_table}")
-        sys.exit(1)
-
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
-        epoch_sync_times = json.load(json_db_dump_file)
-
-    epoch_duration_table = env + "_epoch_duration_db_sync"
-    LOGGER.info(f"  ==== Write test values into the {epoch_duration_table} DB table:")
-    col_to_insert = ["identifier", "epoch_no", "sync_duration_secs"]
-    val_to_insert = [(identifier, e["no"], e["seconds"]) for e in epoch_sync_times]
-
-    if not aws_db.insert_values_into_db(
-        table_name=epoch_duration_table,
-        col_names_list=col_to_insert,
-        col_values_list=val_to_insert,
-        bulk=True,
-    ):
-        LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
-        sys.exit(1)
-
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
-        db_sync_performance_stats = json.load(json_perf_stats_file)
-
-    db_sync_performance_stats_table = env + "_performance_stats_db_sync"
-    LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
-    col_to_insert = [
-        "identifier",
-        "time",
-        "slot_no",
-        "cpu_percent_usage",
-        "rss_mem_usage",
-    ]
-    val_to_insert = [
-        (
-            identifier,
-            e["time"],
-            e["slot_no"],
-            e["cpu_percent_usage"],
-            e["rss_mem_usage"],
-        )
-        for e in db_sync_performance_stats
-    ]
-
-    if not aws_db.insert_values_into_db(
-        table_name=db_sync_performance_stats_table,
-        col_names_list=col_to_insert,
-        col_values_list=val_to_insert,
-        bulk=True,
-    ):
-        LOGGER.error(f"Failed to insert values into {db_sync_performance_stats_table}")
-        sys.exit(1)
 
 
 def run_test(args: argparse.Namespace) -> None:
@@ -288,11 +175,7 @@ def run_test(args: argparse.Namespace) -> None:
     db_sync.upload_artifact(TEST_RESULTS)
 
     # send results to aws database
-    upload_sync_results_to_aws(env)
-
-    # create and upload plot
-    create_sync_stats_chart()
-    db_sync.upload_artifact(CHART)
+    aws_db.upload_sync_results_to_aws(env)
 
     # create and upload compressed node db archive
     if env != "mainnet":

@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import pathlib as pl
 import platform
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from os.path import basename
 from os.path import normpath
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import psutil
 import psycopg2
 import requests
@@ -57,6 +59,8 @@ NODE_ARCHIVE_NAME = f"cardano_node_{ENVIRONMENT}_logs.zip"
 DB_SYNC_ARCHIVE_NAME = f"cardano_db_sync_{ENVIRONMENT}_logs.zip"
 SYNC_DATA_ARCHIVE_NAME = f"epoch_sync_times_{ENVIRONMENT}_dump.zip"
 PERF_STATS_ARCHIVE_NAME = f"db_sync_{ENVIRONMENT}_perf_stats.zip"
+
+CHART = f"full_sync_{ENVIRONMENT}_stats_chart.png"
 
 
 class sh_colors:
@@ -1036,3 +1040,35 @@ def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exc
         print_color_log(sh_colors.WARNING, f"Warning - validation errors: {e}\n\n")
         return e
     return None
+
+
+def create_sync_stats_chart() -> None:
+    os.chdir(ROOT_TEST_PATH)
+    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+    fig = plt.figure(figsize=(14, 10))
+
+    # define epochs sync times chart
+    ax_epochs = fig.add_axes((0.05, 0.05, 0.9, 0.35))
+    ax_epochs.set(xlabel="epochs [number]", ylabel="time [min]")
+    ax_epochs.set_title("Epochs Sync Times")
+
+    with open(EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+        epoch_sync_times = json.load(json_db_dump_file)
+
+    epochs = [e["no"] for e in epoch_sync_times]
+    epoch_times = [e["seconds"] / 60 for e in epoch_sync_times]
+    ax_epochs.bar(epochs, epoch_times)
+
+    # define performance chart
+    ax_perf = fig.add_axes((0.05, 0.5, 0.9, 0.45))
+    ax_perf.set(xlabel="time [min]", ylabel="RSS [B]")
+    ax_perf.set_title("RSS usage")
+
+    with open(DB_SYNC_PERF_STATS_FILE) as json_db_dump_file:
+        perf_stats = json.load(json_db_dump_file)
+
+    times = [e["time"] / 60 for e in perf_stats]
+    rss_mem_usage = [e["rss_mem_usage"] for e in perf_stats]
+
+    ax_perf.plot(times, rss_mem_usage)
+    fig.savefig(CHART)
