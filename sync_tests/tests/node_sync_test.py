@@ -12,6 +12,7 @@ from sync_tests.utils import helpers
 from sync_tests.utils import metrics_extractor
 from sync_tests.utils import node
 from sync_tests.utils import sync_results_db
+from sync_tests.utils import ulimit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ def run_test(args: argparse.Namespace) -> None:
     workdir: pl.Path = args.workdir
     workdir.mkdir(exist_ok=True)
     os.chdir(workdir)
+
+    ulimit.print_ulimit()
 
     print("--- Test data information", flush=True)
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
