@@ -6,6 +6,7 @@ import os
 import pathlib as pl
 import shutil
 import sys
+import time
 
 from sync_tests.utils import color_logger
 from sync_tests.utils import helpers
@@ -90,6 +91,7 @@ def run_test(args: argparse.Namespace) -> None:
     print()
     sync1_rec = node.run_sync(node_start_arguments=node_start_arguments1, base_dir=workdir, env=env)
     if not sync1_rec:
+        time.sleep(5 * 24 * 60 * 60)  # Sleep for 5 days to keep the environment intact
         last_failed_workdir = pl.Path("/var/tmp/sync_tests_workdir")
         shutil.rmtree(last_failed_workdir, ignore_errors=True)
         last_failed_workdir.mkdir()
