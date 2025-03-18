@@ -211,6 +211,7 @@ def run_test(args: argparse.Namespace) -> None:
         "system_metrics": logs_details_dict,
     }
 
+    print("--- Store tests results in database")
     sync_results_db.store_sync_results(sync_data=sync_data)
 
     print("--- Write tests results to file")

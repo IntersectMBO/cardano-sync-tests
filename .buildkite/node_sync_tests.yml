@@ -9,3 +9,4 @@ steps:
     artifact_paths:
       - 'logfile.log'
       - 'sync_results.json'
+      - 'sync_data_backup.json'
