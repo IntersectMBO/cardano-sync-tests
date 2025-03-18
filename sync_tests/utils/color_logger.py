@@ -22,10 +22,16 @@ class ColorFormatter(logging.Formatter):
         return super().format(record)
 
 
-class ColorLogger(logging.Logger):
-    def __init__(self, name: str) -> None:
-        super().__init__(name, logging.INFO)
-        color_formatter = ColorFormatter("%(message)s")
-        console = logging.StreamHandler()
-        console.setFormatter(color_formatter)
-        self.addHandler(console)
+def configure_logging(fmt: str | None = None) -> None:
+    fmt = fmt or "%(message)s"
+    logging.setLoggerClass(logging.Logger)  # Ensure standard logger is used
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)  # Set the global log level
+
+    # Remove existing handlers to avoid duplicates
+    while root_logger.handlers:
+        root_logger.handlers.pop()
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(ColorFormatter(fmt))
+    root_logger.addHandler(console_handler)
