@@ -246,3 +246,24 @@ def upload_sync_results_to_aws(env: str) -> None:
     ):
         LOGGER.error(f"Failed to insert values into {db_sync_performance_stats_table}")
         sys.exit(1)
+
+
+def upload_snapshot_restoration_results_to_aws(env: str) -> None:
+    LOGGER.info("--- Write IOHK snapshot restoration results to AWS Database")
+    with open(TEST_RESULTS) as json_file:
+        sync_test_results_dict = json.load(json_file)
+
+    test_summary_table = env + "_db_sync_snapshot_restoration"
+    last_identifier = get_last_identifier(test_summary_table)
+    assert last_identifier is not None  # TODO: refactor
+    test_id = str(int(last_identifier.split("_")[-1]) + 1)
+    identifier = env + "_restoration_" + test_id
+    sync_test_results_dict["identifier"] = identifier
+
+    LOGGER.info(f"  ==== Write test values into the {test_summary_table} DB table:")
+    col_to_insert = list(sync_test_results_dict.keys())
+    val_to_insert = list(sync_test_results_dict.values())
+
+    if not insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
+        LOGGER.error(f"Failed to insert values into {test_summary_table}")
+        sys.exit(1)
