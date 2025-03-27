@@ -35,12 +35,15 @@ def insert_sync_run_entry(test_values: dict, cursor: pymysql.cursors.Cursor) -> 
         filtered_data = {key: value for key, value in test_values.items() if key in valid_columns}
 
         # Generate sync_run_id safely
-        sync_run_id = (
-            f"{test_values['env']}_{test_values['node_revision1']}_"
-            f"{test_values['start_sync_time1']}"
-        )
-        filtered_data["id"] = sync_run_id  # Ensure ID is added to the data
+        if test_values.get("tag_no1", "").startswith("weekly"):
+            sync_run_id = test_values["tag_no1"]
+        else:
+            sync_run_id = (
+                f"{test_values['env']}_{test_values['node_revision1']}_"
+                f"{test_values['start_sync_time1']}"
+            )
 
+        filtered_data["id"] = sync_run_id  # Ensure ID is added to the data
         filtered_data["eras_in_test"] = json.dumps(filtered_data["eras_in_test"])
 
         # Construct SQL query dynamically
