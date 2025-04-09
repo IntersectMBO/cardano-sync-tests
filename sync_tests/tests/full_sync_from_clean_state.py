@@ -154,24 +154,19 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["errors"] = log_analyzer.is_string_present_in_file(
         file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
     )
+    test_data["system_metrics"] = db_sync.db_sync_perf_stats
+    # TO DO
+    # test_data["epoch_duration"] = db_sync.db_sync_perf_stats
 
     db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    db_sync.write_data_as_json_to_file(db_sync.DB_SYNC_PERF_STATS_FILE, db_sync.db_sync_perf_stats)
-    db_sync.export_epoch_sync_times_from_db(env, db_sync.EPOCH_SYNC_TIMES_FILE)
-
-    db_sync.print_file(TEST_RESULTS)
 
     # compress artifacts
     helpers.zip_file(db_sync.NODE_ARCHIVE_NAME, db_sync.NODE_LOG_FILE)
     helpers.zip_file(db_sync.DB_SYNC_ARCHIVE_NAME, db_sync.DB_SYNC_LOG_FILE)
-    helpers.zip_file(db_sync.SYNC_DATA_ARCHIVE_NAME, db_sync.EPOCH_SYNC_TIMES_FILE)
-    helpers.zip_file(db_sync.PERF_STATS_ARCHIVE_NAME, db_sync.DB_SYNC_PERF_STATS_FILE)
 
     # upload artifacts
     db_sync.upload_artifact(db_sync.NODE_ARCHIVE_NAME)
     db_sync.upload_artifact(db_sync.DB_SYNC_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.SYNC_DATA_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.PERF_STATS_ARCHIVE_NAME)
     db_sync.upload_artifact(TEST_RESULTS)
 
     # send results to aws database
