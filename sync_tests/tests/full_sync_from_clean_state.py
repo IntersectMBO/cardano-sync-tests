@@ -199,37 +199,33 @@ def get_args() -> argparse.Namespace:
 
         return final_args_string
 
-    parser.add_argument("-npr", "--node_pr", help="node pr number")
-    parser.add_argument("-nbr", "--node_branch", help="node branch or tag")
     parser.add_argument(
         "-nv",
-        "--node_version_gh_action",
+        "--node-revision",
+        required=True,
         help=(
-            "node version - 1.33.0-rc2 (tag number) or 1.33.0 "
-            "(release number - for released versions) or 1.33.0_PR2124 "
-            "(for not released and not tagged runs with a specific node PR/version)"
+            "Desired cardano-node revision - cardano-node tag or branch"
         ),
     )
-    parser.add_argument("-dbr", "--db_sync_branch", help="db-sync branch or tag")
     parser.add_argument(
         "-dv",
-        "--db_sync_version_gh_action",
+        "--db-sync-revision",
+        required=True,
         help=(
-            "db-sync version - 12.0.0-rc2 (tag number) or 12.0.2 "
-            "(release number - for released versions) or 12.0.2_PR2124 "
-            "(for not released and not tagged runs with a specific db_sync PR/version)"
+            "Desired db-sync revision - db-sync tag or branch"
         ),
     )
     parser.add_argument(
         "-dsa",
-        "--db_sync_start_options",
+        "--db-sync-start-options",
         type=hyphenated,
         help="db-sync start arguments: --disable-ledger, --disable-cache, --disable-epoch",
     )
     parser.add_argument(
         "-e",
         "--environment",
-        help="the environment on which to run the tests - shelley_qa, testnet, staging or mainnet.",
+        required=True,
+        help="The environment on which to run the sync test - preview, preprod, mainnet",
     )
 
     return parser.parse_args()
