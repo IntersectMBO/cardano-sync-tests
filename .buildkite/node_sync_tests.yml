@@ -1,7 +1,14 @@
 steps:
   - label: ':drum_with_drumsticks: Run the Cardano node sync test on Mainnet using a Linux machine'
     commands:
-      - nix develop --accept-flake-config .#python --command python ./sync_tests/tests/node_sync_test.py -e "${env}" -t1 "${tag_no1}" -t2 "${tag_no2}" -r1 "${node_rev1}" -r2 "${node_rev2}" -n1 "${node_topology1}" -n2 "${node_topology2}" -a1 "${node_start_arguments1}" -a2 "${node_start_arguments2}" ${use_genesis_mode}
+      - >
+        nix develop --accept-flake-config .#python --command python ./sync_tests/tests/node_sync_test.py
+        -e "${env}"
+        -t1 "${tag_no1}" -t2 "${tag_no2}"
+        -r1 "${node_rev1}" -r2 "${node_rev2}"
+        -n1 "${node_topology1}" -n2 "${node_topology2}"
+        -a1 "${node_start_arguments1}" -a2 "${node_start_arguments2}"
+        $( [[ "${use_genesis_mode}" == "true" ]] && echo "--use-genesis-mode" )
     timeout_in_minutes: 4500
     agents:
       system: x86_64-linux
@@ -9,4 +16,4 @@ steps:
     artifact_paths:
       - 'logfile.log'
       - 'sync_results.json'
-      - 'sync_data_backup.json'
+      - 'sync_data_backup.json' 

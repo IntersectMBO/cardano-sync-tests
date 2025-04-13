@@ -103,7 +103,7 @@ jobs:
           "node_topology2":"${{ github.event.inputs.node_topology2 }}",
           "node_start_arguments1":"${{ github.event.inputs.node_start_arguments1 }}",
           "node_start_arguments2":"${{ github.event.inputs.node_start_arguments2 }}",
-          "use_genesis_mode":"${{ github.event.inputs.use_genesis_mode == \"true\" && \"-g\" || \"\" }}",
+          "use_genesis_mode":"${{ github.event.inputs.use_genesis_mode }}",
           "BLOCKFROST_API_KEY":"${{ secrets.BLOCKFROST_API_KEY }}",
           "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
           "AWS_DB_PASS":"${{ secrets.AWS_DB_PASS }}",
