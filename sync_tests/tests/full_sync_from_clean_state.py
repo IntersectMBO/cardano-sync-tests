@@ -26,6 +26,7 @@ EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
 def run_test(args: argparse.Namespace) -> None:
     # system and software versions details
     LOGGER.info("--- Sync from clean state - setup")
+    LOGGER.info(f"args : {args}")
     platform_system, platform_release, platform_version = helpers.get_os_type()
     LOGGER.info(f"Platform: {platform_system, platform_release, platform_version}")
 
@@ -42,7 +43,7 @@ def run_test(args: argparse.Namespace) -> None:
     LOGGER.info(f"Node branch: {node_branch}")
 
     node_version_from_gh_action = helpers.get_arg_value(
-        args=args, key="node_version_gh_action", default=""
+        args=args, key="node_revision", default=""
     )
     LOGGER.info(f"Node version: {node_version_from_gh_action}")
 
@@ -52,7 +53,7 @@ def run_test(args: argparse.Namespace) -> None:
     db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="")
 
     db_sync_version_from_gh_action = (
-        helpers.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
+        helpers.get_arg_value(args=args, key="db_sync_revision", default="")
         + " "
         + db_start_options
     )

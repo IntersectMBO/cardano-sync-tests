@@ -162,7 +162,10 @@ def write_data_as_json_to_file(file: str | Path, data: dict | list) -> None:
 
 def print_file(file: str | Path, number_of_lines: int = 0) -> None:
     """Print contents of a file to the log, optionally limiting to a specified number of lines."""
-    with open(file) as f:
+    file_path = Path(file) if isinstance(file, str) else file
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(file_path, "a+") as f:
         lines = f.readlines()
     for line in lines[-number_of_lines:] if number_of_lines else lines:
         logging.info(line.strip())
