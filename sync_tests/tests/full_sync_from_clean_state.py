@@ -24,6 +24,11 @@ EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
 
 
 def run_test(args: argparse.Namespace) -> None:
+    """Run the db-sync sync test."""
+    workdir: pl.Path = args.workdir
+    workdir.mkdir(exist_ok=True)
+    os.chdir(workdir)
+
     # system and software versions details
     LOGGER.info("--- Sync from clean state - setup")
     platform_system, platform_release, platform_version = helpers.get_os_type()
@@ -44,29 +49,27 @@ def run_test(args: argparse.Namespace) -> None:
     db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="")
 
     # cardano-node setup
-    conf_dir = pl.Path.cwd()
-    base_dir = pl.Path.cwd()
     bin_dir = pl.Path("bin")
     bin_dir.mkdir(exist_ok=True)
     node.add_to_path(path=bin_dir)
 
-    node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_revision, base_dir=base_dir)
+    node.set_node_socket_path_env_var(base_dir=workdir)
+    node.get_node_files(node_rev=node_revision, base_dir=workdir)
     cli_version, cli_git_rev = node.get_node_version()
-    node.rm_node_config_files(conf_dir=conf_dir)
+    node.rm_node_config_files(conf_dir=workdir)
     # TODO: change the default to P2P when full P2P will be supported on Mainnet
     node.get_node_config_files(
         env=env,
         node_topology_type="",
-        conf_dir=conf_dir,
+        conf_dir=workdir,
         use_genesis_mode=False,
     )
-    node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(base_dir=base_dir, node_start_arguments=())
-    node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
+    node.configure_node(config_file=workdir / "config.json")
+    node.start_node(base_dir=workdir, node_start_arguments=())
+    node.wait_node_start(env=env, base_dir=workdir, timeout_minutes=10)
 
     LOGGER.info("--- Node startup")
-    db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
+    db_sync.print_file(f"{workdir}/{node.NODE_LOG_FILE_NAME}", 80)
 
     # cardano-db sync setup
     os.chdir(db_sync.ROOT_TEST_PATH)
@@ -203,6 +206,13 @@ def get_args() -> argparse.Namespace:
         "--environment",
         required=True,
         help="The environment on which to run the sync test - preview, preprod, mainnet",
+    )
+    parser.add_argument(
+        "-w",
+        "--workdir",
+        type=lambda p: pl.Path(p).absolute(),
+        default=".",
+        help="The working directory where the test will be run",
     )
 
     return parser.parse_args()

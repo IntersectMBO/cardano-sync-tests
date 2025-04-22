@@ -10,6 +10,7 @@ import platform
 import shutil
 import subprocess
 import time
+import traceback
 import typing as tp
 import urllib.request
 
@@ -25,7 +26,8 @@ from sync_tests.utils import helpers
 LOGGER = logging.getLogger(__name__)
 
 CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
-NODE_LOG_FILE_NAME = "logfile.log"
+NODE_LOG_FILE_NAME = "node_logfile.log"
+
 
 TESTNET_ARGS = {
     "mainnet": ("--mainnet",),
@@ -169,22 +171,30 @@ def get_testnet_args(env: str) -> tp.Iterable[str]:
         raise exceptions.SyncError(msg) from e
 
 
-def get_current_tip(env: str) -> Tip:
-    """Retrieve the current tip of the Cardano node."""
-    cmd = ["cardano-cli", "latest", "query", "tip", *get_testnet_args(env=env)]
-    output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
-    output_json = json.loads(output)
 
-    return Tip(
-        epoch=int(output_json.get("epoch", 0)),
-        block=int(output_json.get("block", 0)),
-        hash_value=output_json.get("hash") or "",
-        slot=int(output_json.get("slot", 0)),
-        era=output_json.get("era", "").lower(),
-        sync_progress=float(output_json.get("syncProgress", 0.0))
-        if "syncProgress" in output_json
-        else None,
-    )
+def get_current_tip(env: str) -> Tip:
+    cmd = ["cardano-cli", "latest", "query", "tip", *get_testnet_args(env=env)]
+    try:
+        LOGGER.info(f"Executing: {' '.join(cmd)}")
+        LOGGER.info(f"PATH: {os.environ.get('PATH')}")
+        LOGGER.info(f"cardano-cli resolved to: {shutil.which('cardano-cli')}")
+
+        output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
+        output_json = json.loads(output)
+        return Tip(
+            epoch=int(output_json.get("epoch", 0)),
+            block=int(output_json.get("block", 0)),
+            hash_value=output_json.get("hash") or "",
+            slot=int(output_json.get("slot", 0)),
+            era=output_json.get("era", "").lower(),
+            sync_progress=float(output_json.get("syncProgress", 0.0))
+            if "syncProgress" in output_json
+            else None,
+        )
+    except FileNotFoundError as e:
+        LOGGER.error(f"cardano-cli not found! PATH: {os.environ['PATH']}")
+        LOGGER.error(traceback.format_exc())
+        raise
 
 
 def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
