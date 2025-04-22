@@ -35,28 +35,13 @@ def run_test(args: argparse.Namespace) -> None:
     env = helpers.get_arg_value(args=args, key="environment")
     LOGGER.info(f"Environment: {env}")
 
-    node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
-    LOGGER.info(f"Node PR number: {node_pr}")
+    node_revision = helpers.get_arg_value(args=args, key="node_revision", default="")
+    LOGGER.info(f"Node revision: {node_revision}")
 
-    node_branch = helpers.get_arg_value(args=args, key="node_branch", default="")
-    LOGGER.info(f"Node branch: {node_branch}")
-
-    node_version_from_gh_action = helpers.get_arg_value(
-        args=args, key="node_version_gh_action", default=""
-    )
-    LOGGER.info(f"Node version: {node_version_from_gh_action}")
-
-    db_branch = helpers.get_arg_value(args=args, key="db_sync_branch", default="")
-    LOGGER.info(f"DB sync branch: {db_branch}")
+    db_sync_revision = helpers.get_arg_value(args=args, key="db_sync_revision", default="")
+    LOGGER.info(f"DB sync branch: {db_sync_revision}")
 
     db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="")
-
-    db_sync_version_from_gh_action = (
-        helpers.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
-        + " "
-        + db_start_options
-    )
-    LOGGER.info(f"DB sync version: {db_sync_version_from_gh_action}")
 
     # cardano-node setup
     conf_dir = pl.Path.cwd()
@@ -66,7 +51,7 @@ def run_test(args: argparse.Namespace) -> None:
     node.add_to_path(path=bin_dir)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_version_from_gh_action, base_dir=base_dir)
+    node.get_node_files(node_rev=node_revision, base_dir=base_dir)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
     # TODO: change the default to P2P when full P2P will be supported on Mainnet
@@ -85,7 +70,7 @@ def run_test(args: argparse.Namespace) -> None:
 
     # cardano-db sync setup
     os.chdir(db_sync.ROOT_TEST_PATH)
-    db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
+    db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_revision.rstrip())
     os.chdir(db_sync_dir)
     LOGGER.info("--- Db sync setup")
     db_sync.setup_postgres()  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
@@ -126,11 +111,8 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["no_of_cpu_cores"] = os.cpu_count()
     test_data["total_ram_in_GB"] = helpers.get_total_ram_in_gb()
     test_data["env"] = env
-    test_data["node_pr"] = node_pr
-    test_data["node_branch"] = node_branch
-    test_data["node_version"] = node_version_from_gh_action
-    test_data["db_sync_branch"] = db_branch
-    test_data["db_version"] = db_sync_version_from_gh_action
+    test_data["node_revision"] = node_revision
+    test_data["db_sync_revision"] = db_sync_revision
     test_data["node_cli_version"] = cli_version
     test_data["node_git_revision"] = cli_git_rev
     test_data["db_sync_version"] = db_sync_version
