@@ -118,6 +118,14 @@ def get_node_config_files(
     if use_genesis_mode:
         enable_genesis_mode(config_file=config_file_path, topology_file=topology_file_path)
 
+    try:
+        download_config_file(
+            config_slug=f"{env}/checkpoints.json",
+            save_as=conf_dir / "checkpoints.json"
+        )
+    except Exception:
+        LOGGER.warning("checkpoints.json file not available")
+
 
 def delete_node_files(node_dir: pl.Path) -> None:
     for p in node_dir.glob("cardano-*"):
