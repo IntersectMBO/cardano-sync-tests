@@ -2,7 +2,7 @@
   description = "Sync tests for cardano-node and db-sync";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
@@ -28,7 +28,7 @@
                 py3Full
                 py3Pkgs.virtualenv
                 py3Pkgs.pip
-                postgresql_14
+                postgresql
                 wget
                 curl
                 ripgrep
@@ -40,17 +40,19 @@
               ];
               shellHook = ''
                 echo "Setting up Python environment..."
-                python3 -m venv .venv_nix || true
-                source .venv_nix/bin/activate
+                [ -e .nix_venv ] || python3 -m venv .nix_venv
+                source .nix_venv/bin/activate
                 export PYTHONPATH=$(echo "$VIRTUAL_ENV"/lib/python3*/site-packages):"$PYTHONPATH"
-                .venv_nix/bin/pip install -e .
-                echo "Python environment ready."
+                python3 -m pip install --require-virtualenv --upgrade -e .
+                echo "Environment ready."
               '';
             };
 
             postgres = pkgs.mkShell {
               nativeBuildInputs = with pkgs; [ glibcLocales postgresql lsof procps wget ];
             };
+
+            default = python;
           };
         });
 
