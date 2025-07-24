@@ -120,8 +120,7 @@ def get_node_config_files(
 
     try:
         download_config_file(
-            config_slug=f"{env}/checkpoints.json",
-            save_as=conf_dir / "checkpoints.json"
+            config_slug=f"{env}/checkpoints.json", save_as=conf_dir / "checkpoints.json"
         )
     except Exception:
         LOGGER.warning("checkpoints.json file not available")

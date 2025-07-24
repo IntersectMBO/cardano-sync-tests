@@ -198,17 +198,13 @@ def get_args() -> argparse.Namespace:
         "-nv",
         "--node-revision",
         required=True,
-        help=(
-            "Desired cardano-node revision - cardano-node tag or branch"
-        ),
+        help=("Desired cardano-node revision - cardano-node tag or branch"),
     )
     parser.add_argument(
         "-dv",
         "--db-sync-revision",
         required=True,
-        help=(
-            "Desired db-sync revision - db-sync tag or branch"
-        ),
+        help=("Desired db-sync revision - db-sync tag or branch"),
     )
     parser.add_argument(
         "-dsa",
