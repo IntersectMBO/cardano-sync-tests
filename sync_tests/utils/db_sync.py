@@ -306,8 +306,7 @@ def download_and_extract_node_snapshot(env: str) -> None:
     with requests.get(snapshot_url, headers=headers, stream=True, timeout=2800) as r:
         r.raise_for_status()
         with open(archive_name, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+            f.writelines(r.iter_content(chunk_size=8192))
 
     logging.info(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
     tf = tarfile.open(Path(current_directory) / archive_name)
@@ -499,8 +498,7 @@ def download_db_sync_snapshot(snapshot_url: str) -> str:
     with requests.get(snapshot_url, headers=headers, stream=True, timeout=60 * 60) as r:
         r.raise_for_status()
         with open(archive_name, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+            f.writelines(r.iter_content(chunk_size=8192))
     return archive_name
 
 
