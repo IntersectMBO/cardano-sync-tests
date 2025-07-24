@@ -111,9 +111,8 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
 
     # Compute CPU load percentage per core
     no_of_cpu_cores = os.cpu_count() or 1
-    timestamps_list = list(centi_cpu_dict)
 
-    for prev_timestamp, curr_timestamp in zip(timestamps_list, timestamps_list[1:]):
+    for prev_timestamp, curr_timestamp in itertools.pairwise(centi_cpu_dict):
         prev_value = centi_cpu_dict[prev_timestamp]
         curr_value = centi_cpu_dict[curr_timestamp]
 
