@@ -1,11 +1,67 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "setuptools_scm[toml]"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardano-sync-tests"
+authors = [
+    {name = "Sara Tomaz", email = "sara.tomaz@iohk.io"},
+    {name = "Martin Kourim", email = "martin.kourim@iohk.io"},
+    {name = "Artur Wieczorek", email = "artur.wieczorek@iohk.io"},
+]
+description = "Sync tests for cardano-node and db-sync"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["cardano", "cardano-node", "cardano-cli", "cardano-db-sync"]
+license = "Apache-2.0"
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Developers",
+]
+dynamic = ["version"]
+dependencies = [
+    "GitPython",
+    "assertpy",
+    "blockfrost-python",
+    "colorama",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "psutil",
+    "psycopg2-binary",
+    "pymysql",
+    "requests",
+    "seaborn",
+    "setuptools < 80.9",
+    "xmltodict",
+]
+
+[project.urls]
+homepage = "https://github.com/IntersectMBO/cardano-sync-tests"
+documentation = "https://github.com/IntersectMBO/cardano-sync-tests"
+repository = "https://github.com/IntersectMBO/cardano-sync-tests"
+
+[tool.setuptools]
+
+[tool.setuptools.packages.find]
+
+[tool.setuptools.package-data]
+
+[tool.setuptools_scm]
+
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 # TODO: add "PTH"
-select = ["ARG", "B", "C4", "C90", "D", "DTZ", "E", "EM", "F", "FURB", "I001", "ISC", "N", "PERF", "PIE", "PL", "PLE", "PLR", "PLW", "PT", "Q", "RET", "RSE", "RUF", "SIM", "TRY", "UP", "W", "YTT"]
+select = ["ANN", "ARG", "B", "C4", "C90", "D", "DTZ", "E", "EM", "F", "FURB", "I001", "ISC", "N", "PERF", "PIE", "PL", "PLE", "PLR", "PLW", "PT", "Q", "RET", "RSE", "RUF", "SIM", "TRY", "UP", "W", "YTT"]
 # TODO: remove "PLW0603", "SIM115", "SIM112", "N801", "PERF203", "C901"
-ignore = ["B905", "D10", "D203", "D212", "D213", "D214", "D215", "D404", "D405", "D406", "D407", "D408", "D409", "D410", "D411", "D413", "ISC001", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PT001", "PT007", "PT012", "PT018", "PT023", "PTH123", "RET504", "TRY002", "TRY301", "UP006", "UP007", "UP035", "PLW0603", "SIM115", "SIM112", "N801", "PERF203", "C901"]
+ignore = ["ANN401", "B905", "D10", "D203", "D212", "D213", "D214", "D215", "D404", "D405", "D406", "D407", "D408", "D409", "D410", "D411", "D413", "ISC001", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PT001", "PT007", "PT012", "PT018", "PT023", "PTH123", "RET504", "TRY002", "TRY301", "UP006", "UP007", "UP035", "PLW0603", "SIM115", "SIM112", "N801", "PERF203", "C901"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -22,6 +78,11 @@ ignore_missing_imports = true
 follow_imports = "normal"
 no_implicit_optional = true
 allow_untyped_globals = false
-allow_untyped_defs = false
 warn_unused_configs = true
 warn_return_any = true
+
+[tool.pyrefly]
+project_includes = ["sync_tests"]
+ignore_errors_in_generated_code = true
+use_untyped_imports = true
+ignore_missing_source = true
