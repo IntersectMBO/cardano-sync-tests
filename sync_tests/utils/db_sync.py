@@ -861,12 +861,12 @@ def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> 
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
     export_env_var("DB_SYNC_START_ARGS", start_args)
-    export_env_var("FIRST_START", f"{first_start}")
+    export_env_var("FIRST_START", first_start)
     export_env_var("ENVIRONMENT", env)
     export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
 
     try:
-        cmd = "./sync_tests/scripts/db-sync-start.sh"
+        cmd = ["./sync_tests/scripts/db-sync-start.sh"]
         subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
