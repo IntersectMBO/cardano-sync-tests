@@ -82,7 +82,7 @@ jobs:
           fi
 
       - name: Trigger the Buildkite pipeline - run sync tests on Mainnet
-        uses: 'buildkite/trigger-pipeline-action@v2.3.0'
+        uses: 'buildkite/trigger-pipeline-action@v2.4.0'
         with:
           buildkite_api_access_token: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
           pipeline: 'input-output-hk/node-sync-tests'

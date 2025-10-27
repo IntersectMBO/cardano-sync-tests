@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: trigger the Buildkite pipeline - run db-sync full sync test
-        uses: 'buildkite/trigger-pipeline-action@v2.3.0'
+        uses: 'buildkite/trigger-pipeline-action@v2.4.0'
         env:
           BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
           PIPELINE: 'input-output-hk/db-sync-sync-tests'
