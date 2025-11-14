@@ -24,7 +24,9 @@ from sync_tests.utils import helpers
 
 LOGGER = logging.getLogger(__name__)
 
-CONFIGS_BASE_URL = "https://book.play.dev.cardano.org/environments"
+CONFIGS_BASE_URL = (
+    os.environ.get("CONFIGS_BASE_URL") or "https://book.world.dev.cardano.org/environments"
+)
 NODE_LOG_FILE_NAME = "logfile.log"
 
 TESTNET_ARGS = {
