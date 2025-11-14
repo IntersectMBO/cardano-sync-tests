@@ -93,6 +93,8 @@ def run_test(args: argparse.Namespace) -> None:
     print(f"end_sync_time1: {sync1_rec.end_sync_time}")
 
     sync2_rec = None
+    cli_version2 = None
+    cli_git_rev2 = None
     print(f"--- Start node using tag_no2: {tag_no2}")
     if tag_no2:
         node.delete_node_files(node_dir=workdir)
@@ -153,11 +155,11 @@ def run_test(args: argparse.Namespace) -> None:
         "tag_no1": tag_no1,
         "tag_no2": tag_no2,
         "cli_version1": cli_version1,
-        "cli_version2": cli_version2 if sync2_rec else None,
+        "cli_version2": cli_version2,
         "cli_git_rev1": cli_git_rev1,
-        "cli_git_rev2": cli_git_rev2 if sync2_rec else None,
+        "cli_git_rev2": cli_git_rev2,
         "cli_revision1": cli_version1,
-        "cli_revision2": cli_version2 if sync2_rec else None,
+        "cli_revision2": cli_version2,
         "start_sync_time1": sync1_rec.start_sync_time,
         "end_sync_time1": sync1_rec.end_sync_time,
         "start_sync_time2": sync2_rec.start_sync_time if sync2_rec else None,
