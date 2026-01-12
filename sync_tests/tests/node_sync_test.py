@@ -36,7 +36,7 @@ def run_test(args: argparse.Namespace) -> None:
     node_topology_type2 = args.node_topology2
     node_start_arguments1 = args.node_start_arguments1 or ()
     node_start_arguments2 = args.node_start_arguments2 or ()
-    use_genesis_mode = args.use_genesis_mode
+    disable_genesis_mode = args.disable_genesis_mode
 
     node.set_node_socket_path_env_var(base_dir=workdir)
 
@@ -49,7 +49,7 @@ def run_test(args: argparse.Namespace) -> None:
     print(f"- node_topology_type2: {node_topology_type2}")
     print(f"- node_start_arguments1: {node_start_arguments1}")
     print(f"- node_start_arguments2: {node_start_arguments2}")
-    print(f"- use_genesis_mode: {use_genesis_mode}")
+    print(f"- disable_genesis_mode: {disable_genesis_mode}")
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
     print(f"- platform: {platform_system, platform_release, platform_version}")
@@ -60,7 +60,7 @@ def run_test(args: argparse.Namespace) -> None:
         base_dir=workdir,
         node_rev=node_rev1,
         node_topology_type=node_topology_type1,
-        use_genesis_mode=use_genesis_mode,
+        disable_genesis_mode=disable_genesis_mode,
     )
 
     helpers.print_message(type="warn", message="--- node version ")
@@ -120,7 +120,7 @@ def run_test(args: argparse.Namespace) -> None:
             base_dir=workdir,
             node_rev=node_rev2,
             node_topology_type=node_topology_type2,
-            use_genesis_mode=use_genesis_mode,
+            disable_genesis_mode=disable_genesis_mode,
         )
 
         helpers.print_message(type="warn", message="node version")
@@ -302,11 +302,10 @@ def get_args() -> argparse.Namespace:
         help="Arguments to be passed when starting the node from existing state (second tag_no)",
     )
     parser.add_argument(
-        "-g",
-        "--use-genesis-mode",
+        "--disable-genesis-mode",
         action="store_true",
         default=False,
-        help="Use genesis mode",
+        help="Disable Genesis mode and use Praos mode with bootstrap peers instead",
     )
     parser.add_argument(
         "-s",

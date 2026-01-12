@@ -144,6 +144,23 @@ def update_json_file(file_path: pl.Path, updates: dict) -> None:
         json.dump(data, json_file, indent=2)
 
 
+def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
+    """Read a JSON file, remove specified keys if present, and write it back.
+
+    Args:
+        file_path: Path to the JSON file to modify.
+        keys: List of top-level keys to remove from the JSON object.
+    """
+    with open(file_path) as json_file:
+        data = json.load(json_file)
+
+    for key in keys:
+        data.pop(key, None)
+
+    with open(file_path, "w") as json_file:
+        json.dump(data, json_file, indent=2)
+
+
 @contextlib.contextmanager
 def temporary_chdir(path: pl.Path) -> tp.Iterator[None]:
     prev_cwd = pl.Path.cwd()  # Store the current working directory

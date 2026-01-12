@@ -70,13 +70,43 @@ def disable_p2p_node_config(config_file: pl.Path) -> None:
     )
 
 
-def enable_genesis_mode(config_file: pl.Path, topology_file: pl.Path) -> None:
-    """Enable Genesis mode in the node configuration and topology files."""
-    helpers.update_json_file(file_path=config_file, updates={"ConsensusMode": "GenesisMode"})
-    helpers.update_json_file(
-        file_path=topology_file,
-        updates={"peerSnapshotFile": "sync_tests/data/peersnapshotfile.json"},
-    )
+def disable_genesis_mode(config_file: pl.Path, topology_file: pl.Path) -> None:
+    """Disable Genesis mode and switch to Praos mode with bootstrap peers.
+
+    This removes ConsensusMode from config (defaults to Praos) and removes
+    peerSnapshotFile from topology (uses bootstrap peers instead).
+
+    Args:
+        config_file: Path to the node config.json file.
+        topology_file: Path to the node topology.json file.
+    """
+    helpers.remove_json_keys(file_path=config_file, keys=["ConsensusMode"])
+    helpers.remove_json_keys(file_path=topology_file, keys=["peerSnapshotFile"])
+
+
+def normalize_peer_snapshot(file_path: pl.Path) -> None:
+    """Convert 'domain' keys to 'address' in peer snapshot for node compatibility.
+
+    IOG peer-snapshot.json files use 'domain' for DNS-based relays, but
+    cardano-node expects 'address' key. This function normalizes the format.
+
+    Args:
+        file_path: Path to the peer-snapshot.json file to normalize.
+    """
+    with open(file_path) as f:
+        data = json.load(f)
+
+    modified = False
+    for pool in data.get("bigLedgerPools", []):
+        for relay in pool.get("relays", []):
+            if "domain" in relay and "address" not in relay:
+                relay["address"] = relay.pop("domain")
+                modified = True
+
+    if modified:
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=2)
+        LOGGER.info("Normalized peer snapshot: converted 'domain' to 'address'")
 
 
 def download_config_file(config_slug: str, save_as: pl.Path) -> None:
@@ -86,9 +116,19 @@ def download_config_file(config_slug: str, save_as: pl.Path) -> None:
 
 
 def get_node_config_files(
-    env: str, node_topology_type: str, conf_dir: pl.Path, use_genesis_mode: bool = False
+    env: str, node_topology_type: str, conf_dir: pl.Path, disable_genesis_mode_flag: bool = False
 ) -> None:
-    """Download Cardano node configuration files for the specified environment."""
+    """Download Cardano node configuration files for the specified environment.
+
+    Genesis mode is the default. Downloaded configs from IOG have Genesis mode enabled.
+    Use disable_genesis_mode_flag=True to switch to Praos mode with bootstrap peers.
+
+    Args:
+        env: Environment name (preview, preprod, mainnet).
+        node_topology_type: Topology type (non-bootstrap-peers, legacy, or default).
+        conf_dir: Directory to save configuration files.
+        disable_genesis_mode_flag: If True, disable Genesis mode and use Praos mode.
+    """
     LOGGER.info("Getting the node configuration files")
     config_file_path = conf_dir / "config.json"
     topology_file_path = conf_dir / "topology.json"
@@ -117,8 +157,21 @@ def get_node_config_files(
     else:
         download_config_file(config_slug=f"{env}/topology.json", save_as=topology_file_path)
 
-    if use_genesis_mode:
-        enable_genesis_mode(config_file=config_file_path, topology_file=topology_file_path)
+    # Always download the environment-specific peer snapshot from IOG
+    peer_snapshot_path = conf_dir / "peer-snapshot.json"
+    try:
+        download_config_file(config_slug=f"{env}/peer-snapshot.json", save_as=peer_snapshot_path)
+        LOGGER.info(f"Downloaded peer snapshot for {env}")
+        # Normalize format: IOG uses 'domain', node expects 'address'
+        normalize_peer_snapshot(peer_snapshot_path)
+    except Exception:
+        LOGGER.warning(f"peer-snapshot.json not available for {env}")
+
+    # Genesis mode is the default (configs from IOG have it enabled)
+    # Only disable if explicitly requested
+    if disable_genesis_mode_flag:
+        LOGGER.info("Disabling Genesis mode, switching to Praos mode with bootstrap peers")
+        disable_genesis_mode(config_file=config_file_path, topology_file=topology_file_path)
 
     try:
         download_config_file(
@@ -691,8 +744,17 @@ def config_sync(
     base_dir: pl.Path,
     node_rev: str,
     node_topology_type: str,
-    use_genesis_mode: bool,
+    disable_genesis_mode: bool = False,
 ) -> None:
+    """Configure the node for syncing.
+
+    Args:
+        env: Environment name (preview, preprod, mainnet).
+        base_dir: Base directory for node files.
+        node_rev: Node revision/tag to use.
+        node_topology_type: Topology type.
+        disable_genesis_mode: If True, disable Genesis mode and use Praos mode.
+    """
     LOGGER.info("Get the cardano-node and cardano-cli files")
     start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -715,7 +777,7 @@ def config_sync(
         env=env,
         node_topology_type=node_topology_type,
         conf_dir=base_dir,
-        use_genesis_mode=use_genesis_mode,
+        disable_genesis_mode_flag=disable_genesis_mode,
     )
 
     configure_node(config_file=base_dir / "config.json")
