@@ -90,13 +90,13 @@ report security vulnerabilities to us.
 ## Contact Information
 
 To report a security vulnerability, please use [GitHub
-form]((add project github form for your project)). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
+form](https://github.com/IntersectMBO/cardano-sync-tests/security). Should you experience any issues reporting via GitHub or have other questions, Please contact [Security](security@intersectmbo.org).
 
 ## Revision of Policy
 
 This Security Vulnerability Disclosure Policy may be updated or
 revised as necessary. Please check the latest version of this policy
-on the [xxxx repository]((add link for your project)).
+on the [cardano-sync-tests repository](https://github.com/IntersectMBO/cardano-sync-tests).
 
 ## Conclusion
 
