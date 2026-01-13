@@ -1,11 +1,13 @@
 import argparse
 import contextlib
+import hashlib
 import json
 import logging
 import os
 import pathlib as pl
 import platform
 import shlex
+import shutil
 import stat
 import subprocess
 import typing as tp
@@ -194,3 +196,93 @@ def manage_process(proc_name: str, action: str) -> psutil.Process:
                 msg = "Action must be 'get' or 'terminate'"
                 raise ValueError(msg)
     return None
+
+# utility functions from db sync
+def export_env_var(name: str, value: tp.Any) -> None:
+    """Export an environment variable with the given name and value.
+
+    Args:
+        name: The environment variable name.
+        value: The value to set (will be converted to string).
+    """
+    os.environ[name] = str(value)
+
+
+def make_tarfile(output_filename: str, source_dir: str) -> None:
+    """Create a tar.gz archive of the specified source directory.
+
+    Args:
+        output_filename: The output archive filename (should end in .tar.gz).
+        source_dir: The directory to archive.
+    """
+    shutil.make_archive(base_name=output_filename[:-7], format="gztar", root_dir=source_dir)
+
+
+def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
+    """Write data to a file in JSON format.
+
+    Args:
+        file_path: Path to the output JSON file.
+        data: Dictionary or list to serialize as JSON.
+    """
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
+    """Manage a directory by creating or removing it based on the action specified.
+
+    Args:
+        dir_name: Name of the directory to manage.
+        action: Either 'create' or 'remove'.
+        root: Root path to use (default: current directory).
+
+    Returns:
+        str: Path to created directory if action is 'create'.
+        None: If action is 'remove'.
+
+    Raises:
+        ValueError: If action is not 'create' or 'remove'.
+    """
+    path = pl.Path(f"{root}/{dir_name}")
+    if action == "create":
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
+    if action == "remove":
+        if path.exists():
+            shutil.rmtree(path)
+        return None
+    msg = "Action must be either 'create' or 'remove'."
+    raise ValueError(msg)
+
+
+def get_file_sha256_sum(filepath: str | pl.Path) -> str:
+    """Calculate and return the SHA-256 checksum of a file.
+
+    Args:
+        filepath: Path to the file to hash.
+
+    Returns:
+        str: Hexadecimal SHA-256 checksum.
+    """
+    with open(filepath, "rb") as f:
+        return hashlib.file_digest(f, hashlib.sha256).hexdigest()
+
+
+def print_last_n_lines(file_path: str | pl.Path, n: int) -> None:
+    """Print the last n lines from the specified file.
+
+    Args:
+        file_path: Path to the file to read.
+        n: Number of lines to print from the end.
+    """
+    try:
+        result = subprocess.run(
+            ["tail", "-n", str(n), str(file_path)],
+            stdout=subprocess.PIPE,
+            check=False,
+        )
+        for line in result.stdout.decode("utf-8").strip().splitlines():
+            LOGGER.info(line)
+    except Exception:
+        LOGGER.exception(f"Error reading last {n} lines from {file_path}")

@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import os
@@ -25,8 +24,7 @@ from assertpy import assert_that
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
 
 ONE_MINUTE = 60
 ROOT_TEST_PATH = Path.cwd()
@@ -85,19 +83,10 @@ def get_machine_name() -> str:
     return platform.node()
 
 
-def export_env_var(name: str, value: tp.Any) -> None:
-    """Export an environment variable with the given name and value."""
-    os.environ[name] = str(value)
-
-
-def wait(seconds: int) -> None:
-    """Pause execution for the specified number of seconds."""
-    time.sleep(seconds)
-
-
-def make_tarfile(output_filename: str, source_dir: str) -> None:
-    """Create a tar.gz archive of the specified source directory."""
-    shutil.make_archive(base_name=output_filename[:-7], format="gztar", root_dir=source_dir)
+# Utility functions moved to helpers.py:
+# - helpers.export_env_var -> helpers.helpers.export_env_var
+# - wait -> use time.sleep() directly
+# - make_tarfile -> helpers.make_tarfile
 
 
 def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = None) -> None:
@@ -131,7 +120,7 @@ def create_node_database_archive(env: str) -> str:
     os.chdir(Path.cwd() / "cardano-node")
     node_directory = os.getcwd()
     node_db_archive = f"node-db-{env}.tar.gz"
-    make_tarfile(node_db_archive, "db")
+    helpers.make_tarfile(node_db_archive, "db")
     os.chdir(current_directory)
     node_db_archive_path = node_directory + f"/{node_db_archive}"
     return node_db_archive_path
@@ -154,10 +143,7 @@ def get_buildkite_meta_data(key: str) -> str:
     return outs.decode("utf-8").strip()
 
 
-def write_data_as_json_to_file(file: str | Path, data: dict | list) -> None:
-    """Write data to a file in JSON format."""
-    with open(file, "w") as test_results_file:
-        json.dump(data, test_results_file, indent=2)
+# helpers.write_json_to_file -> helpers.write_json_to_file
 
 
 def print_file(file: str | Path, number_of_lines: int = 0) -> None:
@@ -168,36 +154,13 @@ def print_file(file: str | Path, number_of_lines: int = 0) -> None:
         logging.info(line.strip())
 
 
-def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
-    """Manage a directory by creating or removing it based on the action specified."""
-    path = Path(f"{root}/{dir_name}")
-    if action == "create":
-        path.mkdir(parents=True, exist_ok=True)
-        return str(path)
-    if action == "remove":
-        if path.exists():
-            shutil.rmtree(path)
-        return None
-    msg = "Action must be either 'create' or 'remove'."
-    raise ValueError(msg)
+# helpers.manage_directory -> helpers.helpers.manage_directory
 
 
-def get_file_sha_256_sum(filepath: str | Path) -> str:
-    """Calculate and returns the SHA-256 checksum of a file."""
-    return hashlib.file_digest(Path(filepath).open("rb"), hashlib.sha256).hexdigest()
+# get_file_sha_256_sum -> helpers.get_file_sha256_sum
 
 
-def print_n_last_lines_from_file(n: int, file_name: str | Path) -> None:
-    """Print the last n lines from the specified file."""
-    logs = (
-        subprocess.run(["tail", "-n", f"{n}", f"{file_name}"], stdout=subprocess.PIPE, check=False)
-        .stdout.decode("utf-8")
-        .strip()
-        .rstrip()
-        .splitlines()
-    )
-    for line in logs:
-        logging.info(line)
+# print_n_last_lines_from_file -> helpers.print_last_n_lines
 
 
 def get_last_perf_stats_point() -> dict[str, int]:
@@ -270,7 +233,7 @@ def export_epoch_sync_times_from_db(
 
 def emergency_upload_artifacts(env: str) -> None:
     """Upload artifacts for debugging in case of an emergency."""
-    write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
+    helpers.write_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
     export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
 
     helpers.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
@@ -324,7 +287,7 @@ def set_node_socket_path_env_var_in_cwd() -> None:
         msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
         raise Exception(msg)
     socket_path = "db/node.socket"
-    export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
+    helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
 
 
 def create_pgpass_file(env: str) -> None:
@@ -337,7 +300,7 @@ def create_pgpass_file(env: str) -> None:
     pgpass_file = f"pgpass-{env}"
     postgres_port = os.getenv("PGPORT")
     pgpass_content = f"{POSTGRES_DIR}:{postgres_port}:{env}:{POSTGRES_USER}:*"
-    export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     with open(pgpass_file, "w") as pgpass_text_file:
         print(pgpass_content, file=pgpass_text_file)
@@ -519,20 +482,20 @@ def restore_db_sync_from_snapshot(
         ledger_state_dir = Path.cwd() / "cardano-db-sync" / "ledger-state" / f"{env}"
         # TODO: Fix this, as it will not remove the directory. It is passing absolute path, so
         # it cannot work with the default `root` set to `.`.
-        manage_directory(dir_name=str(ledger_state_dir), action="remove")
+        helpers.manage_directory(dir_name=str(ledger_state_dir), action="remove")
     os.chdir(Path.cwd() / "cardano-db-sync")
 
-    ledger_dir = manage_directory(dir_name=f"ledger-state/{env}", action="create")
+    ledger_dir = helpers.manage_directory(dir_name=f"ledger-state/{env}", action="create")
     logging.info(f"ledger_dir: {ledger_dir}")
 
     # set tmp to local dir in current partition due to buildkite agent space
     # limitation on /tmp which is not big enough for snapshot restoration
-    tmp_dir = manage_directory(dir_name="tmp", action="create")
-    export_env_var("TMPDIR", tmp_dir)
+    tmp_dir = helpers.manage_directory(dir_name="tmp", action="create")
+    helpers.export_env_var("TMPDIR", tmp_dir)
 
-    export_env_var("PGPASSFILE", f"config/pgpass-{env}")
-    export_env_var("ENVIRONMENT", f"{env}")
-    export_env_var("RESTORE_RECREATE_DB", "N")
+    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+    helpers.export_env_var("ENVIRONMENT", f"{env}")
+    helpers.export_env_var("RESTORE_RECREATE_DB", "N")
     start_restoration = time.perf_counter()
 
     p = subprocess.Popen(
@@ -562,7 +525,7 @@ def restore_db_sync_from_snapshot(
         logging.exception("Process timeout expired")
 
     finally:
-        export_env_var("TMPDIR", "/tmp")
+        helpers.export_env_var("TMPDIR", "/tmp")
 
     if "All good!" not in outs.decode("utf-8"):
         msg = "Restoration has not ended successfully"
@@ -576,7 +539,7 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
     """Perform the first stage of creating a DB Sync snapshot."""
     os.chdir(ROOT_TEST_PATH)
     os.chdir(Path.cwd() / "cardano-db-sync")
-    export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     cmd = f"./_cardano-db-tool prepare-snapshot --state-dir ledger-state/{env}"
     p = subprocess.Popen(
@@ -605,7 +568,7 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
 def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
     """Perform the second stage of creating a DB Sync snapshot."""
     os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
-    export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
 
     try:
         # Running the command and capturing output and error
@@ -762,7 +725,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                     f"{current_progress} VS previous: {db_sync_progress}."
                 )
                 logging.info("Possible rollback... Printing last 10 lines of log")
-                print_n_last_lines_from_file(10, DB_SYNC_LOG_FILE)
+                helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 10)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
                     logging.info(
                         "Resetting previous rollback counter as there was no progress decrease "
@@ -794,7 +757,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                 f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
                 f"epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
             )
-            print_n_last_lines_from_file(5, DB_SYNC_LOG_FILE)
+            helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 5)
 
         try:
             time_point = int(time.perf_counter() - start_sync)
@@ -817,7 +780,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             "rss_mem_usage": rss_mem_usage,
         }
         db_sync_perf_stats.append(stats_data_point)
-        write_data_as_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
+        helpers.write_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
         time.sleep(ONE_MINUTE)
         counter += 1
 
@@ -860,10 +823,10 @@ def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> 
     """Start the Cardano DB Sync process."""
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
-    export_env_var("DB_SYNC_START_ARGS", start_args)
-    export_env_var("FIRST_START", f"{first_start}")
-    export_env_var("ENVIRONMENT", env)
-    export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
+    helpers.export_env_var("DB_SYNC_START_ARGS", start_args)
+    helpers.export_env_var("FIRST_START", f"{first_start}")
+    helpers.export_env_var("ENVIRONMENT", env)
+    helpers.export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
 
     try:
         cmd = "./sync_tests/scripts/db-sync-start.sh"
@@ -907,10 +870,10 @@ def setup_postgres(
     current_directory = os.getcwd()
     os.chdir(ROOT_TEST_PATH)
 
-    export_env_var("POSTGRES_DIR", pg_dir)
-    export_env_var("PGHOST", "localhost")
-    export_env_var("PGUSER", pg_user)
-    export_env_var("PGPORT", pg_port)
+    helpers.export_env_var("POSTGRES_DIR", pg_dir)
+    helpers.export_env_var("PGHOST", "localhost")
+    helpers.export_env_var("PGUSER", pg_user)
+    helpers.export_env_var("PGPORT", pg_port)
 
     try:
         cmd = ["./sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
