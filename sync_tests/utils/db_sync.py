@@ -95,9 +95,9 @@ def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = 
         try:
             cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
             subprocess.run(cmd, check=True)
-            logging.info(f"Uploaded {file} to Buildkite.")
+            LOGGER.info(f"Uploaded {file} to Buildkite.")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logging.warning("Buildkite agent not available. Falling back to S3.")
+            LOGGER.warning("Buildkite agent not available. Falling back to S3.")
         else:
             return
 
@@ -108,9 +108,9 @@ def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = 
         try:
             cmd = ["aws", "s3", "cp", f"{file}", f"s3://{s3_path}"]
             subprocess.run(cmd, check=True)
-            logging.info(f"Uploaded {file} to S3 at {s3_path}.")
+            LOGGER.info(f"Uploaded {file} to S3 at {s3_path}.")
         except subprocess.CalledProcessError:
-            logging.exception(f"Error uploading {file} to S3")
+            LOGGER.exception(f"Error uploading {file} to S3")
 
 
 def create_node_database_archive(env: str) -> str:
@@ -151,7 +151,7 @@ def print_file(file: str | Path, number_of_lines: int = 0) -> None:
     with open(file) as f:
         lines = f.readlines()
     for line in lines[-number_of_lines:] if number_of_lines else lines:
-        logging.info(line.strip())
+        LOGGER.info(line.strip())
 
 
 # helpers.manage_directory -> helpers.helpers.manage_directory
@@ -168,7 +168,7 @@ def get_last_perf_stats_point() -> dict[str, int]:
     try:
         last_perf_stats_point = db_sync_perf_stats[-1]
     except Exception:
-        logging.exception("Exception in get_last_perf_stats_point")
+        LOGGER.exception("Exception in get_last_perf_stats_point")
         stats_data_point = {
             "time": 0,
             "slot_no": 0,
@@ -210,18 +210,18 @@ def export_epoch_sync_times_from_db(
         )
         out, err = (p.decode("utf-8").strip() for p in p.communicate(timeout=600))
         if err:
-            logging.error(
+            LOGGER.error(
                 f"Error during exporting epoch sync times from db: {err}. "
                 "Killing extraction process."
             )
             p.kill()
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
         p.kill()
-        logging.exception(
+        LOGGER.exception(
             "Error during exporting epoch sync times from db. Killing extraction process."
         )
     except Exception:
-        logging.exception(
+        LOGGER.exception(
             "Error during exporting epoch sync times from db. Killing extraction process."
         )
         p.kill()
@@ -261,22 +261,22 @@ def download_and_extract_node_snapshot(env: str) -> None:
 
     archive_name = f"db-{env}.tar.gz"
 
-    logging.info("Download node snapshot file:")
-    logging.info(f" - current_directory: {current_directory}")
-    logging.info(f" - download_url: {snapshot_url}")
-    logging.info(f" - archive name: {archive_name}")
+    LOGGER.info("Download node snapshot file:")
+    LOGGER.info(f" - current_directory: {current_directory}")
+    LOGGER.info(f" - download_url: {snapshot_url}")
+    LOGGER.info(f" - archive name: {archive_name}")
 
     with requests.get(snapshot_url, headers=headers, stream=True, timeout=2800) as r:
         r.raise_for_status()
         with open(archive_name, "wb") as f:
             f.writelines(r.iter_content(chunk_size=8192))
 
-    logging.info(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
+    LOGGER.info(f" ------ listdir (before archive extraction): {os.listdir(current_directory)}")
     tf = tarfile.open(Path(current_directory) / archive_name)
     tf.extractall(Path(current_directory))
     os.rename(f"db-{env}", "db")
     helpers.delete_file(Path(current_directory) / archive_name)
-    logging.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
+    LOGGER.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
 def set_node_socket_path_env_var_in_cwd() -> None:
@@ -317,7 +317,7 @@ def create_database() -> None:
     try:
         cmd = ["scripts/postgresql-setup.sh", "--createdb"]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
-        logging.info(f"Create database script output: {output}")
+        LOGGER.info(f"Create database script output: {output}")
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
@@ -359,7 +359,7 @@ def copy_db_sync_executables(build_method: str = "nix") -> None:
             .strip()
         )
         os.chdir(current_directory)
-        logging.info(f"Find cardano-db-sync output: {output_find_db_cmd}")
+        LOGGER.info(f"Find cardano-db-sync output: {output_find_db_cmd}")
         shutil.copy2(output_find_db_cmd, "_cardano-db-sync")
 
         find_db_tool_cmd = [
@@ -377,7 +377,7 @@ def copy_db_sync_executables(build_method: str = "nix") -> None:
             .strip()
         )
 
-        logging.info(f"Find cardano-db-tool output: {output_find_db_tool_cmd}")
+        LOGGER.info(f"Find cardano-db-tool output: {output_find_db_tool_cmd}")
         shutil.copy2(output_find_db_tool_cmd, "_cardano-db-tool")
 
     except subprocess.CalledProcessError as e:
@@ -453,10 +453,10 @@ def download_db_sync_snapshot(snapshot_url: str) -> str:
     headers = {"User-Agent": "Mozilla/5.0"}
     archive_name = snapshot_url.split("/")[-1].strip()
 
-    logging.info("Download db-sync snapshot file:")
-    logging.info(f" - current_directory: {current_directory}")
-    logging.info(f" - download_url: {snapshot_url}")
-    logging.info(f" - archive name: {archive_name}")
+    LOGGER.info("Download db-sync snapshot file:")
+    LOGGER.info(f" - current_directory: {current_directory}")
+    LOGGER.info(f" - download_url: {snapshot_url}")
+    LOGGER.info(f" - archive name: {archive_name}")
 
     with requests.get(snapshot_url, headers=headers, stream=True, timeout=60 * 60) as r:
         r.raise_for_status()
@@ -486,7 +486,7 @@ def restore_db_sync_from_snapshot(
     os.chdir(Path.cwd() / "cardano-db-sync")
 
     ledger_dir = helpers.manage_directory(dir_name=f"ledger-state/{env}", action="create")
-    logging.info(f"ledger_dir: {ledger_dir}")
+    LOGGER.info(f"ledger_dir: {ledger_dir}")
 
     # set tmp to local dir in current partition due to buildkite agent space
     # limitation on /tmp which is not big enough for snapshot restoration
@@ -513,7 +513,7 @@ def restore_db_sync_from_snapshot(
         print(f"Restore database: {output}")
         if errs:
             errors = errs.decode("utf-8")
-            logging.error(f"Error during restoration: {errors}")
+            LOGGER.error(f"Error during restoration: {errors}")
 
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
@@ -522,7 +522,7 @@ def restore_db_sync_from_snapshot(
         raise RuntimeError(msg) from e
     except subprocess.TimeoutExpired:
         p.kill()
-        logging.exception("Process timeout expired")
+        LOGGER.exception("Process timeout expired")
 
     finally:
         helpers.export_env_var("TMPDIR", "/tmp")
@@ -553,9 +553,9 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
     try:
         outs, errs = p.communicate(timeout=300)
         if errs:
-            logging.error(f"Warnings or Errors: {errs}")
+            LOGGER.error(f"Warnings or Errors: {errs}")
         final_line_with_script_cmd = outs.split("\n")[2].lstrip()
-        logging.info(f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}")
+        LOGGER.info(f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}")
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
@@ -581,9 +581,9 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
             check=False,  # 12 hours
         )
 
-        logging.info(f"Snapshot Creation - Stage 2 Output:\n{result.stdout}")
+        LOGGER.info(f"Snapshot Creation - Stage 2 Output:\n{result.stdout}")
         if result.stderr:
-            logging.error(f"Warnings or Errors:\n{result.stderr}")
+            LOGGER.error(f"Warnings or Errors:\n{result.stderr}")
         # Extracting the snapshot path from the last line mentioning 'Created'
         snapshot_line = next(
             (line for line in result.stdout.splitlines() if line.startswith("Created")),
@@ -633,10 +633,10 @@ def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
             if counter > 5:
                 should_try = False
                 emergency_upload_artifacts(env)
-                logging.exception("Failed to get the tip")
+                LOGGER.exception("Failed to get the tip")
                 p.kill()
                 raise
-            logging.exception(
+            LOGGER.exception(
                 f"db-sync tip data unavailable, possible postgress failure. "
                 f"Output from psql: {output_string}, errs: {errs.decode('utf-8')}"
             )
@@ -684,7 +684,7 @@ def get_db_sync_progress(env: str) -> float | None:
                 emergency_upload_artifacts(env)
                 p.kill()
                 raise
-            logging.exception(
+            LOGGER.exception(
                 "db-sync progress unavailable, possible postgress failure. "
                 f"Output from psql: {progress_string}"
             )
@@ -709,7 +709,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
     db_sync_process = helpers.manage_process(proc_name="cardano-db-sync", action="get")
     log_frequency = get_log_output_frequency(env)
 
-    logging.info("--- Db sync monitoring")
+    LOGGER.info("--- Db sync monitoring")
     while db_sync_progress < sync_percentage:
         sync_time_in_sec = time.perf_counter() - start_sync
         if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
@@ -720,30 +720,30 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             current_progress = get_db_sync_progress(env)
             assert current_progress is not None  # TODO: refactor
             if current_progress < db_sync_progress and db_sync_progress > 3:
-                logging.info(
+                LOGGER.info(
                     "Progress decreasing - current progress: "
                     f"{current_progress} VS previous: {db_sync_progress}."
                 )
-                logging.info("Possible rollback... Printing last 10 lines of log")
+                LOGGER.info("Possible rollback... Printing last 10 lines of log")
                 helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 10)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
-                    logging.info(
+                    LOGGER.info(
                         "Resetting previous rollback counter as there was no progress decrease "
                         "for more than 10 minutes"
                     )
                     rollback_counter = 0
                 last_rollback_time = time.perf_counter()
                 rollback_counter += 1
-                logging.info(f"Rollback counter: {rollback_counter} out of 15")
+                LOGGER.info(f"Rollback counter: {rollback_counter} out of 15")
             if rollback_counter > 15:
-                logging.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
-                logging.exception("Shutting down all services and emergency uploading artifacts")
+                LOGGER.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
+                LOGGER.exception("Shutting down all services and emergency uploading artifacts")
                 emergency_upload_artifacts(env)
                 msg = "Rollback taking too long. Shutting down..."
                 raise Exception(msg)
         if counter % log_frequency == 0:
             tip = node.get_current_tip(env)
-            logging.info(
+            LOGGER.info(
                 f"node progress [%]: {tip.sync_progress}, epoch: {tip.epoch}, "
                 f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
             )
@@ -753,7 +753,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             db_sync_progress = get_db_sync_progress(env)
             assert db_sync_progress is not None  # TODO: refactor
             sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
-            logging.info(
+            LOGGER.info(
                 f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
                 f"epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
             )
@@ -769,7 +769,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
         except Exception:
             end_sync = time.perf_counter()
             db_full_sync_time_in_secs = int(end_sync - start_sync)
-            logging.exception("Unexpected error during sync process")
+            LOGGER.exception("Unexpected error during sync process")
             emergency_upload_artifacts(env)
             return db_full_sync_time_in_secs
 
@@ -786,7 +786,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
 
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
-    logging.info(f"db sync progress [%] before finalizing process: {db_sync_progress}")
+    LOGGER.info(f"db sync progress [%] before finalizing process: {db_sync_progress}")
     return sync_time_seconds
 
 
@@ -809,7 +809,7 @@ def get_total_db_size(env: str) -> str:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         outs, errs = p.communicate(timeout=60)
         if errs:
-            logging.error(f"Error in get database size: {errs}")
+            LOGGER.error(f"Error in get database size: {errs}")
         return outs.rstrip().strip()
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
         p.kill()
@@ -843,15 +843,15 @@ def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> 
 
     while not_found:
         if counter > 10 * ONE_MINUTE:
-            logging.error(f"ERROR: waited {counter} seconds and the db-sync was not started")
+            LOGGER.error(f"ERROR: waited {counter} seconds and the db-sync was not started")
             sys.exit(1)
 
         for proc in psutil.process_iter():
             if "cardano-db-sync" in proc.name():
-                logging.info(f"db-sync process present: {proc}")
+                LOGGER.info(f"db-sync process present: {proc}")
                 not_found = False
                 return
-        logging.info("Waiting for db-sync to start")
+        LOGGER.info("Waiting for db-sync to start")
         counter += ONE_MINUTE
         time.sleep(ONE_MINUTE)
 
@@ -878,7 +878,7 @@ def setup_postgres(
     try:
         cmd = ["./sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
-        logging.info(f"Setup postgres script output: {output}")
+        LOGGER.info(f"Setup postgres script output: {output}")
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
@@ -894,9 +894,9 @@ def list_databases() -> None:
 
     try:
         outs, errs = p.communicate(timeout=60)
-        logging.info(f"List databases: {outs}")
+        LOGGER.info(f"List databases: {outs}")
         if errs:
-            logging.error(f"Error in list databases: {errs}")
+            LOGGER.error(f"Error in list databases: {errs}")
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
         p.kill()
         raise
@@ -936,7 +936,7 @@ def get_db_schema() -> dict:
         conn.commit()
         conn.close()
     except (Exception, psycopg2.DatabaseError):
-        logging.exception("Error")
+        LOGGER.exception("Error")
     finally:
         if conn is not None:
             conn.close()
@@ -983,7 +983,7 @@ def get_db_indexes() -> dict:
         conn.commit()
         conn.close()
     except (Exception, psycopg2.DatabaseError):
-        logging.exception("Error")
+        LOGGER.exception("Error")
     else:
         return all_indexes
     finally:
