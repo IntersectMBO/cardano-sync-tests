@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 import os
@@ -25,6 +26,25 @@ from sync_tests.utils import helpers
 from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class DbSyncTip:
+    """Database sync tip information."""
+
+    epoch_no: int
+    block_no: int
+    slot_no: int
+
+
+@dataclasses.dataclass(frozen=True)
+class PerfStats:
+    """Performance statistics for DB sync monitoring."""
+
+    time: int
+    slot_no: int
+    cpu_percent_usage: float
+    rss_mem_usage: int
 
 ONE_MINUTE = 60
 ROOT_TEST_PATH = Path.cwd()
@@ -126,9 +146,6 @@ def get_buildkite_meta_data(key: str) -> str:
     return outs.decode("utf-8").strip()
 
 
-# helpers.write_json_to_file -> helpers.write_json_to_file
-
-
 def print_file(file: str | Path, number_of_lines: int = 0) -> None:
     """Print contents of a file to the log, optionally limiting to a specified number of lines."""
     with open(file) as f:
@@ -137,31 +154,25 @@ def print_file(file: str | Path, number_of_lines: int = 0) -> None:
         LOGGER.info(line.strip())
 
 
-# helpers.manage_directory -> helpers.helpers.manage_directory
+def get_last_perf_stats_point() -> PerfStats:
+    """Retrieve the last performance statistics data point, or initializes one if none exists.
 
-
-# get_file_sha_256_sum -> helpers.get_file_sha256_sum
-
-
-# print_n_last_lines_from_file -> helpers.print_last_n_lines
-
-
-def get_last_perf_stats_point() -> dict[str, int]:
-    """Retrieve the last performance statistics data point, or initializes one if none exists."""
+    Returns:
+        PerfStats: The last performance statistics point, or a default one if none exists.
+    """
     try:
-        last_perf_stats_point = db_sync_perf_stats[-1]
+        last_perf_stats_dict = db_sync_perf_stats[-1]
+        return PerfStats(**last_perf_stats_dict)
     except Exception:
         LOGGER.exception("Exception in get_last_perf_stats_point")
-        stats_data_point = {
-            "time": 0,
-            "slot_no": 0,
-            "cpu_percent_usage": 0,
-            "rss_mem_usage": 0,
-        }
-        db_sync_perf_stats.append(stats_data_point)
-        last_perf_stats_point = db_sync_perf_stats[-1]
-
-    return last_perf_stats_point
+        default_stats = PerfStats(
+            time=0,
+            slot_no=0,
+            cpu_percent_usage=0.0,
+            rss_mem_usage=0,
+        )
+        db_sync_perf_stats.append(dataclasses.asdict(default_stats))
+        return default_stats
 
 
 def get_log_output_frequency(env: str) -> int:
@@ -585,8 +596,13 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
         return snapshot_path
 
 
-def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
-    """Retrieve the tip information from the Cardano DB Sync database."""
+def get_db_sync_tip(env: str) -> DbSyncTip | None:
+    """Retrieve the tip information from the Cardano DB Sync database.
+
+    Returns:
+        DbSyncTip: Tip information with epoch, block, and slot numbers.
+        None: If tip data cannot be retrieved after retries.
+    """
     p = subprocess.Popen(
         [
             "psql",
@@ -611,7 +627,14 @@ def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
         try:
             outs, errs = p.communicate(timeout=180)
             output_string = outs.decode("utf-8")
-            epoch_no, block_no, slot_no = [e.strip() for e in outs.decode("utf-8").split("|")]
+            epoch_no_str, block_no_str, slot_no_str = [
+                e.strip() for e in outs.decode("utf-8").split("|")
+            ]
+            return DbSyncTip(
+                epoch_no=int(epoch_no_str),
+                block_no=int(block_no_str),
+                slot_no=int(slot_no_str),
+            )
         except Exception:
             if counter > 5:
                 should_try = False
@@ -625,8 +648,6 @@ def get_db_sync_tip(env: str) -> tuple[str, str, str] | None:
             )
             counter += 1
             time.sleep(ONE_MINUTE)
-        else:
-            return epoch_no, block_no, slot_no
 
     return None
 
@@ -732,13 +753,12 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             )
             db_sync_tip = get_db_sync_tip(env)
             assert db_sync_tip is not None  # TODO: refactor
-            epoch_no, block_no, slot_no = db_sync_tip
             db_sync_progress = get_db_sync_progress(env)
             assert db_sync_progress is not None  # TODO: refactor
             sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
             LOGGER.info(
                 f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
-                f"epoch: {epoch_no}, block: {block_no}, slot: {slot_no}"
+                f"epoch: {db_sync_tip.epoch_no}, block: {db_sync_tip.block_no}, slot: {db_sync_tip.slot_no}"
             )
             helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 5)
 
@@ -746,7 +766,6 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             time_point = int(time.perf_counter() - start_sync)
             db_sync_tip = get_db_sync_tip(env)
             assert db_sync_tip is not None  # TODO: refactor
-            _, _, slot_no = db_sync_tip
             cpu_usage = db_sync_process.cpu_percent(interval=None)
             rss_mem_usage = db_sync_process.memory_info()[0]
         except Exception:
@@ -756,13 +775,13 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             emergency_upload_artifacts(env)
             return db_full_sync_time_in_secs
 
-        stats_data_point = {
-            "time": time_point,
-            "slot_no": slot_no,
-            "cpu_percent_usage": cpu_usage,
-            "rss_mem_usage": rss_mem_usage,
-        }
-        db_sync_perf_stats.append(stats_data_point)
+        stats_data_point = PerfStats(
+            time=time_point,
+            slot_no=db_sync_tip.slot_no,
+            cpu_percent_usage=cpu_usage,
+            rss_mem_usage=rss_mem_usage,
+        )
+        db_sync_perf_stats.append(dataclasses.asdict(stats_data_point))
         helpers.write_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
         time.sleep(ONE_MINUTE)
         counter += 1
