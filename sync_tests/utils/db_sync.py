@@ -11,8 +11,6 @@ import tarfile
 import time
 import typing as tp
 from datetime import timedelta
-from os.path import basename
-from os.path import normpath
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -182,7 +180,6 @@ def get_machine_name() -> str:
     return platform.node()
 
 
-
 def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = None) -> None:
     """Upload an artifact to either S3 or Buildkite based on the specified destination."""
     if destination in ("buildkite", "auto"):
@@ -218,7 +215,6 @@ def create_node_database_archive(config: DbSyncConfig) -> Path:
     """
     node_dir = config.workdir / "cardano-node"
     node_db_archive = node_dir / f"node-db-{config.env}.tar.gz"
-    db_dir = node_dir / "db"
 
     archive_base_name = str(node_db_archive.parent / node_db_archive.stem)
     shutil.make_archive(archive_base_name, "gztar", root_dir=str(node_dir), base_dir="db")
@@ -239,7 +235,7 @@ def get_buildkite_meta_data(key: str) -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    outs, errs = p.communicate(timeout=15)
+    outs, _errs = p.communicate(timeout=15)
     return outs.decode("utf-8").strip()
 
 
@@ -432,9 +428,11 @@ def create_database(config: DbSyncConfig) -> None:
 
     try:
         cmd = [str(script_path), "--createdb"]
-        output = subprocess.check_output(
-            cmd, cwd=str(db_sync_dir), stderr=subprocess.STDOUT
-        ).decode("utf-8").strip()
+        output = (
+            subprocess.check_output(cmd, cwd=str(db_sync_dir), stderr=subprocess.STDOUT)
+            .decode("utf-8")
+            .strip()
+        )
         LOGGER.info(f"Create database script output: {output}")
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
@@ -611,7 +609,11 @@ def restore_db_sync_from_snapshot(
         int: Restoration time in seconds.
     """
     db_sync_dir = config.workdir / "cardano-db-sync"
-    snapshot_path = pl.Path(snapshot_file).resolve() if not isinstance(snapshot_file, Path) else snapshot_file.resolve()
+    snapshot_path = (
+        pl.Path(snapshot_file).resolve()
+        if not isinstance(snapshot_file, Path)
+        else snapshot_file.resolve()
+    )
 
     if remove_ledger_dir == "yes":
         ledger_state_dir = db_sync_dir / "ledger-state" / config.env
@@ -803,13 +805,14 @@ def get_db_sync_tip(config: DbSyncConfig) -> DbSyncTip | None:
         except Exception:
             if counter > 5:
                 should_try = False
-                emergency_upload_artifacts(config)
+                emergency_upload_artifacts(config, [])
                 LOGGER.exception("Failed to get the tip")
                 p.kill()
                 raise
+            err_msg = errs.decode("utf-8") if errs else "N/A"
             LOGGER.exception(
                 f"db-sync tip data unavailable, possible postgress failure. "
-                f"Output from psql: {output_string}, errs: {errs.decode('utf-8') if errs else 'N/A'}"
+                f"Output from psql: {output_string}, errs: {err_msg}"
             )
             counter += 1
             time.sleep(ONE_MINUTE)
@@ -851,13 +854,13 @@ def get_db_sync_progress(config: DbSyncConfig) -> float | None:
     while should_try:
         progress_string = ""
         try:
-            outs, errs = p.communicate(timeout=300)
+            outs, _errs = p.communicate(timeout=300)
             progress_string = outs.decode("utf-8")
             db_sync_progress = round(float(progress_string), 2)
         except Exception:
             if counter > 5:
                 should_try = False
-                emergency_upload_artifacts(config)
+                emergency_upload_artifacts(config, [])
                 p.kill()
                 raise
             LOGGER.exception(
@@ -871,6 +874,115 @@ def get_db_sync_progress(config: DbSyncConfig) -> float | None:
     return None
 
 
+def _check_for_rollback(
+    config: DbSyncConfig,
+    current_progress: float,
+    db_sync_progress: float,
+    last_rollback_time: float,
+    rollback_counter: int,
+    counter: int,
+    perf_stats: list[dict],
+) -> tuple[int, float]:
+    """Check for rollback and handle rollback counter.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+        current_progress: Current sync progress percentage.
+        db_sync_progress: Previous sync progress percentage.
+        last_rollback_time: Timestamp of last rollback detection.
+        rollback_counter: Current rollback counter value.
+        counter: Current loop iteration counter.
+        perf_stats: Performance statistics list.
+
+    Returns:
+        tuple[int, float]: Updated rollback_counter and last_rollback_time.
+
+    Raises:
+        Exception: If rollback counter exceeds threshold.
+    """
+    if current_progress < db_sync_progress and db_sync_progress > 3:
+        LOGGER.info(
+            "Progress decreasing - current progress: "
+            f"{current_progress} VS previous: {db_sync_progress}."
+        )
+        LOGGER.info("Possible rollback... Printing last 10 lines of log")
+        helpers.print_last_n_lines(config.db_sync_log_file, 10)
+        if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
+            LOGGER.info(
+                "Resetting previous rollback counter as there was no progress decrease "
+                "for more than 10 minutes"
+            )
+            rollback_counter = 0
+        last_rollback_time = time.perf_counter()
+        rollback_counter += 1
+        LOGGER.info(f"Rollback counter: {rollback_counter} out of 15")
+    if rollback_counter > 15:
+        LOGGER.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
+        LOGGER.exception("Shutting down all services and emergency uploading artifacts")
+        emergency_upload_artifacts(config, perf_stats)
+        msg = "Rollback taking too long. Shutting down..."
+        raise Exception(msg)
+    return rollback_counter, last_rollback_time
+
+
+def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> float:
+    """Log node and db sync progress information.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+        env: Environment name.
+        start_sync: Sync start timestamp.
+
+    Returns:
+        float: Current db sync progress percentage.
+    """
+    tip = node.get_current_tip(env)
+    LOGGER.info(
+        f"node progress [%]: {tip.sync_progress}, epoch: {tip.epoch}, "
+        f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
+    )
+    db_sync_tip = get_db_sync_tip(config)
+    assert db_sync_tip is not None  # TODO: refactor
+    db_sync_progress = get_db_sync_progress(config)
+    assert db_sync_progress is not None  # TODO: refactor
+    sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
+    LOGGER.info(
+        f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
+        f"epoch: {db_sync_tip.epoch_no}, block: {db_sync_tip.block_no}, slot: {db_sync_tip.slot_no}"
+    )
+    helpers.print_last_n_lines(config.db_sync_log_file, 5)
+    return db_sync_progress
+
+
+def _collect_perf_stats(
+    config: DbSyncConfig,
+    db_sync_process: psutil.Process,
+    start_sync: float,
+    perf_stats: list[dict],
+) -> None:
+    """Collect performance statistics and write to file.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+        db_sync_process: DB sync process object.
+        start_sync: Sync start timestamp.
+        perf_stats: Performance statistics list to append to.
+    """
+    time_point = int(time.perf_counter() - start_sync)
+    db_sync_tip = get_db_sync_tip(config)
+    assert db_sync_tip is not None  # TODO: refactor
+    cpu_usage = db_sync_process.cpu_percent(interval=None)
+    rss_mem_usage = db_sync_process.memory_info()[0]
+    stats_data_point = PerfStats(
+        time=time_point,
+        slot_no=db_sync_tip.slot_no,
+        cpu_percent_usage=cpu_usage,
+        rss_mem_usage=rss_mem_usage,
+    )
+    perf_stats.append(dataclasses.asdict(stats_data_point))
+    helpers.write_json_to_file(config.perf_stats_file, perf_stats)
+
+
 def wait_for_db_to_sync(
     config: DbSyncConfig, sync_percentage: float = 99.9, perf_stats: list[dict] | None = None
 ) -> tuple[int, list[dict]]:
@@ -882,7 +994,8 @@ def wait_for_db_to_sync(
         perf_stats: Optional list to accumulate performance statistics (creates new list if None).
 
     Returns:
-        tuple[int, list[dict]]: A tuple containing sync time in seconds and performance statistics list.
+        tuple[int, list[dict]]: A tuple containing sync time in seconds and
+            performance statistics list.
     """
     if perf_stats is None:
         perf_stats = []
@@ -909,66 +1022,35 @@ def wait_for_db_to_sync(
         if counter % 5 == 0:
             current_progress = get_db_sync_progress(config)
             assert current_progress is not None  # TODO: refactor
-            if current_progress < db_sync_progress and db_sync_progress > 3:
-                LOGGER.info(
-                    "Progress decreasing - current progress: "
-                    f"{current_progress} VS previous: {db_sync_progress}."
-                )
-                LOGGER.info("Possible rollback... Printing last 10 lines of log")
-                helpers.print_last_n_lines(config.db_sync_log_file, 10)
-                if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
-                    LOGGER.info(
-                        "Resetting previous rollback counter as there was no progress decrease "
-                        "for more than 10 minutes"
-                    )
-                    rollback_counter = 0
-                last_rollback_time = time.perf_counter()
-                rollback_counter += 1
-                LOGGER.info(f"Rollback counter: {rollback_counter} out of 15")
-            if rollback_counter > 15:
-                LOGGER.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
-                LOGGER.exception("Shutting down all services and emergency uploading artifacts")
-                emergency_upload_artifacts(config, perf_stats)
-                msg = "Rollback taking too long. Shutting down..."
-                raise Exception(msg)
+            rollback_counter, last_rollback_time = _check_for_rollback(
+                config=config,
+                current_progress=current_progress,
+                db_sync_progress=db_sync_progress,
+                last_rollback_time=last_rollback_time,
+                rollback_counter=rollback_counter,
+                counter=counter,
+                perf_stats=perf_stats,
+            )
         if counter % log_frequency == 0:
-            tip = node.get_current_tip(config.env)
-            LOGGER.info(
-                f"node progress [%]: {tip.sync_progress}, epoch: {tip.epoch}, "
-                f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
+            db_sync_progress = _log_sync_progress(
+                config=config,
+                env=config.env,
+                start_sync=start_sync,
             )
-            db_sync_tip = get_db_sync_tip(config)
-            assert db_sync_tip is not None  # TODO: refactor
-            db_sync_progress = get_db_sync_progress(config)
-            assert db_sync_progress is not None  # TODO: refactor
-            sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
-            LOGGER.info(
-                f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
-                f"epoch: {db_sync_tip.epoch_no}, block: {db_sync_tip.block_no}, slot: {db_sync_tip.slot_no}"
-            )
-            helpers.print_last_n_lines(config.db_sync_log_file, 5)
 
         try:
-            time_point = int(time.perf_counter() - start_sync)
-            db_sync_tip = get_db_sync_tip(config)
-            assert db_sync_tip is not None  # TODO: refactor
-            cpu_usage = db_sync_process.cpu_percent(interval=None)
-            rss_mem_usage = db_sync_process.memory_info()[0]
+            _collect_perf_stats(
+                config=config,
+                db_sync_process=db_sync_process,
+                start_sync=start_sync,
+                perf_stats=perf_stats,
+            )
         except Exception:
             end_sync = time.perf_counter()
             db_full_sync_time_in_secs = int(end_sync - start_sync)
             LOGGER.exception("Unexpected error during sync process")
             emergency_upload_artifacts(config, perf_stats)
             return db_full_sync_time_in_secs, perf_stats
-
-        stats_data_point = PerfStats(
-            time=time_point,
-            slot_no=db_sync_tip.slot_no,
-            cpu_percent_usage=cpu_usage,
-            rss_mem_usage=rss_mem_usage,
-        )
-        perf_stats.append(dataclasses.asdict(stats_data_point))
-        helpers.write_json_to_file(config.perf_stats_file, perf_stats)
         time.sleep(ONE_MINUTE)
         counter += 1
 
@@ -1029,7 +1111,9 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
     script_path = config.workdir / "sync_tests" / "scripts" / "db-sync-start.sh"
     try:
         cmd = [str(script_path)]
-        subprocess.Popen(cmd, cwd=str(config.workdir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        subprocess.Popen(
+            cmd, cwd=str(config.workdir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
@@ -1077,9 +1161,11 @@ def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
     script_path = config.workdir / "sync_tests" / "scripts" / "postgres-start.sh"
     try:
         cmd = [str(script_path), str(config.pg_dir), "-k"]
-        output = subprocess.check_output(
-            cmd, cwd=str(config.workdir), stderr=subprocess.STDOUT
-        ).decode("utf-8").strip()
+        output = (
+            subprocess.check_output(cmd, cwd=str(config.workdir), stderr=subprocess.STDOUT)
+            .decode("utf-8")
+            .strip()
+        )
         LOGGER.info(f"Setup postgres script output: {output}")
     except subprocess.CalledProcessError as e:
         msg = "command '{}' return with error (code {}): {}".format(
@@ -1139,9 +1225,7 @@ def get_db_schema(config: DbSyncConfig) -> dict:
             )
             cursor.execute(get_table_fields_and_attributes)
             table_with_attributes = cursor.fetchall()
-            attributes = []
-            for row in table_with_attributes:
-                attributes.append(row)
+            attributes = list(table_with_attributes)
             db_schema[str(table_name)] = attributes
         cursor.close()
         conn.commit()
@@ -1199,14 +1283,14 @@ def get_db_indexes(config: DbSyncConfig) -> dict:
         cursor.close()
         conn.commit()
         conn.close()
-        return all_indexes
     except (Exception, psycopg2.DatabaseError):
         LOGGER.exception("Error")
+        return {}
+    else:
+        return all_indexes
     finally:
         if conn is not None:
             conn.close()
-
-    return {}
 
 
 def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exception | None:
