@@ -18,20 +18,25 @@ import sync_tests.utils.helpers as utils
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-TEST_RESULTS = f"snapshot_creation_{utils_db_sync.ENVIRONMENT}_test_results.json"
 
+def upload_snapshot_creation_results_to_aws(config: utils_db_sync.DbSyncConfig) -> None:
+    """Upload snapshot creation results to AWS database.
 
-def upload_snapshot_creation_results_to_aws(env: str) -> None:
+    Args:
+        config: A DbSyncConfig instance with paths.
+    """
+    test_results_file = config.workdir / f"snapshot_creation_{config.env}_test_results.json"
     print("--- Write snapshot creation results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
+    with open(test_results_file) as json_file:
         db_snapshot_creation_test_results_dict = json.load(json_file)
 
-    db_snapshot_creation_test_summary_table = env + "_db_sync_snapshot_creation"
+    db_snapshot_creation_test_summary_table = config.env + "_db_sync_snapshot_creation"
     last_identifier = aws_db_utils.get_last_identifier(db_snapshot_creation_test_summary_table)
     assert last_identifier is not None  # TODO: refactor
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
     identifier = env + "_" + test_id
     db_snapshot_creation_test_results_dict["identifier"] = identifier
+    db_snapshot_creation_test_results_dict["env"] = config.env
 
     print(f"  ==== Write test values into the {db_snapshot_creation_test_summary_table} DB table:")
     col_to_insert = list(db_snapshot_creation_test_results_dict.keys())
@@ -58,7 +63,12 @@ def main() -> int:
     env = utils.get_arg_value(args=args, key="environment")
     print(f"Environment: {env}")
 
-    db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version()
+    # Create DbSyncConfig for all db-sync operations
+    workdir = Path.cwd()
+    config = utils_db_sync.create_db_sync_config(env=env, workdir=workdir)
+    test_results_file = config.workdir / f"snapshot_creation_{config.env}_test_results.json"
+
+    db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version(config)
     print(f"DB-Sync version: {db_sync_version}")
     print(f"DB-Sync revision: {db_sync_git_rev}")
 
@@ -73,12 +83,14 @@ def main() -> int:
     )
     print(f"DB sync GH version: {db_sync_version_from_gh_action}")
 
-    os.chdir(utils_db_sync.ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-db-sync")
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_dir = os.getcwd()
+    os.chdir(db_sync_dir)
     start_snapshot_creation = time.perf_counter()
-    stage_2_cmd = utils_db_sync.create_db_sync_snapshot_stage_1(env)
+    stage_2_cmd = utils_db_sync.create_db_sync_snapshot_stage_1(config)
     print(f"Stage 2 command: {stage_2_cmd}")
-    stage_2_result = utils_db_sync.create_db_sync_snapshot_stage_2(stage_2_cmd, env)
+    stage_2_result = utils_db_sync.create_db_sync_snapshot_stage_2(config, stage_2_cmd)
+    os.chdir(current_dir)
     print(f"Stage 2 result: {stage_2_result}")
     end_snapshot_creation = time.perf_counter()
 
@@ -114,23 +126,23 @@ def main() -> int:
     test_data["stage_2_cmd"] = stage_2_cmd
     test_data["stage_2_result"] = stage_2_result
 
-    utils_db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    utils_db_sync.print_file(TEST_RESULTS)
+    utils.write_json_to_file(test_results_file, test_data)
+    utils.print_last_n_lines(test_results_file, 0)
 
     # upload artifacts
-    utils_db_sync.upload_artifact(TEST_RESULTS)
+    utils_db_sync.upload_artifact(str(test_results_file))
 
     if env != "mainnet":
         utils_db_sync.upload_artifact(snapshot_file)
 
     # send results to aws database
-    upload_snapshot_creation_results_to_aws(env)
+    upload_snapshot_creation_results_to_aws(config)
 
     print("--- Summary: snapshot creation details")
     snapsot_creation_outcome = test_data["stage_2_result"]
-    utils_db_sync.print_color_log(
-        utils_db_sync.sh_colors.WARNING,
+    utils.print_message(
         f"Snapshot creation script result: {snapsot_creation_outcome}",
+        type="warn",
     )
     return 0
 

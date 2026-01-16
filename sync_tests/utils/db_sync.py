@@ -28,6 +28,9 @@ from sync_tests.utils import node
 LOGGER = logging.getLogger(__name__)
 
 
+ONE_MINUTE = 60
+
+
 @dataclasses.dataclass(frozen=True)
 class DbSyncTip:
     """Database sync tip information."""
@@ -46,39 +49,132 @@ class PerfStats:
     cpu_percent_usage: float
     rss_mem_usage: int
 
-ONE_MINUTE = 60
-ROOT_TEST_PATH = Path.cwd()
 
-# Environment Variables
-ENVIRONMENT = os.getenv("environment")
-NODE_PR = os.getenv("node_pr")
-NODE_BRANCH = os.getenv("node_branch")
-NODE_VERSION = os.getenv("node_version")
-DB_SYNC_BRANCH = os.getenv("db_sync_branch")
-DB_SYNC_VERSION = os.getenv("db_sync_version")
+@dataclasses.dataclass(frozen=True)
+class DbSyncConfig:
+    """Configuration for DB Sync operations."""
 
-# System Information
-POSTGRES_DIR = ROOT_TEST_PATH.parents[0]
-POSTGRES_USER = (
-    subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False).stdout.decode("utf-8").strip()
-)
+    # Environment
+    env: str
 
-# Log and Stats Paths
-db_sync_perf_stats: list[dict] = []
-DB_SYNC_PERF_STATS_FILE = (
-    ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_performance_stats.json"
-)
-NODE_LOG_FILE = ROOT_TEST_PATH / f"cardano-node/node_{ENVIRONMENT}_logfile.log"
-DB_SYNC_LOG_FILE = ROOT_TEST_PATH / f"cardano-db-sync/db_sync_{ENVIRONMENT}_logfile.log"
-EPOCH_SYNC_TIMES_FILE = ROOT_TEST_PATH / f"cardano-db-sync/epoch_sync_times_{ENVIRONMENT}_dump.json"
+    # Work directory
+    workdir: Path
 
-# Archive Names
-NODE_ARCHIVE_NAME = f"cardano_node_{ENVIRONMENT}_logs.zip"
-DB_SYNC_ARCHIVE_NAME = f"cardano_db_sync_{ENVIRONMENT}_logs.zip"
-SYNC_DATA_ARCHIVE_NAME = f"epoch_sync_times_{ENVIRONMENT}_dump.zip"
-PERF_STATS_ARCHIVE_NAME = f"db_sync_{ENVIRONMENT}_perf_stats.zip"
+    # PostgreSQL configuration
+    pg_host: str
+    pg_port: str
+    pg_user: str
+    pg_dbname: str
+    pg_dir: Path
 
-CHART = f"full_sync_{ENVIRONMENT}_stats_chart.png"
+    # Paths
+    perf_stats_file: Path
+    node_log_file: Path
+    db_sync_log_file: Path
+    epoch_sync_times_file: Path
+
+    # Archive names
+    node_archive_name: str
+    db_sync_archive_name: str
+    sync_data_archive_name: str
+    perf_stats_archive_name: str
+
+    # Chart
+    chart_name: str
+
+    # Optional environment variables (for reference)
+    node_pr: str | None = None
+    node_branch: str | None = None
+    node_version: str | None = None
+    db_sync_branch: str | None = None
+    db_sync_version: str | None = None
+
+
+def create_db_sync_config(
+    env: str,
+    workdir: Path | None = None,
+    pg_host: str = "localhost",
+    pg_port: str = "5432",
+    pg_user: str | None = None,
+    pg_dbname: str | None = None,
+    pg_dir: Path | None = None,
+) -> DbSyncConfig:
+    """Create a DbSyncConfig instance from environment variables and parameters.
+
+    Args:
+        env: Environment name (e.g., "preview", "preprod", "mainnet").
+        workdir: Working directory path (defaults to current directory).
+        pg_host: PostgreSQL host (defaults to "localhost").
+        pg_port: PostgreSQL port (defaults to "5432").
+        pg_user: PostgreSQL user (defaults to current system user).
+        pg_dbname: PostgreSQL database name (defaults to env name).
+        pg_dir: PostgreSQL data directory (defaults to workdir.parent).
+
+    Returns:
+        DbSyncConfig: A configuration instance with all paths and settings.
+    """
+    if workdir is None:
+        workdir = Path.cwd()
+    workdir = workdir.resolve()
+
+    if pg_user is None:
+        pg_user = (
+            subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False)
+            .stdout.decode("utf-8")
+            .strip()
+        )
+
+    if pg_dbname is None:
+        pg_dbname = env
+
+    if pg_dir is None:
+        pg_dir = workdir.parent
+
+    # Build all paths relative to workdir
+    perf_stats_file = workdir / f"cardano-db-sync/db_sync_{env}_performance_stats.json"
+    node_log_file = workdir / f"cardano-node/node_{env}_logfile.log"
+    db_sync_log_file = workdir / f"cardano-db-sync/db_sync_{env}_logfile.log"
+    epoch_sync_times_file = workdir / f"cardano-db-sync/epoch_sync_times_{env}_dump.json"
+
+    # Archive names
+    node_archive_name = f"cardano_node_{env}_logs.zip"
+    db_sync_archive_name = f"cardano_db_sync_{env}_logs.zip"
+    sync_data_archive_name = f"epoch_sync_times_{env}_dump.zip"
+    perf_stats_archive_name = f"db_sync_{env}_perf_stats.zip"
+
+    # Chart name
+    chart_name = f"full_sync_{env}_stats_chart.png"
+
+    # Optional environment variables (for reference)
+    node_pr = os.getenv("node_pr")
+    node_branch = os.getenv("node_branch")
+    node_version = os.getenv("node_version")
+    db_sync_branch = os.getenv("db_sync_branch")
+    db_sync_version = os.getenv("db_sync_version")
+
+    return DbSyncConfig(
+        env=env,
+        workdir=workdir,
+        pg_host=pg_host,
+        pg_port=pg_port,
+        pg_user=pg_user,
+        pg_dbname=pg_dbname,
+        pg_dir=pg_dir,
+        perf_stats_file=perf_stats_file,
+        node_log_file=node_log_file,
+        db_sync_log_file=db_sync_log_file,
+        epoch_sync_times_file=epoch_sync_times_file,
+        node_archive_name=node_archive_name,
+        db_sync_archive_name=db_sync_archive_name,
+        sync_data_archive_name=sync_data_archive_name,
+        perf_stats_archive_name=perf_stats_archive_name,
+        chart_name=chart_name,
+        node_pr=node_pr,
+        node_branch=node_branch,
+        node_version=node_version,
+        db_sync_branch=db_sync_branch,
+        db_sync_version=db_sync_version,
+    )
 
 
 def get_machine_name() -> str:
@@ -116,17 +212,27 @@ def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = 
             LOGGER.exception(f"Error uploading {file} to S3")
 
 
-def create_node_database_archive(env: str) -> str:
-    """Create an archive of the Cardano node database for the specified environment."""
+def create_node_database_archive(config: DbSyncConfig) -> Path:
+    """Create an archive of the Cardano node database for the specified environment.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+
+    Returns:
+        Path: Path to the created archive file.
+    """
+    node_dir = config.workdir / "cardano-node"
+    node_db_archive = node_dir / f"node-db-{config.env}.tar.gz"
+    db_dir = node_dir / "db"
+
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-node")
-    node_directory = os.getcwd()
-    node_db_archive = f"node-db-{env}.tar.gz"
-    helpers.make_tarfile(node_db_archive, "db")
-    os.chdir(current_directory)
-    node_db_archive_path = node_directory + f"/{node_db_archive}"
-    return node_db_archive_path
+    os.chdir(node_dir)
+    try:
+        helpers.make_tarfile(str(node_db_archive)[:-7], "db")  # Remove .tar.gz extension
+    finally:
+        os.chdir(current_directory)
+
+    return node_db_archive
 
 
 def set_buildkite_meta_data(key: str, value: tp.Any) -> None:
@@ -154,14 +260,17 @@ def print_file(file: str | Path, number_of_lines: int = 0) -> None:
         LOGGER.info(line.strip())
 
 
-def get_last_perf_stats_point() -> PerfStats:
+def get_last_perf_stats_point(perf_stats: list[dict]) -> PerfStats:
     """Retrieve the last performance statistics data point, or initializes one if none exists.
+
+    Args:
+        perf_stats: A list of performance statistics dictionaries.
 
     Returns:
         PerfStats: The last performance statistics point, or a default one if none exists.
     """
     try:
-        last_perf_stats_dict = db_sync_perf_stats[-1]
+        last_perf_stats_dict = perf_stats[-1]
         return PerfStats(**last_perf_stats_dict)
     except Exception:
         LOGGER.exception("Exception in get_last_perf_stats_point")
@@ -171,7 +280,7 @@ def get_last_perf_stats_point() -> PerfStats:
             cpu_percent_usage=0.0,
             rss_mem_usage=0,
         )
-        db_sync_perf_stats.append(dataclasses.asdict(default_stats))
+        perf_stats.append(dataclasses.asdict(default_stats))
         return default_stats
 
 
@@ -183,15 +292,26 @@ def get_log_output_frequency(env: str) -> int:
 
 
 def export_epoch_sync_times_from_db(
-    env: str, file: str | Path, snapshot_epoch_no: int | str = 0
+    config: DbSyncConfig, file: str | Path, snapshot_epoch_no: int | str = 0
 ) -> str | None:
-    """Export epoch synchronization times from the database to a file."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    """Export epoch synchronization times from the database to a file.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
+        file: Path to the output file.
+        snapshot_epoch_no: Minimum epoch number to export (defaults to 0).
+
+    Returns:
+        str: Output from psql command, or None on error.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
+    os.chdir(db_sync_dir)
     try:
         p = subprocess.Popen(
             [
                 "psql",
-                f"{env}",
+                config.pg_dbname,
                 "-t",
                 "-c",
                 rf"\o {file}",
@@ -220,25 +340,32 @@ def export_epoch_sync_times_from_db(
         )
         p.kill()
     else:
+        os.chdir(current_directory)
         return out
 
+    os.chdir(current_directory)
     return None
 
 
-def emergency_upload_artifacts(env: str) -> None:
-    """Upload artifacts for debugging in case of an emergency."""
-    helpers.write_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
-    export_epoch_sync_times_from_db(env, EPOCH_SYNC_TIMES_FILE)
+def emergency_upload_artifacts(config: DbSyncConfig, perf_stats: list[dict]) -> None:
+    """Upload artifacts for debugging in case of an emergency.
 
-    helpers.zip_file(PERF_STATS_ARCHIVE_NAME, DB_SYNC_PERF_STATS_FILE)
-    helpers.zip_file(SYNC_DATA_ARCHIVE_NAME, EPOCH_SYNC_TIMES_FILE)
-    helpers.zip_file(DB_SYNC_ARCHIVE_NAME, DB_SYNC_LOG_FILE)
-    helpers.zip_file(NODE_ARCHIVE_NAME, NODE_LOG_FILE)
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        perf_stats: A list of performance statistics dictionaries.
+    """
+    helpers.write_json_to_file(config.perf_stats_file, perf_stats)
+    export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
 
-    upload_artifact(PERF_STATS_ARCHIVE_NAME)
-    upload_artifact(SYNC_DATA_ARCHIVE_NAME)
-    upload_artifact(DB_SYNC_ARCHIVE_NAME)
-    upload_artifact(NODE_ARCHIVE_NAME)
+    helpers.zip_file(config.perf_stats_archive_name, config.perf_stats_file)
+    helpers.zip_file(config.sync_data_archive_name, config.epoch_sync_times_file)
+    helpers.zip_file(config.db_sync_archive_name, config.db_sync_log_file)
+    helpers.zip_file(config.node_archive_name, config.node_log_file)
+
+    upload_artifact(config.perf_stats_archive_name)
+    upload_artifact(config.sync_data_archive_name)
+    upload_artifact(config.db_sync_archive_name)
+    upload_artifact(config.node_archive_name)
 
     helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
     helpers.manage_process(proc_name="cardano-node", action="terminate")
@@ -273,46 +400,53 @@ def download_and_extract_node_snapshot(env: str) -> None:
     LOGGER.info(f" ------ listdir (after archive extraction): {os.listdir(current_directory)}")
 
 
-def set_node_socket_path_env_var_in_cwd() -> None:
-    """Set the node socket path environment variable in the current working directory."""
-    os.chdir(ROOT_TEST_PATH / "cardano-node")
-    current_directory = os.getcwd()
-    if basename(normpath(current_directory)) != "cardano-node":
-        msg = f"You're not inside 'cardano-node' directory but in: {current_directory}"
-        raise Exception(msg)
-    socket_path = "db/node.socket"
-    helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", socket_path)
+def set_node_socket_path_env_var_in_cwd(config: DbSyncConfig) -> None:
+    """Set the node socket path environment variable in the current working directory.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+    """
+    node_dir = config.workdir / "cardano-node"
+    socket_path = node_dir / "db" / "node.socket"
+    helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", str(socket_path))
 
 
-def create_pgpass_file(env: str) -> None:
-    """Create a PostgreSQL password file for the specified environment."""
-    current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
-    db_sync_config_dir = Path.cwd() / "cardano-db-sync" / "config"
-    os.chdir(db_sync_config_dir)
+def create_pgpass_file(config: DbSyncConfig) -> None:
+    """Create a PostgreSQL password file for the specified environment.
 
-    pgpass_file = f"pgpass-{env}"
-    postgres_port = os.getenv("PGPORT")
-    pgpass_content = f"{POSTGRES_DIR}:{postgres_port}:{env}:{POSTGRES_USER}:*"
-    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+    Args:
+        config: A DbSyncConfig instance with paths and PostgreSQL settings.
+    """
+    db_sync_config_dir = config.workdir / "cardano-db-sync" / "config"
+    db_sync_config_dir.mkdir(parents=True, exist_ok=True)
+
+    pgpass_file = db_sync_config_dir / f"pgpass-{config.env}"
+    postgres_port = os.getenv("PGPORT", config.pg_port)
+    pgpass_content = f"{config.pg_dir}:{postgres_port}:{config.pg_dbname}:{config.pg_user}:*"
+    helpers.export_env_var("PGPASSFILE", str(pgpass_file))
 
     with open(pgpass_file, "w") as pgpass_text_file:
         print(pgpass_content, file=pgpass_text_file)
     os.chmod(pgpass_file, 0o600)
-    os.chdir(current_directory)
 
 
-def create_database() -> None:
-    """Set up the PostgreSQL database for use with Cardano DB Sync."""
-    os.chdir(ROOT_TEST_PATH)
-    db_sync_dir = Path.cwd() / "cardano-db-sync"
+def create_database(config: DbSyncConfig) -> None:
+    """Set up the PostgreSQL database for use with Cardano DB Sync.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
     os.chdir(db_sync_dir)
 
     try:
         cmd = ["scripts/postgresql-setup.sh", "--createdb"]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
         LOGGER.info(f"Create database script output: {output}")
+        os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
@@ -322,11 +456,15 @@ def create_database() -> None:
         raise RuntimeError(msg)
 
 
-def copy_db_sync_executables(build_method: str = "nix") -> None:
-    """Copy the Cardano DB Sync executables built with the specified build method."""
+def copy_db_sync_executables(config: DbSyncConfig, build_method: str = "nix") -> None:
+    """Copy the Cardano DB Sync executables built with the specified build method.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+        build_method: Build method to use, either "nix" or "cabal" (defaults to "nix").
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
-    db_sync_dir = Path.cwd() / "cardano-db-sync"
     os.chdir(db_sync_dir)
 
     if build_method == "nix":
@@ -352,7 +490,6 @@ def copy_db_sync_executables(build_method: str = "nix") -> None:
             .decode("utf-8")
             .strip()
         )
-        os.chdir(current_directory)
         LOGGER.info(f"Find cardano-db-sync output: {output_find_db_cmd}")
         shutil.copy2(output_find_db_cmd, "_cardano-db-sync")
 
@@ -373,18 +510,28 @@ def copy_db_sync_executables(build_method: str = "nix") -> None:
 
         LOGGER.info(f"Find cardano-db-tool output: {output_find_db_tool_cmd}")
         shutil.copy2(output_find_db_tool_cmd, "_cardano-db-tool")
+        os.chdir(current_directory)
 
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
         raise RuntimeError(msg) from e
 
 
-def get_db_sync_version() -> tuple[str, str]:
-    """Retrieve the version of the Cardano DB Sync executable."""
+def get_db_sync_version(config: DbSyncConfig) -> tuple[str, str]:
+    """Retrieve the version of the Cardano DB Sync executable.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+
+    Returns:
+        tuple[str, str]: A tuple containing the version string and git revision.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+    os.chdir(db_sync_dir)
     try:
         cmd = "./_cardano-db-sync --version"
         output = (
@@ -397,6 +544,7 @@ def get_db_sync_version() -> tuple[str, str]:
         os.chdir(current_directory)
         return str(cardano_db_sync_version), str(cardano_db_sync_git_revision)
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
@@ -468,27 +616,40 @@ def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
 
 
 def restore_db_sync_from_snapshot(
-    env: str, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
+    config: DbSyncConfig, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
 ) -> int:
-    """Restore the Cardano DB Sync database from a snapshot."""
-    os.chdir(ROOT_TEST_PATH)
-    if remove_ledger_dir == "yes":
-        ledger_state_dir = Path.cwd() / "cardano-db-sync" / "ledger-state" / f"{env}"
-        # TODO: Fix this, as it will not remove the directory. It is passing absolute path, so
-        # it cannot work with the default `root` set to `.`.
-        helpers.manage_directory(dir_name=str(ledger_state_dir), action="remove")
-    os.chdir(Path.cwd() / "cardano-db-sync")
+    """Restore the Cardano DB Sync database from a snapshot.
 
-    ledger_dir = helpers.manage_directory(dir_name=f"ledger-state/{env}", action="create")
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        snapshot_file: Path to the snapshot file to restore.
+        remove_ledger_dir: Whether to remove the existing ledger directory (defaults to "yes").
+
+    Returns:
+        int: Restoration time in seconds.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
+    os.chdir(db_sync_dir)
+
+    if remove_ledger_dir == "yes":
+        ledger_state_dir = db_sync_dir / "ledger-state" / config.env
+        if ledger_state_dir.exists():
+            shutil.rmtree(ledger_state_dir)
+
+    ledger_dir = db_sync_dir / "ledger-state" / config.env
+    ledger_dir.mkdir(parents=True, exist_ok=True)
     LOGGER.info(f"ledger_dir: {ledger_dir}")
 
     # set tmp to local dir in current partition due to buildkite agent space
     # limitation on /tmp which is not big enough for snapshot restoration
-    tmp_dir = helpers.manage_directory(dir_name="tmp", action="create")
-    helpers.export_env_var("TMPDIR", tmp_dir)
+    tmp_dir = db_sync_dir / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    helpers.export_env_var("TMPDIR", str(tmp_dir))
 
-    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
-    helpers.export_env_var("ENVIRONMENT", f"{env}")
+    pgpass_file = db_sync_dir / "config" / f"pgpass-{config.env}"
+    helpers.export_env_var("PGPASSFILE", str(pgpass_file))
+    helpers.export_env_var("ENVIRONMENT", config.env)
     helpers.export_env_var("RESTORE_RECREATE_DB", "N")
     start_restoration = time.perf_counter()
 
@@ -496,8 +657,8 @@ def restore_db_sync_from_snapshot(
         [
             "scripts/postgresql-setup.sh",
             "--restore-snapshot",
-            f"{snapshot_file}",
-            f"{ledger_dir}",
+            str(snapshot_file),
+            str(ledger_dir),
         ],
         stdout=subprocess.PIPE,
     )
@@ -510,16 +671,19 @@ def restore_db_sync_from_snapshot(
             LOGGER.error(f"Error during restoration: {errors}")
 
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
         raise RuntimeError(msg) from e
     except subprocess.TimeoutExpired:
         p.kill()
+        os.chdir(current_directory)
         LOGGER.exception("Process timeout expired")
 
     finally:
         helpers.export_env_var("TMPDIR", "/tmp")
+        os.chdir(current_directory)
 
     if "All good!" not in outs.decode("utf-8"):
         msg = "Restoration has not ended successfully"
@@ -529,13 +693,23 @@ def restore_db_sync_from_snapshot(
     return int(end_restoration - start_restoration)
 
 
-def create_db_sync_snapshot_stage_1(env: str) -> str:
-    """Perform the first stage of creating a DB Sync snapshot."""
-    os.chdir(ROOT_TEST_PATH)
-    os.chdir(Path.cwd() / "cardano-db-sync")
-    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+def create_db_sync_snapshot_stage_1(config: DbSyncConfig) -> str:
+    """Perform the first stage of creating a DB Sync snapshot.
 
-    cmd = f"./_cardano-db-tool prepare-snapshot --state-dir ledger-state/{env}"
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+
+    Returns:
+        str: The command to run for stage 2 of snapshot creation.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
+    os.chdir(db_sync_dir)
+
+    pgpass_file = db_sync_dir / "config" / f"pgpass-{config.env}"
+    helpers.export_env_var("PGPASSFILE", str(pgpass_file))
+
+    cmd = f"./_cardano-db-tool prepare-snapshot --state-dir ledger-state/{config.env}"
     p = subprocess.Popen(
         cmd,
         shell=True,
@@ -550,7 +724,9 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
             LOGGER.error(f"Warnings or Errors: {errs}")
         final_line_with_script_cmd = outs.split("\n")[2].lstrip()
         LOGGER.info(f"Snapshot Creation - Stage 1 result: {final_line_with_script_cmd}")
+        os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
@@ -559,10 +735,22 @@ def create_db_sync_snapshot_stage_1(env: str) -> str:
         return final_line_with_script_cmd
 
 
-def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
-    """Perform the second stage of creating a DB Sync snapshot."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
-    helpers.export_env_var("PGPASSFILE", f"config/pgpass-{env}")
+def create_db_sync_snapshot_stage_2(config: DbSyncConfig, stage_2_cmd: str) -> str:
+    """Perform the second stage of creating a DB Sync snapshot.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        stage_2_cmd: The command to run for stage 2 (generated by stage 1).
+
+    Returns:
+        str: Path to the created snapshot file.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
+    os.chdir(db_sync_dir)
+
+    pgpass_file = db_sync_dir / "config" / f"pgpass-{config.env}"
+    helpers.export_env_var("PGPASSFILE", str(pgpass_file))
 
     try:
         # Running the command and capturing output and error
@@ -586,18 +774,24 @@ def create_db_sync_snapshot_stage_2(stage_2_cmd: str, env: str) -> str:
         snapshot_path = (
             snapshot_line.split()[1] if "Created" in snapshot_line else "Snapshot path unknown"
         )
+        os.chdir(current_directory)
     except subprocess.TimeoutExpired as e:
+        os.chdir(current_directory)
         msg = "Snapshot creation timed out."
         raise RuntimeError(msg) from e
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = f"Command '{e.cmd}' failed with error: {e.stderr}"
         raise RuntimeError(msg) from e
     else:
         return snapshot_path
 
 
-def get_db_sync_tip(env: str) -> DbSyncTip | None:
+def get_db_sync_tip(config: DbSyncConfig) -> DbSyncTip | None:
     """Retrieve the tip information from the Cardano DB Sync database.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
 
     Returns:
         DbSyncTip: Tip information with epoch, block, and slot numbers.
@@ -610,9 +804,9 @@ def get_db_sync_tip(env: str) -> DbSyncTip | None:
             "pager=off",
             "-qt",
             "-U",
-            f"{POSTGRES_USER}",
+            config.pg_user,
             "-d",
-            f"{env}",
+            config.pg_dbname,
             "-c",
             "select epoch_no, block_no, slot_no from block order by id desc limit 1;",
         ],
@@ -638,13 +832,13 @@ def get_db_sync_tip(env: str) -> DbSyncTip | None:
         except Exception:
             if counter > 5:
                 should_try = False
-                emergency_upload_artifacts(env)
+                emergency_upload_artifacts(config)
                 LOGGER.exception("Failed to get the tip")
                 p.kill()
                 raise
             LOGGER.exception(
                 f"db-sync tip data unavailable, possible postgress failure. "
-                f"Output from psql: {output_string}, errs: {errs.decode('utf-8')}"
+                f"Output from psql: {output_string}, errs: {errs.decode('utf-8') if errs else 'N/A'}"
             )
             counter += 1
             time.sleep(ONE_MINUTE)
@@ -652,8 +846,15 @@ def get_db_sync_tip(env: str) -> DbSyncTip | None:
     return None
 
 
-def get_db_sync_progress(env: str) -> float | None:
-    """Calculate the synchronization progress of the Cardano DB Sync database."""
+def get_db_sync_progress(config: DbSyncConfig) -> float | None:
+    """Calculate the synchronization progress of the Cardano DB Sync database.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
+
+    Returns:
+        float: Sync progress percentage, or None if unavailable.
+    """
     p = subprocess.Popen(
         [
             "psql",
@@ -661,9 +862,9 @@ def get_db_sync_progress(env: str) -> float | None:
             "pager=off",
             "-qt",
             "-U",
-            f"{POSTGRES_USER}",
+            config.pg_user,
             "-d",
-            f"{env}",
+            config.pg_dbname,
             "-c",
             "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
             "- extract (epoch from (min (time) at time zone 'UTC'))) "
@@ -685,7 +886,7 @@ def get_db_sync_progress(env: str) -> float | None:
         except Exception:
             if counter > 5:
                 should_try = False
-                emergency_upload_artifacts(env)
+                emergency_upload_artifacts(config)
                 p.kill()
                 raise
             LOGGER.exception(
@@ -699,29 +900,43 @@ def get_db_sync_progress(env: str) -> float | None:
     return None
 
 
-def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
-    """Wait for the Cardano DB Sync database to fully synchronize."""
-    db_sync_perf_stats.clear()
+def wait_for_db_to_sync(
+    config: DbSyncConfig, sync_percentage: float = 99.9, perf_stats: list[dict] | None = None
+) -> tuple[int, list[dict]]:
+    """Wait for the Cardano DB Sync database to fully synchronize.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings and paths.
+        sync_percentage: Target sync percentage (defaults to 99.9).
+        perf_stats: Optional list to accumulate performance statistics (creates new list if None).
+
+    Returns:
+        tuple[int, list[dict]]: A tuple containing sync time in seconds and performance statistics list.
+    """
+    if perf_stats is None:
+        perf_stats = []
+    perf_stats.clear()
+
     start_sync = time.perf_counter()
     last_rollback_time = time.perf_counter()
-    db_sync_progress = get_db_sync_progress(env)
+    db_sync_progress = get_db_sync_progress(config)
     assert db_sync_progress is not None  # TODO: refactor
     buildkite_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
 
     db_sync_process = helpers.manage_process(proc_name="cardano-db-sync", action="get")
-    log_frequency = get_log_output_frequency(env)
+    log_frequency = get_log_output_frequency(config.env)
 
     LOGGER.info("--- Db sync monitoring")
     while db_sync_progress < sync_percentage:
         sync_time_in_sec = time.perf_counter() - start_sync
         if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
-            emergency_upload_artifacts(env)
+            emergency_upload_artifacts(config, perf_stats)
             msg = "Emergency uploading artifacts before buid timeout exception..."
             raise Exception(msg)
         if counter % 5 == 0:
-            current_progress = get_db_sync_progress(env)
+            current_progress = get_db_sync_progress(config)
             assert current_progress is not None  # TODO: refactor
             if current_progress < db_sync_progress and db_sync_progress > 3:
                 LOGGER.info(
@@ -729,7 +944,7 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
                     f"{current_progress} VS previous: {db_sync_progress}."
                 )
                 LOGGER.info("Possible rollback... Printing last 10 lines of log")
-                helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 10)
+                helpers.print_last_n_lines(config.db_sync_log_file, 10)
                 if time.perf_counter() - last_rollback_time > 10 * ONE_MINUTE:
                     LOGGER.info(
                         "Resetting previous rollback counter as there was no progress decrease "
@@ -742,29 +957,29 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             if rollback_counter > 15:
                 LOGGER.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
                 LOGGER.exception("Shutting down all services and emergency uploading artifacts")
-                emergency_upload_artifacts(env)
+                emergency_upload_artifacts(config, perf_stats)
                 msg = "Rollback taking too long. Shutting down..."
                 raise Exception(msg)
         if counter % log_frequency == 0:
-            tip = node.get_current_tip(env)
+            tip = node.get_current_tip(config.env)
             LOGGER.info(
                 f"node progress [%]: {tip.sync_progress}, epoch: {tip.epoch}, "
                 f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
             )
-            db_sync_tip = get_db_sync_tip(env)
+            db_sync_tip = get_db_sync_tip(config)
             assert db_sync_tip is not None  # TODO: refactor
-            db_sync_progress = get_db_sync_progress(env)
+            db_sync_progress = get_db_sync_progress(config)
             assert db_sync_progress is not None  # TODO: refactor
             sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
             LOGGER.info(
                 f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
                 f"epoch: {db_sync_tip.epoch_no}, block: {db_sync_tip.block_no}, slot: {db_sync_tip.slot_no}"
             )
-            helpers.print_last_n_lines(DB_SYNC_LOG_FILE, 5)
+            helpers.print_last_n_lines(config.db_sync_log_file, 5)
 
         try:
             time_point = int(time.perf_counter() - start_sync)
-            db_sync_tip = get_db_sync_tip(env)
+            db_sync_tip = get_db_sync_tip(config)
             assert db_sync_tip is not None  # TODO: refactor
             cpu_usage = db_sync_process.cpu_percent(interval=None)
             rss_mem_usage = db_sync_process.memory_info()[0]
@@ -772,8 +987,8 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             end_sync = time.perf_counter()
             db_full_sync_time_in_secs = int(end_sync - start_sync)
             LOGGER.exception("Unexpected error during sync process")
-            emergency_upload_artifacts(env)
-            return db_full_sync_time_in_secs
+            emergency_upload_artifacts(config, perf_stats)
+            return db_full_sync_time_in_secs, perf_stats
 
         stats_data_point = PerfStats(
             time=time_point,
@@ -781,31 +996,37 @@ def wait_for_db_to_sync(env: str, sync_percentage: float = 99.9) -> int:
             cpu_percent_usage=cpu_usage,
             rss_mem_usage=rss_mem_usage,
         )
-        db_sync_perf_stats.append(dataclasses.asdict(stats_data_point))
-        helpers.write_json_to_file(DB_SYNC_PERF_STATS_FILE, db_sync_perf_stats)
+        perf_stats.append(dataclasses.asdict(stats_data_point))
+        helpers.write_json_to_file(config.perf_stats_file, perf_stats)
         time.sleep(ONE_MINUTE)
         counter += 1
 
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
     LOGGER.info(f"db sync progress [%] before finalizing process: {db_sync_progress}")
-    return sync_time_seconds
+    return sync_time_seconds, perf_stats
 
 
-def get_total_db_size(env: str) -> str:
-    """Fetch the total size of the Cardano DB Sync database."""
-    os.chdir(ROOT_TEST_PATH / "cardano-db-sync")
+def get_total_db_size(config: DbSyncConfig) -> str:
+    """Fetch the total size of the Cardano DB Sync database.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
+
+    Returns:
+        str: Human-readable database size.
+    """
     cmd = [
         "psql",
         "-P",
         "pager=off",
         "-qt",
         "-U",
-        f"{POSTGRES_USER}",
+        config.pg_user,
         "-d",
-        f"{env}",
+        config.pg_dbname,
         "-c",
-        f"SELECT pg_size_pretty( pg_database_size('{env}') );",
+        f"SELECT pg_size_pretty( pg_database_size('{config.pg_dbname}') );",
     ]
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
@@ -821,20 +1042,27 @@ def get_total_db_size(env: str) -> str:
         raise
 
 
-def start_db_sync(env: str, start_args: str = "", first_start: str = "True") -> None:
-    """Start the Cardano DB Sync process."""
+def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str = "True") -> None:
+    """Start the Cardano DB Sync process.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        start_args: Additional start arguments for db-sync (optional).
+        first_start: Whether this is the first start (defaults to "True").
+    """
     current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+    os.chdir(config.workdir)
     helpers.export_env_var("DB_SYNC_START_ARGS", start_args)
     helpers.export_env_var("FIRST_START", f"{first_start}")
-    helpers.export_env_var("ENVIRONMENT", env)
-    helpers.export_env_var("LOG_FILEPATH", DB_SYNC_LOG_FILE)
+    helpers.export_env_var("ENVIRONMENT", config.env)
+    helpers.export_env_var("LOG_FILEPATH", str(config.db_sync_log_file))
 
     try:
         cmd = "./sync_tests/scripts/db-sync-start.sh"
         subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
@@ -865,33 +1093,42 @@ def get_file_size(file: str) -> int:
     return file_size_in_mb
 
 
-def setup_postgres(
-    pg_dir: Path = POSTGRES_DIR, pg_user: str = POSTGRES_USER, pg_port: str = "5432"
-) -> None:
-    """Set up PostgreSQL for use with Cardano DB Sync."""
-    current_directory = os.getcwd()
-    os.chdir(ROOT_TEST_PATH)
+def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
+    """Set up PostgreSQL for use with Cardano DB Sync.
 
-    helpers.export_env_var("POSTGRES_DIR", pg_dir)
-    helpers.export_env_var("PGHOST", "localhost")
-    helpers.export_env_var("PGUSER", pg_user)
-    helpers.export_env_var("PGPORT", pg_port)
+    Args:
+        config: A DbSyncConfig instance with PostgreSQL settings.
+        pg_port: Optional PostgreSQL port override (defaults to config.pg_port).
+    """
+    current_directory = os.getcwd()
+    os.chdir(config.workdir)
+
+    postgres_port = pg_port if pg_port is not None else config.pg_port
+    helpers.export_env_var("POSTGRES_DIR", str(config.pg_dir))
+    helpers.export_env_var("PGHOST", config.pg_host)
+    helpers.export_env_var("PGUSER", config.pg_user)
+    helpers.export_env_var("PGPORT", postgres_port)
 
     try:
-        cmd = ["./sync_tests/scripts/postgres-start.sh", f"{pg_dir}", "-k"]
+        cmd = ["./sync_tests/scripts/postgres-start.sh", str(config.pg_dir), "-k"]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
         LOGGER.info(f"Setup postgres script output: {output}")
         os.chdir(current_directory)
     except subprocess.CalledProcessError as e:
+        os.chdir(current_directory)
         msg = "command '{}' return with error (code {}): {}".format(
             e.cmd, e.returncode, " ".join(str(e.output).split())
         )
         raise RuntimeError(msg) from e
 
 
-def list_databases() -> None:
-    """List all databases available in the PostgreSQL instance."""
-    cmd = ["psql", "-U", f"{POSTGRES_USER}", "-l"]
+def list_databases(config: DbSyncConfig) -> None:
+    """List all databases available in the PostgreSQL instance.
+
+    Args:
+        config: A DbSyncConfig instance with PostgreSQL settings.
+    """
+    cmd = ["psql", "-U", config.pg_user, "-l"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
 
     try:
@@ -904,10 +1141,18 @@ def list_databases() -> None:
         raise
 
 
-def get_db_schema() -> dict:
-    """Retrieve the schema of the Cardano DB Sync database."""
+def get_db_schema(config: DbSyncConfig) -> dict:
+    """Retrieve the schema of the Cardano DB Sync database.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
+
+    Returns:
+        dict: A dictionary mapping table names to their schema definitions.
+    """
+    conn = None
     try:
-        conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
+        conn = psycopg2.connect(database=config.pg_dbname, user=config.pg_user)
         cursor = conn.cursor()
         get_all_tables = (
             "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
@@ -929,11 +1174,9 @@ def get_db_schema() -> dict:
             cursor.execute(get_table_fields_and_attributes)
             table_with_attributes = cursor.fetchall()
             attributes = []
-            table_schema = {}
             for row in table_with_attributes:
                 attributes.append(row)
-                table_schema.update({str(table_name): attributes})
-            db_schema.update({str(table_name): attributes})
+            db_schema[str(table_name)] = attributes
         cursor.close()
         conn.commit()
         conn.close()
@@ -946,10 +1189,18 @@ def get_db_schema() -> dict:
     return db_schema
 
 
-def get_db_indexes() -> dict:
-    """Fetch the indexes of tables in the Cardano DB Sync database."""
+def get_db_indexes(config: DbSyncConfig) -> dict:
+    """Fetch the indexes of tables in the Cardano DB Sync database.
+
+    Args:
+        config: A DbSyncConfig instance with database connection settings.
+
+    Returns:
+        dict: A dictionary mapping table names to their index names.
+    """
+    conn = None
     try:
-        conn = psycopg2.connect(database=f"{ENVIRONMENT}", user=f"{POSTGRES_USER}")
+        conn = psycopg2.connect(database=config.pg_dbname, user=config.pg_user)
         cursor = conn.cursor()
 
         get_all_tables = (
@@ -976,23 +1227,20 @@ def get_db_indexes() -> dict:
             cursor.execute(get_table_and_index)
             table_and_index = cursor.fetchall()
             indexes = []
-            table_indexes = {}
             for _table, index in table_and_index:
                 indexes.append(index)
-                table_indexes.update({str(table_name): indexes})
-            all_indexes.update({str(table_name): indexes})
+            all_indexes[str(table_name)] = indexes
         cursor.close()
         conn.commit()
         conn.close()
+        return all_indexes
     except (Exception, psycopg2.DatabaseError):
         LOGGER.exception("Error")
-    else:
-        return all_indexes
     finally:
         if conn is not None:
             conn.close()
 
-    return all_indexes
+    return {}
 
 
 def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exception | None:
@@ -1005,9 +1253,15 @@ def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exc
     return None
 
 
-def create_sync_stats_chart() -> None:
-    os.chdir(ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+def create_sync_stats_chart(config: DbSyncConfig) -> None:
+    """Create a chart showing sync statistics.
+
+    Args:
+        config: A DbSyncConfig instance with paths.
+    """
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_directory = os.getcwd()
+    os.chdir(db_sync_dir)
     fig = plt.figure(figsize=(14, 10))
 
     # define epochs sync times chart
@@ -1015,7 +1269,7 @@ def create_sync_stats_chart() -> None:
     ax_epochs.set(xlabel="epochs [number]", ylabel="time [min]")
     ax_epochs.set_title("Epochs Sync Times")
 
-    with open(EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+    with open(config.epoch_sync_times_file) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
     epochs = [e["no"] for e in epoch_sync_times]
@@ -1027,11 +1281,13 @@ def create_sync_stats_chart() -> None:
     ax_perf.set(xlabel="time [min]", ylabel="RSS [B]")
     ax_perf.set_title("RSS usage")
 
-    with open(DB_SYNC_PERF_STATS_FILE) as json_db_dump_file:
+    with open(config.perf_stats_file) as json_db_dump_file:
         perf_stats = json.load(json_db_dump_file)
 
     times = [e["time"] / 60 for e in perf_stats]
     rss_mem_usage = [e["rss_mem_usage"] for e in perf_stats]
 
     ax_perf.plot(times, rss_mem_usage)
-    fig.savefig(CHART)
+    chart_path = db_sync_dir / config.chart_name
+    fig.savefig(chart_path)
+    os.chdir(current_directory)

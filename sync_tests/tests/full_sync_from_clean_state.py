@@ -19,7 +19,6 @@ LOGGER = logging.getLogger(__name__)
 
 sys.path.append(os.getcwd())
 
-TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
 EXPECTED_DB_SCHEMA, EXPECTED_DB_INDEXES = helpers.load_json_files()
 
 
@@ -34,6 +33,10 @@ def run_test(args: argparse.Namespace) -> None:
 
     env = helpers.get_arg_value(args=args, key="environment")
     LOGGER.info(f"Environment: {env}")
+
+    # Create DbSyncConfig for all db-sync operations
+    workdir = pl.Path.cwd()
+    config = db_sync.create_db_sync_config(env=env, workdir=workdir)
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
     LOGGER.info(f"Node PR number: {node_pr}")
@@ -81,35 +84,43 @@ def run_test(args: argparse.Namespace) -> None:
     node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
 
     LOGGER.info("--- Node startup")
-    db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
+    helpers.print_last_n_lines(config.node_log_file, 80)
 
     # cardano-db sync setup
-    os.chdir(db_sync.ROOT_TEST_PATH)
     db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
+    current_dir = os.getcwd()
     os.chdir(db_sync_dir)
     LOGGER.info("--- Db sync setup")
-    db_sync.setup_postgres()  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
-    db_sync.create_pgpass_file(env)
-    db_sync.create_database()
+    db_sync.setup_postgres(config)  # To login use: psql -h /path/to/postgres -p 5432 -e postgres
+    db_sync.create_pgpass_file(config)
+    db_sync.create_database(config)
     helpers.execute_command("nix build -v .#cardano-db-sync -o db-sync-node")
     helpers.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool")
-    db_sync.copy_db_sync_executables(build_method="nix")
+    db_sync.copy_db_sync_executables(config, build_method="nix")
     LOGGER.info("--- Db sync startup")
-    db_sync.start_db_sync(env, start_args=db_start_options)
-    db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version()
-    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 30)
-    db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
+    db_sync.start_db_sync(config, start_args=db_start_options)
+    db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version(config)
+    helpers.print_last_n_lines(config.db_sync_log_file, 30)
+    db_full_sync_time_in_secs, perf_stats = db_sync.wait_for_db_to_sync(config)
     LOGGER.info("--- Db sync schema and indexes check for erors")
-    db_sync.check_database(db_sync.get_db_schema, "DB schema is incorrect", EXPECTED_DB_SCHEMA)
-    db_sync.check_database(db_sync.get_db_indexes, "DB indexes are incorrect", EXPECTED_DB_INDEXES)
-    db_sync_tip = db_sync.get_db_sync_tip(env)
+    db_sync.check_database(
+        lambda: db_sync.get_db_schema(config), "DB schema is incorrect", EXPECTED_DB_SCHEMA
+    )
+    db_sync.check_database(
+        lambda: db_sync.get_db_indexes(config), "DB indexes are incorrect", EXPECTED_DB_INDEXES
+    )
+    db_sync_tip = db_sync.get_db_sync_tip(config)
     assert db_sync_tip is not None  # TODO: refactor
-    epoch_no, block_no, slot_no = db_sync_tip
+    epoch_no = db_sync_tip.epoch_no
+    block_no = db_sync_tip.block_no
+    slot_no = db_sync_tip.slot_no
+    os.chdir(current_dir)
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
     LOGGER.info("--- Summary & Artifacts uploading")
+    db_sync_progress = db_sync.get_db_sync_progress(config)
     LOGGER.info(
-        f"FINAL db-sync progress: {db_sync.get_db_sync_progress(env)}, "
+        f"FINAL db-sync progress: {db_sync_progress}, "
         f"epoch: {epoch_no}, block: {block_no}"
     )
     LOGGER.info(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
@@ -119,6 +130,7 @@ def run_test(args: argparse.Namespace) -> None:
     helpers.manage_process(proc_name="cardano-node", action="terminate")
 
     # export test data as a json file
+    test_results_file = config.workdir / f"db_sync_{config.env}_full_sync_test_results.json"
     test_data: OrderedDict[str, tp.Any] = OrderedDict()
     test_data["platform_system"] = platform_system
     test_data["platform_release"] = platform_release
@@ -144,38 +156,36 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
-    last_perf_stats_data_point = db_sync.get_last_perf_stats_point()
-    test_data["cpu_percent_usage"] = last_perf_stats_data_point["cpu_percent_usage"]
-    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point["rss_mem_usage"]
-    test_data["total_database_size"] = db_sync.get_total_db_size(env)
+    last_perf_stats_data_point = db_sync.get_last_perf_stats_point(perf_stats)
+    test_data["cpu_percent_usage"] = last_perf_stats_data_point.cpu_percent_usage
+    test_data["total_rss_memory_usage_in_B"] = last_perf_stats_data_point.rss_mem_usage
+    test_data["total_database_size"] = db_sync.get_total_db_size(config)
     test_data["rollbacks"] = log_analyzer.are_rollbacks_present_in_logs(
-        log_file=db_sync.DB_SYNC_LOG_FILE
+        log_file=config.db_sync_log_file
     )
     test_data["errors"] = log_analyzer.is_string_present_in_file(
-        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+        file_to_check=config.db_sync_log_file, search_string="db-sync-node:Error"
     )
-    test_data["system_metrics"] = db_sync.db_sync_perf_stats
-    # TO DO
-    # test_data["epoch_duration"] = db_sync.db_sync_perf_stats
+    test_data["system_metrics"] = perf_stats
 
-    db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
+    helpers.write_json_to_file(test_results_file, test_data)
 
     # compress artifacts
-    helpers.zip_file(db_sync.NODE_ARCHIVE_NAME, db_sync.NODE_LOG_FILE)
-    helpers.zip_file(db_sync.DB_SYNC_ARCHIVE_NAME, db_sync.DB_SYNC_LOG_FILE)
+    helpers.zip_file(config.node_archive_name, config.node_log_file)
+    helpers.zip_file(config.db_sync_archive_name, config.db_sync_log_file)
 
     # upload artifacts
-    db_sync.upload_artifact(db_sync.NODE_ARCHIVE_NAME)
-    db_sync.upload_artifact(db_sync.DB_SYNC_ARCHIVE_NAME)
-    db_sync.upload_artifact(TEST_RESULTS)
+    db_sync.upload_artifact(config.node_archive_name)
+    db_sync.upload_artifact(config.db_sync_archive_name)
+    db_sync.upload_artifact(str(test_results_file))
 
     # send results to aws database
     aws_db.upload_sync_results_to_aws(env)
 
     # create and upload compressed node db archive
     if env != "mainnet":
-        node_db = db_sync.create_node_database_archive(env)
-        db_sync.upload_artifact(node_db)
+        node_db = db_sync.create_node_database_archive(config)
+        db_sync.upload_artifact(str(node_db))
 
     # search db-sync log for issues
     log_analyzer.check_db_sync_logs()

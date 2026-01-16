@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib as pl
 import sys
+import time
 import typing as tp
 from collections import OrderedDict
 
@@ -16,9 +17,6 @@ from sync_tests.utils import log_analyzer
 from sync_tests.utils import node
 
 LOGGER = logging.getLogger(__name__)
-
-TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_local_snapshot_restoration_test_results.json"
-DB_SYNC_RESTORATION_ARCHIVE = f"cardano_db_sync_{db_sync.ENVIRONMENT}_restoration.zip"
 
 
 def run_test(args: argparse.Namespace) -> int:
@@ -37,6 +35,12 @@ def run_test(args: argparse.Namespace) -> int:
 
     env = helpers.get_arg_value(args=args, key="environment")
     LOGGER.info(f"Environment: {env}")
+
+    # Create DbSyncConfig for all db-sync operations
+    workdir = pl.Path.cwd()
+    config = db_sync.create_db_sync_config(env=env, workdir=workdir, pg_port="5433")
+    test_results_file = config.workdir / f"db_sync_{config.env}_local_snapshot_restoration_test_results.json"
+    db_sync_restoration_archive = f"cardano_db_sync_{config.env}_restoration.zip"
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
     LOGGER.info(f"Node PR number: {node_pr}")
@@ -59,21 +63,25 @@ def run_test(args: argparse.Namespace) -> int:
 
     # database setup
     LOGGER.info("--- Local snapshot restoration - postgres and database setup")
-    db_sync.setup_postgres(pg_port="5433")
-    db_sync.create_pgpass_file(env)
-    db_sync.create_database()
+    db_sync.setup_postgres(config, pg_port="5433")
+    db_sync.create_pgpass_file(config)
+    db_sync.create_database(config)
 
     # snapshot restoration
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+    db_sync_dir = config.workdir / "cardano-db-sync"
+    current_dir = os.getcwd()
+    os.chdir(db_sync_dir)
     snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
     LOGGER.info("--- Local snapshot restoration - restoration process")
     LOGGER.info(f"Snapshot file from key-store: {snapshot_file}")
-    restoration_time = db_sync.restore_db_sync_from_snapshot(env, snapshot_file)
+    restoration_time = db_sync.restore_db_sync_from_snapshot(config, snapshot_file)
     LOGGER.info(f"Restoration time [sec]: {restoration_time}")
-    db_sync_tip = db_sync.get_db_sync_tip(env)
+    db_sync_tip = db_sync.get_db_sync_tip(config)
     assert db_sync_tip is not None  # TODO: refactor
-    snapshot_epoch_no, snapshot_block_no, snapshot_slot_no = db_sync_tip
+    snapshot_epoch_no = db_sync_tip.epoch_no
+    snapshot_block_no = db_sync_tip.block_no
+    snapshot_slot_no = db_sync_tip.slot_no
+    os.chdir(current_dir)
     LOGGER.info(
         f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, "
         f"block: {snapshot_block_no}, slot: {snapshot_slot_no}"
@@ -102,28 +110,30 @@ def run_test(args: argparse.Namespace) -> int:
     node.configure_node(config_file=conf_dir / "config.json")
     node.start_node(base_dir=base_dir, node_start_arguments=())
     node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
-    db_sync.print_file(db_sync.NODE_LOG_FILE, 80)
+    helpers.print_last_n_lines(config.node_log_file, 80)
     node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
     # start db-sync
     LOGGER.info("--- Db-sync startup after snapshot restoration")
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
-    db_sync.export_env_var("PGPORT", "5433")
-    db_sync.start_db_sync(env, start_args="", first_start="False")
-    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 20)
-    db_sync.wait(db_sync.ONE_MINUTE)
-    db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version()
-    db_full_sync_time_in_secs = db_sync.wait_for_db_to_sync(env)
+    os.chdir(db_sync_dir)
+    helpers.export_env_var("PGPORT", "5433")
+    db_sync.start_db_sync(config, start_args="", first_start="False")
+    helpers.print_last_n_lines(config.db_sync_log_file, 20)
+    time.sleep(60)  # ONE_MINUTE = 60
+    db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version(config)
+    db_full_sync_time_in_secs, perf_stats = db_sync.wait_for_db_to_sync(config)
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
     LOGGER.info(f"Waiting for additional {wait_time} minutes to continue syncying...")
-    db_sync.wait(wait_time * db_sync.ONE_MINUTE)
-    db_sync_tip = db_sync.get_db_sync_tip(env)
+    time.sleep(wait_time * 60)  # ONE_MINUTE = 60
+    db_sync_tip = db_sync.get_db_sync_tip(config)
     assert db_sync_tip is not None  # TODO: refactor
-    epoch_no, block_no, slot_no = db_sync_tip
+    epoch_no = db_sync_tip.epoch_no
+    block_no = db_sync_tip.block_no
+    slot_no = db_sync_tip.slot_no
     LOGGER.info(f"Test end time: {end_test_time}")
-    db_sync.print_file(db_sync.DB_SYNC_LOG_FILE, 60)
+    helpers.print_last_n_lines(config.db_sync_log_file, 60)
+    os.chdir(current_dir)
 
     # stop cardano-node and cardano-db-sync
     LOGGER.info("--- Stop cardano services")
@@ -161,22 +171,22 @@ def run_test(args: argparse.Namespace) -> int:
     test_data["last_synced_epoch_no"] = epoch_no
     test_data["last_synced_block_no"] = block_no
     test_data["last_synced_slot_no"] = slot_no
-    test_data["total_database_size"] = db_sync.get_total_db_size(env)
+    test_data["total_database_size"] = db_sync.get_total_db_size(config)
     test_data["rollbacks"] = log_analyzer.is_string_present_in_file(
-        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="rolling back to"
+        file_to_check=config.db_sync_log_file, search_string="rolling back to"
     )
 
     test_data["errors"] = log_analyzer.is_string_present_in_file(
-        file_to_check=db_sync.DB_SYNC_LOG_FILE, search_string="db-sync-node:Error"
+        file_to_check=config.db_sync_log_file, search_string="db-sync-node:Error"
     )
 
-    db_sync.write_data_as_json_to_file(TEST_RESULTS, test_data)
-    db_sync.print_file(TEST_RESULTS)
+    helpers.write_json_to_file(test_results_file, test_data)
+    helpers.print_last_n_lines(test_results_file, 0)
 
     # compress & upload artifacts
-    helpers.zip_file(DB_SYNC_RESTORATION_ARCHIVE, db_sync.DB_SYNC_LOG_FILE)
-    db_sync.upload_artifact(DB_SYNC_RESTORATION_ARCHIVE)
-    db_sync.upload_artifact(TEST_RESULTS)
+    helpers.zip_file(db_sync_restoration_archive, config.db_sync_log_file)
+    db_sync.upload_artifact(db_sync_restoration_archive)
+    db_sync.upload_artifact(str(test_results_file))
 
     # search db-sync log for issues
     log_analyzer.check_db_sync_logs()
