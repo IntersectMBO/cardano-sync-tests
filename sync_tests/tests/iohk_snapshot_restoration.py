@@ -216,7 +216,7 @@ def run_test(args: argparse.Namespace) -> None:
     db_sync.upload_artifact(str(test_results_file))
 
     # send data to aws database
-    aws_db.upload_snapshot_restoration_results_to_aws(env)
+    aws_db.upload_snapshot_restoration_results_to_aws(config, test_results_file)
 
     # search db-sync log for issues
     log_analyzer.check_db_sync_logs()

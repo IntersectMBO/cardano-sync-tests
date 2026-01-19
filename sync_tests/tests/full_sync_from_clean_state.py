@@ -180,7 +180,7 @@ def run_test(args: argparse.Namespace) -> None:
     db_sync.upload_artifact(str(test_results_file))
 
     # send results to aws database
-    aws_db.upload_sync_results_to_aws(env)
+    aws_db.upload_sync_results_to_aws(config, test_results_file)
 
     # create and upload compressed node db archive
     if env != "mainnet":

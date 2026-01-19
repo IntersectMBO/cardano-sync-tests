@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import pathlib as pl
 import sys
 import typing as tp
@@ -8,8 +7,6 @@ import typing as tp
 import pymysql.cursors
 
 from sync_tests.utils import db_sync
-
-TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -171,19 +168,22 @@ def get_max_epoch(table_name: str) -> int | None:
         conn.close()
 
 
-def upload_sync_results_to_aws(env: str) -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+def upload_sync_results_to_aws(config: db_sync.DbSyncConfig, test_results_file: pl.Path) -> None:
+    """Upload sync test results to AWS database.
 
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
     LOGGER.info("Writing full sync results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
+    with open(test_results_file) as json_file:
         sync_test_results_dict = json.load(json_file)
 
-    test_summary_table = env + "_db_sync"
+    test_summary_table = config.env + "_db_sync"
     last_identifier = get_last_identifier(test_summary_table)
     assert last_identifier is not None  # TODO: refactor
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_" + test_id
+    identifier = config.env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
     LOGGER.info(f"Writing test values into {test_summary_table} DB table")
@@ -198,10 +198,10 @@ def upload_sync_results_to_aws(env: str) -> None:
         LOGGER.error(f"Failed to insert values into {test_summary_table}")
         sys.exit(1)
 
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+    with open(config.epoch_sync_times_file) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
-    epoch_duration_table = env + "_epoch_duration_db_sync"
+    epoch_duration_table = config.env + "_epoch_duration_db_sync"
     LOGGER.info(f"  ==== Write test values into the {epoch_duration_table} DB table:")
     col_to_insert = ["identifier", "epoch_no", "sync_duration_secs"]
     val_to_insert = [(identifier, e["no"], e["seconds"]) for e in epoch_sync_times]
@@ -215,10 +215,10 @@ def upload_sync_results_to_aws(env: str) -> None:
         LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
         sys.exit(1)
 
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
+    with open(config.perf_stats_file) as json_perf_stats_file:
         db_sync_performance_stats = json.load(json_perf_stats_file)
 
-    db_sync_performance_stats_table = env + "_performance_stats_db_sync"
+    db_sync_performance_stats_table = config.env + "_performance_stats_db_sync"
     LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
     col_to_insert = [
         "identifier",
@@ -248,16 +248,24 @@ def upload_sync_results_to_aws(env: str) -> None:
         sys.exit(1)
 
 
-def upload_snapshot_restoration_results_to_aws(env: str) -> None:
+def upload_snapshot_restoration_results_to_aws(
+    config: db_sync.DbSyncConfig, test_results_file: pl.Path
+) -> None:
+    """Upload snapshot restoration test results to AWS database.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
     LOGGER.info("--- Write IOHK snapshot restoration results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
+    with open(test_results_file) as json_file:
         sync_test_results_dict = json.load(json_file)
 
-    test_summary_table = env + "_db_sync_snapshot_restoration"
+    test_summary_table = config.env + "_db_sync_snapshot_restoration"
     last_identifier = get_last_identifier(test_summary_table)
     assert last_identifier is not None  # TODO: refactor
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_restoration_" + test_id
+    identifier = config.env + "_restoration_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
     LOGGER.info(f"  ==== Write test values into the {test_summary_table} DB table:")
