@@ -463,6 +463,57 @@ def get_no_of_slots_in_era(era_name: str, conf_dir: pl.Path, no_of_epochs_in_era
     return int(epoch_length_slots * no_of_epochs_in_era)
 
 
+def wait_for_shelley_era(env: str, base_dir: pl.Path, timeout_minutes: int = 60) -> None:
+    """Wait for the node to reach Shelley era before starting db-sync.
+
+    This optimizes db-sync start time by waiting for the node to reach Shelley era
+    instead of waiting for full sync or starting immediately.
+
+    Args:
+        env: Environment name (preview, preprod, mainnet).
+        base_dir: Base directory for node files.
+        timeout_minutes: Maximum time to wait for Shelley era (defaults to 60 minutes).
+
+    Raises:
+        exceptions.SyncError: If Shelley era is not reached within timeout.
+    """
+    LOGGER.info("Waiting for node to reach Shelley era before starting db-sync")
+    start_time = time.perf_counter()
+    timeout_seconds = timeout_minutes * 60
+    count = 0
+
+    while True:
+        tip = get_current_tip(env=env)
+        elapsed_minutes = int((time.perf_counter() - start_time) / 60)
+
+        # Log status every 12 iterations (1 minute at 5-second intervals)
+        if count % 12 == 0:
+            LOGGER.warning(
+                f"Waiting for Shelley era - current era: {tip.era}, "
+                f"epoch: {tip.epoch}, block: {tip.block}, "
+                f"elapsed: {elapsed_minutes} minutes"
+            )
+
+        # Check if we've reached Shelley era or later
+        if tip.era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
+            LOGGER.info(
+                f"Node reached {tip.era} era at epoch {tip.epoch}, block {tip.block}. "
+                f"Proceeding to start db-sync."
+            )
+            return
+
+        # Check timeout
+        if time.perf_counter() - start_time > timeout_seconds:
+            msg = (
+                f"Timeout waiting for Shelley era after {timeout_minutes} minutes. "
+                f"Current era: {tip.era}, epoch: {tip.epoch}"
+            )
+            raise exceptions.SyncError(msg)
+
+        time.sleep(5)
+        count += 1
+
+
 def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     """Wait for the Cardano node to start."""
     LOGGER.info("Waiting for the node to sync")

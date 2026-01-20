@@ -86,6 +86,10 @@ def run_test(args: argparse.Namespace) -> None:
     LOGGER.info("--- Node startup")
     helpers.print_last_n_lines(config.node_log_file, 80)
 
+    # Wait for node to reach Shelley era before starting db-sync (optimized start time)
+    LOGGER.info("--- Waiting for node to reach Shelley era")
+    node.wait_for_shelley_era(env=env, base_dir=base_dir, timeout_minutes=60)
+
     # cardano-db sync setup
     db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
     current_dir = os.getcwd()
