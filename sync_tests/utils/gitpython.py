@@ -37,15 +37,30 @@ def git_checkout(repo: Repo, rev: str) -> Repo:
 
 
 def clone_repo(repo_name: str, repo_branch: str) -> str:
-    """Clones a repository and checks out a specific branch."""
+    """Clone a repository into the current working directory, or reuse it if already present."""
     location = os.path.join(os.getcwd(), repo_name)
+
+    # Reuse an existing checkout when possible (idempotent behavior).
+    if os.path.exists(location):
+        try:
+            repo = Repo(path=location)
+        except Exception as e:
+            msg = (
+                f"Destination path '{location}' already exists but is not a git repository. "
+                "Move/delete it and retry."
+            )
+            raise RuntimeError(msg) from e
+        git_checkout(repo, repo_branch)
+        LOGGER.info(
+            f"Repository {repo_name} already present at {location}; "
+            f"checked out revision {repo_branch}."
+        )
+        return location
+
     try:
         repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", location)
-        repo.git.checkout(repo_branch)
-        LOGGER.info(
-            f"Repository {repo_name} successfully cloned to {location} and branch "
-            f"{repo_branch} checked out."
-        )
+        git_checkout(repo, repo_branch)
+        LOGGER.info(f"Repository {repo_name} successfully cloned to {location}.")
     except GitCommandError:
         LOGGER.exception(f"Error cloning repository {repo_name} to {location}")
         raise

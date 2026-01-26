@@ -225,6 +225,8 @@ def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
         file_path: Path to the output JSON file.
         data: Dictionary or list to serialize as JSON.
     """
+    file_path = pl.Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
 
