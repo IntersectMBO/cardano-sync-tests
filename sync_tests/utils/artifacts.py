@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import logging
+import os
 import shutil
 import subprocess
 import typing as tp
@@ -10,28 +13,52 @@ from sync_tests.utils import helpers
 LOGGER = logging.getLogger(__name__)
 
 
-def upload_artifact(file: str, destination: str = "auto", s3_path: str | None = None) -> None:
-    """Upload an artifact to either S3 or Buildkite based on the specified destination."""
+def is_buildkite_available() -> bool:
+    """Check if Buildkite agent is available."""
+    try:
+        subprocess.run(["buildkite-agent", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=5)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def is_ci_environment() -> bool:
+    """Check if we're running in a CI environment (Buildkite available)."""
+    return is_buildkite_available()
+
+
+def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None = None) -> None:
+    """Upload an artifact to Buildkite if available, otherwise save locally.
+    
+    Args:
+        file: Path to the file to upload.
+        destination: Upload destination ("buildkite", "auto"). Defaults to "auto".
+        local_dir: Optional directory to save file locally if Buildkite is not available.
+    """
     if destination in ("buildkite", "auto"):
         try:
             cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
             subprocess.run(cmd, check=True)
             LOGGER.info(f"Uploaded {file} to Buildkite.")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            LOGGER.warning("Buildkite agent not available. Falling back to S3.")
-        else:
             return
-
-    if destination in ("s3", "auto"):
-        if not s3_path:
-            msg = "S3 path must be specified for S3 uploads."
-            raise ValueError(msg)
-        try:
-            cmd = ["aws", "s3", "cp", f"{file}", f"s3://{s3_path}"]
-            subprocess.run(cmd, check=True)
-            LOGGER.info(f"Uploaded {file} to S3 at {s3_path}.")
-        except subprocess.CalledProcessError:
-            LOGGER.exception(f"Error uploading {file} to S3")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            LOGGER.warning("Buildkite agent not available.")
+    
+    # If Buildkite not available and local_dir is provided, save locally
+    if local_dir:
+        local_path = Path(local_dir) / Path(file).name
+        # Only copy if the file is not already in the target location
+        if Path(file).resolve() != local_path.resolve():
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, local_path)
+            LOGGER.info(f"Saved artifact locally to {local_path} (no Buildkite available).")
+        else:
+            LOGGER.info(f"Artifact already in target location: {local_path} (no Buildkite available).")
+    else:
+        LOGGER.warning(
+            "Skipping artifact upload (no Buildkite agent available). "
+            "Logs remain in test_workdir/ for local inspection."
+        )
 
 
 def create_node_database_archive(config: db_sync.DbSyncConfig) -> Path:

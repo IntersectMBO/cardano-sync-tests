@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import json
 import logging
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -8,13 +11,38 @@ from sync_tests.utils import db_sync
 LOGGER = logging.getLogger(__name__)
 
 
+def _get_repo_root() -> Path:
+    """Get the repository root directory.
+    
+    This function uses __file__ to reliably find the repo root regardless of
+    the current working directory (which may change due to os.chdir() calls).
+    
+    Returns:
+        Path: The repository root directory.
+    """
+    # This file is at sync_tests/utils/charts.py
+    # Go up 2 levels to get repo root
+    return Path(__file__).parent.parent.parent
+
+
+def _get_db_sync_dir() -> Path:
+    """Get the cardano-db-sync directory path.
+    
+    The cardano-db-sync repository is cloned to the repo root, not to test_workdir.
+    
+    Returns:
+        Path: The cardano-db-sync directory path.
+    """
+    return _get_repo_root() / "cardano-db-sync"
+
+
 def create_sync_stats_chart(config: db_sync.DbSyncConfig) -> None:
     """Create a chart showing sync statistics.
 
     Args:
         config: A DbSyncConfig instance with paths.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
     fig = plt.figure(figsize=(14, 10))
 
     ax_epochs = fig.add_axes((0.05, 0.05, 0.9, 0.35))

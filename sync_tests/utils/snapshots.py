@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib as pl
@@ -15,6 +17,31 @@ from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _get_repo_root() -> Path:
+    """Get the repository root directory.
+    
+    This function uses __file__ to reliably find the repo root regardless of
+    the current working directory (which may change due to os.chdir() calls).
+    
+    Returns:
+        Path: The repository root directory.
+    """
+    # This file is at sync_tests/utils/snapshots.py
+    # Go up 2 levels to get repo root
+    return Path(__file__).parent.parent.parent
+
+
+def _get_db_sync_dir() -> Path:
+    """Get the cardano-db-sync directory path.
+    
+    The cardano-db-sync repository is cloned to the repo root, not to test_workdir.
+    
+    Returns:
+        Path: The cardano-db-sync directory path.
+    """
+    return _get_repo_root() / "cardano-db-sync"
 
 
 def download_and_extract_node_snapshot(env: str) -> None:
@@ -123,7 +150,7 @@ def restore_db_sync_from_snapshot(
     Returns:
         int: Restoration time in seconds.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
     snapshot_path = (
         pl.Path(snapshot_file).resolve()
         if not isinstance(snapshot_file, Path)
@@ -197,7 +224,7 @@ def create_db_sync_snapshot_stage_1(config: db_sync.DbSyncConfig) -> str:
     Returns:
         str: The command to run for stage 2 of snapshot creation.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
     db_tool_binary = db_sync_dir / "_cardano-db-tool"
 
     pgpass_file = db_sync_dir / "config" / f"pgpass-{config.env}"
@@ -237,7 +264,7 @@ def create_db_sync_snapshot_stage_2(config: db_sync.DbSyncConfig, stage_2_cmd: s
     Returns:
         str: Path to the created snapshot file.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
 
     pgpass_file = db_sync_dir / "config" / f"pgpass-{config.env}"
     helpers.export_env_var("PGPASSFILE", str(pgpass_file))

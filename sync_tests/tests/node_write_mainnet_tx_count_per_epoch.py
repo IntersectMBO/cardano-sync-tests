@@ -2,7 +2,6 @@ import logging
 
 import pandas as pd
 
-import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.blockfrost as blockfrost_utils
 import sync_tests.utils.helpers as utils
 
@@ -16,10 +15,10 @@ def update_mainnet_tx_count_per_epoch() -> None:
     assert current_epoch_no is not None  # TODO: refactor
     print(f"current_epoch_no   : {current_epoch_no}")
 
-    max_epoch = aws_db_utils.get_max_epoch(table_name)
-    assert max_epoch is not None  # TODO: refactor
+    # AWS DB uploads removed; use local storage instead.
+    max_epoch = None
 
-    last_added_epoch_no = int(max_epoch)
+    last_added_epoch_no = int(max_epoch) if max_epoch is not None else current_epoch_no - 1
     print(f"last_added_epoch_no: {last_added_epoch_no}")
 
     df_column_names = ["epoch_no", "tx_count"]
@@ -38,9 +37,9 @@ def update_mainnet_tx_count_per_epoch() -> None:
 
         col_to_insert = list(df.columns)
         val_to_insert = df.values.tolist()
-        if not aws_db_utils.insert_values_into_db(table_name, col_to_insert, val_to_insert, True):
-            print(f"col_to_insert: {col_to_insert}")
-            print(f"val_to_insert: {val_to_insert}")
+        output_file = "mainnet_tx_count_updates.json"
+        df.to_json(output_file, orient="records", indent=2)
+        print(f"Wrote tx count updates to {output_file}")
     else:
         utils.print_message(type="warn", message="There are no new finalized epochs to be added")
 

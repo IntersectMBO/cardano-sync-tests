@@ -3,8 +3,6 @@ import json
 import logging
 import os
 
-from sync_tests.utils import sync_results_db
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -18,9 +16,14 @@ def process_failed_sync_data(backup_filename: str) -> None:
         with open(backup_filename, encoding="utf-8") as backup_file:
             backup_data = json.load(backup_file)
 
-        LOGGER.info(f"Loaded backup data from {backup_filename}, attempting database insertion.")
-
-        sync_results_db.store_sync_results(sync_data=backup_data)
+        LOGGER.info(
+            f"Loaded backup data from {backup_filename}. "
+            "AWS DB uploads removed; saving locally instead."
+        )
+        output_file = "sync_data_reprocessed.json"
+        with open(output_file, "w", encoding="utf-8") as out_file:
+            json.dump(backup_data, out_file, indent=2)
+        LOGGER.info(f"Wrote backup data to {output_file}")
     except Exception:
         LOGGER.exception(f"Error while processing backup file {backup_filename}")
 
