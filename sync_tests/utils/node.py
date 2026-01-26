@@ -215,11 +215,9 @@ def set_node_socket_path_env_var(base_dir: pl.Path) -> None:
     if "windows" in platform.system().lower():
         socket_path = "\\\\.\\pipe\\cardano-node"
     else:
-        start_socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH")
-        if start_socket_path is None:
-            socket_path = (base_dir / "db" / "node.socket").expanduser().absolute()
-        else:
-            socket_path = pl.Path(start_socket_path)
+        # Always set socket path based on base_dir to ensure consistency
+        # Don't preserve existing CARDANO_NODE_SOCKET_PATH as it may be from a previous run
+        socket_path = (base_dir / "db" / "node.socket").expanduser().absolute()
     os.environ["CARDANO_NODE_SOCKET_PATH"] = str(socket_path)
 
 
@@ -296,12 +294,38 @@ def get_node_version() -> tuple[str, str]:
 
 
 def start_node(
-    base_dir: pl.Path, node_start_arguments: tp.Iterable[str]
+    base_dir: pl.Path,
+    node_start_arguments: tp.Iterable[str],
+    logfile_path: pl.Path | None = None,
 ) -> tuple[subprocess.Popen, tp.IO[str]]:
     socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH") or ""
     if not socket_path:
         err = "CARDANO_NODE_SOCKET_PATH environment variable is not set"
         raise exceptions.SyncError(err)
+    # Ensure no stale cardano-node process is holding a deleted socket path.
+    try:
+        existing_proc = helpers.manage_process(proc_name="cardano-node", action="terminate")
+        if existing_proc:
+            LOGGER.info("Terminated existing cardano-node process before startup")
+            time.sleep(2)
+    except Exception:
+        LOGGER.exception("Failed to terminate existing cardano-node process before startup")
+    db_dir = base_dir / "db"
+    protocol_magic = db_dir / "protocolMagicId"
+    if db_dir.exists() and not protocol_magic.exists():
+        try:
+            if any(db_dir.iterdir()):
+                LOGGER.warning(
+                    "Node DB dir is not empty but missing protocolMagicId; "
+                    f"removing stale contents: {db_dir}"
+                )
+                shutil.rmtree(db_dir, ignore_errors=True)
+        except OSError:
+            LOGGER.exception("Failed to inspect or clean node DB dir before startup")
+    socket_path_p = pl.Path(socket_path)
+    socket_path_p.parent.mkdir(parents=True, exist_ok=True)
+    # Avoid stale socket path from a previous run blocking startup.
+    socket_path_p.unlink(missing_ok=True)
 
     start_args = " ".join(node_start_arguments)
     cmd = (
@@ -316,28 +340,51 @@ def start_node(
     ).strip()
 
     LOGGER.info(f"Starting node with cmd: {cmd}")
-    logfile = open(base_dir / NODE_LOG_FILE_NAME, "w+")
+    # Ensure logfile is cleared/truncated before starting node
+    if logfile_path is None:
+        logfile_path = base_dir / NODE_LOG_FILE_NAME
+    logfile_path.parent.mkdir(parents=True, exist_ok=True)
+    # Open in "w+" mode to truncate existing file or create new one
+    logfile = open(logfile_path, "w+")
+    LOGGER.info(f"Node logfile opened: {logfile_path} (will write node output here)")
 
     proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
     return proc, logfile
 
 
-def wait_node_start(env: str, base_dir: pl.Path, timeout_minutes: int = 20) -> int:
+def wait_node_start(
+    env: str,
+    base_dir: pl.Path,
+    timeout_minutes: int = 20,
+    logfile_path: pl.Path | None = None,
+) -> int:
     """Wait for the Cardano node to start."""
     # when starting from clean state it might take ~30 secs for the cli to work
     # when starting from existing state it might take >10 mins for the cli to work (opening db and
     # replaying the ledger)
+    if logfile_path is None:
+        logfile_path = base_dir / NODE_LOG_FILE_NAME
     LOGGER.info("Waiting for db folder to be created")
     count = 0
     count_timeout = 299
     while not pl.Path.is_dir(base_dir / "db"):
         time.sleep(1)
         count += 1
+        # Show logfile size every 10 seconds to indicate node is writing
+        if count % 10 == 0 and logfile_path.exists():
+            logfile_size = logfile_path.stat().st_size
+            LOGGER.info(
+                f"Node is writing logs... logfile size: {logfile_size} bytes "
+                f"(waiting for db folder, {count}s elapsed)"
+            )
         if count > count_timeout:
             err_raise = f"Waited {count_timeout} seconds and the DB folder was not created yet"
             raise exceptions.SyncError(err_raise)
 
     LOGGER.info(f"DB folder was created after {count} seconds")
+    if logfile_path.exists():
+        logfile_size = logfile_path.stat().st_size
+        LOGGER.info(f"Node logfile size: {logfile_size} bytes (node is running and writing logs)")
     secs_to_start = wait_query_tip_available(env=env, timeout_minutes=timeout_minutes)
     LOGGER.debug(f" - listdir current_directory: {os.listdir(base_dir)}")
     LOGGER.debug(f" - listdir db: {os.listdir(base_dir / 'db')}")
@@ -463,49 +510,75 @@ def get_no_of_slots_in_era(era_name: str, conf_dir: pl.Path, no_of_epochs_in_era
     return int(epoch_length_slots * no_of_epochs_in_era)
 
 
-def wait_for_shelley_era(env: str, base_dir: pl.Path, timeout_minutes: int = 60) -> None:
-    """Wait for the node to reach Shelley era before starting db-sync.
+def wait_for_shelley_era(
+    env: str,
+    base_dir: pl.Path,
+    timeout_minutes: int = 60,
+    min_era: str = "shelley",
+) -> None:
+    """Wait for the node to reach at least a target era before starting db-sync.
 
-    This optimizes db-sync start time by waiting for the node to reach Shelley era
-    instead of waiting for full sync or starting immediately.
+    Historically this waited for Shelley; we now allow a configurable minimum era
+    (e.g. "babbage") so tests can start db-sync earlier if desired.
 
     Args:
         env: Environment name (preview, preprod, mainnet).
         base_dir: Base directory for node files.
-        timeout_minutes: Maximum time to wait for Shelley era (defaults to 60 minutes).
+        timeout_minutes: Maximum time to wait for the target era.
+        min_era: Minimum era name at which to proceed (default: "shelley").
 
     Raises:
-        exceptions.SyncError: If Shelley era is not reached within timeout.
+        exceptions.SyncError: If the target era is not reached within timeout.
     """
-    LOGGER.info("Waiting for node to reach Shelley era before starting db-sync")
+    LOGGER.info(
+        f"Waiting for node to reach at least {min_era} era before starting db-sync"
+    )
     start_time = time.perf_counter()
     timeout_seconds = timeout_minutes * 60
     count = 0
+
+    # Simple ordering of eras so we can compare "current >= target"
+    era_order: dict[str, int] = {
+        "byron": 0,
+        "shelley": 1,
+        "allegra": 2,
+        "mary": 3,
+        "alonzo": 4,
+        "babbage": 5,
+        "conway": 6,
+    }
+    target_idx = era_order.get(min_era.lower())
 
     while True:
         tip = get_current_tip(env=env)
         elapsed_minutes = int((time.perf_counter() - start_time) / 60)
 
         # Log status every 12 iterations (1 minute at 5-second intervals)
+        # Show more detailed progress similar to wait_for_node_to_sync()
+        logfile_path = base_dir / NODE_LOG_FILE_NAME
         if count % 12 == 0:
+            logfile_size = logfile_path.stat().st_size if logfile_path.exists() else 0
             LOGGER.warning(
-                f"Waiting for Shelley era - current era: {tip.era}, "
+                f"Waiting for target era>={min_era} - current era: {tip.era}, "
                 f"epoch: {tip.epoch}, block: {tip.block}, "
-                f"elapsed: {elapsed_minutes} minutes"
+                f"slot: {tip.slot}, syncProgress: {tip.sync_progress}, "
+                f"elapsed: {elapsed_minutes} minutes, "
+                f"node logfile: {logfile_size} bytes"
             )
 
-        # Check if we've reached Shelley era or later
-        if tip.era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
+        # Check if we've reached the target era or later
+        current_idx = era_order.get(str(tip.era).lower())
+        if target_idx is not None and current_idx is not None and current_idx >= target_idx:
             LOGGER.info(
                 f"Node reached {tip.era} era at epoch {tip.epoch}, block {tip.block}. "
-                f"Proceeding to start db-sync."
+                f"Proceeding to start db-sync (min_era={min_era})."
             )
             return
 
         # Check timeout
         if time.perf_counter() - start_time > timeout_seconds:
             msg = (
-                f"Timeout waiting for Shelley era after {timeout_minutes} minutes. "
+                f"Timeout waiting for target era>={min_era} after {timeout_minutes} minutes. "
                 f"Current era: {tip.era}, epoch: {tip.epoch}"
             )
             raise exceptions.SyncError(msg)

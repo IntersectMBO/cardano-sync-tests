@@ -11,43 +11,12 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.aws_db as aws_db_utils
 import sync_tests.utils.db_sync as utils_db_sync
 import sync_tests.utils.helpers as utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-def upload_snapshot_creation_results_to_aws(config: utils_db_sync.DbSyncConfig) -> None:
-    """Upload snapshot creation results to AWS database.
-
-    Args:
-        config: A DbSyncConfig instance with paths.
-    """
-    test_results_file = config.workdir / f"snapshot_creation_{config.env}_test_results.json"
-    print("--- Write snapshot creation results to AWS Database")
-    with open(test_results_file) as json_file:
-        db_snapshot_creation_test_results_dict = json.load(json_file)
-
-    db_snapshot_creation_test_summary_table = config.env + "_db_sync_snapshot_creation"
-    last_identifier = aws_db_utils.get_last_identifier(db_snapshot_creation_test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
-    test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_" + test_id
-    db_snapshot_creation_test_results_dict["identifier"] = identifier
-    db_snapshot_creation_test_results_dict["env"] = config.env
-
-    print(f"  ==== Write test values into the {db_snapshot_creation_test_summary_table} DB table:")
-    col_to_insert = list(db_snapshot_creation_test_results_dict.keys())
-    val_to_insert = list(db_snapshot_creation_test_results_dict.values())
-
-    if not aws_db_utils.insert_values_into_db(
-        db_snapshot_creation_test_summary_table, col_to_insert, val_to_insert
-    ):
-        print(f"col_to_insert: {col_to_insert}")
-        print(f"val_to_insert: {val_to_insert}")
-        sys.exit(1)
 
 
 def main() -> int:
@@ -64,8 +33,10 @@ def main() -> int:
     print(f"Environment: {env}")
 
     # Create DbSyncConfig for all db-sync operations
-    workdir = Path.cwd()
-    config = utils_db_sync.create_db_sync_config(env=env, workdir=workdir)
+    root_dir = Path.cwd()
+    test_workdir = root_dir / "test_workdir"
+    test_workdir.mkdir(exist_ok=True)
+    config = utils_db_sync.create_db_sync_config(env=env, workdir=test_workdir)
     test_results_file = config.workdir / f"snapshot_creation_{config.env}_test_results.json"
 
     db_sync_version, db_sync_git_rev = utils_db_sync.get_db_sync_version(config)
@@ -83,7 +54,10 @@ def main() -> int:
     )
     print(f"DB sync GH version: {db_sync_version_from_gh_action}")
 
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    # cardano-db-sync is cloned to repository root, not config.workdir
+    # Use __file__ to find repo root (this file is at sync_tests/tests/snapshot_creation.py)
+    repo_root = Path(__file__).parent.parent.parent
+    db_sync_dir = repo_root / "cardano-db-sync"
     current_dir = os.getcwd()
     os.chdir(db_sync_dir)
     start_snapshot_creation = time.perf_counter()

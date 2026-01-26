@@ -37,8 +37,10 @@ def run_test(args: argparse.Namespace) -> int:
     LOGGER.info(f"Environment: {env}")
 
     # Create DbSyncConfig for all db-sync operations
-    workdir = pl.Path.cwd()
-    config = db_sync.create_db_sync_config(env=env, workdir=workdir, pg_port="5433")
+    root_dir = pl.Path.cwd()
+    test_workdir = root_dir / "test_workdir"
+    test_workdir.mkdir(exist_ok=True)
+    config = db_sync.create_db_sync_config(env=env, workdir=test_workdir, pg_port="5433")
     test_results_file = config.workdir / f"db_sync_{config.env}_local_snapshot_restoration_test_results.json"
     db_sync_restoration_archive = f"cardano_db_sync_{config.env}_restoration.zip"
 
@@ -68,7 +70,10 @@ def run_test(args: argparse.Namespace) -> int:
     db_sync.create_database(config)
 
     # snapshot restoration
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    # cardano-db-sync is cloned to repository root, not config.workdir
+    # Use __file__ to find repo root (this file is at sync_tests/tests/local_snapshot_restoration.py)
+    repo_root = pl.Path(__file__).parent.parent.parent
+    db_sync_dir = repo_root / "cardano-db-sync"
     current_dir = os.getcwd()
     os.chdir(db_sync_dir)
     snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
@@ -108,8 +113,17 @@ def run_test(args: argparse.Namespace) -> int:
         use_genesis_mode=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(base_dir=base_dir, node_start_arguments=())
-    node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
+    node.start_node(
+        base_dir=base_dir,
+        node_start_arguments=(),
+        logfile_path=config.node_log_file,
+    )
+    node.wait_node_start(
+        env=env,
+        base_dir=base_dir,
+        timeout_minutes=10,
+        logfile_path=config.node_log_file,
+    )
     helpers.print_last_n_lines(config.node_log_file, 80)
     node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
@@ -189,7 +203,7 @@ def run_test(args: argparse.Namespace) -> int:
     db_sync.upload_artifact(str(test_results_file))
 
     # search db-sync log for issues
-    log_analyzer.check_db_sync_logs()
+    log_analyzer.check_db_sync_logs(log_file=config.db_sync_log_file)
     return 0
 
 

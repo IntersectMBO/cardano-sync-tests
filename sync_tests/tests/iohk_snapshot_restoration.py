@@ -10,7 +10,6 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
-from sync_tests.utils import aws_db
 from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import gitpython
@@ -35,8 +34,10 @@ def run_test(args: argparse.Namespace) -> None:
     LOGGER.info(f"Environment: {env}")
 
     # Create DbSyncConfig for all db-sync operations
-    workdir = pl.Path.cwd()
-    config = db_sync.create_db_sync_config(env=env, workdir=workdir)
+    root_dir = pl.Path.cwd()
+    test_workdir = root_dir / "test_workdir"
+    test_workdir.mkdir(exist_ok=True)
+    config = db_sync.create_db_sync_config(env=env, workdir=test_workdir)
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
     LOGGER.info(f"Node PR number: {node_pr}")
@@ -215,11 +216,10 @@ def run_test(args: argparse.Namespace) -> None:
     db_sync.upload_artifact(config.perf_stats_archive_name)
     db_sync.upload_artifact(str(test_results_file))
 
-    # send data to aws database
-    aws_db.upload_snapshot_restoration_results_to_aws(config, test_results_file)
+    # AWS/S3 uploads removed; results remain local in test_workdir
 
     # search db-sync log for issues
-    log_analyzer.check_db_sync_logs()
+    log_analyzer.check_db_sync_logs(log_file=config.db_sync_log_file)
 
 
 def get_args() -> argparse.Namespace:

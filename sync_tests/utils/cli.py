@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import os
 import pathlib as pl
 import re
 import subprocess
@@ -55,9 +56,11 @@ def cli(
     # Network.Socket.connect: <socket: X>: resource exhausted (Resource temporarily unavailable)
     # or
     # MuxError (MuxIOException writev: resource vanished (Broken pipe)) "(sendAll errored)"
+    # Ensure environment variables (especially CARDANO_NODE_SOCKET_PATH) are passed to subprocess
+    env = os.environ.copy()
     for __ in range(3):
         retcode = None
-        with subprocess.Popen(cli_args_strs, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        with subprocess.Popen(cli_args_strs, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env) as p:
             stdout, stderr = p.communicate(timeout=timeout)
             retcode = p.returncode
 

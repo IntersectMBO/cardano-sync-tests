@@ -10,7 +10,6 @@ from sync_tests.utils import color_logger
 from sync_tests.utils import helpers
 from sync_tests.utils import metrics_extractor
 from sync_tests.utils import node
-from sync_tests.utils import sync_results_db
 
 LOGGER = logging.getLogger(__name__)
 
@@ -213,8 +212,9 @@ def run_test(args: argparse.Namespace) -> None:
         "system_metrics": logs_details_dict,
     }
 
-    print("--- Store tests results in database")
-    sync_results_db.store_sync_results(sync_data=sync_data)
+    print("--- AWS DB upload removed; saving sync data locally")
+    with open("sync_data_payload.json", "w") as payload_file:
+        json.dump(sync_data, payload_file, indent=2)
 
     print("--- Write tests results to file")
     current_directory = pl.Path.cwd()

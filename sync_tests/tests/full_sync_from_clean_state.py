@@ -1,15 +1,16 @@
 import argparse
 import datetime
 import logging
+import shutil
 import os
 import pathlib as pl
 import sys
 import typing as tp
 from collections import OrderedDict
 
-from sync_tests.utils import aws_db
 from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
+from sync_tests.utils import db_sync_metrics_extractor
 from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
 from sync_tests.utils import log_analyzer
@@ -34,9 +35,23 @@ def run_test(args: argparse.Namespace) -> None:
     env = helpers.get_arg_value(args=args, key="environment")
     LOGGER.info(f"Environment: {env}")
 
-    # Create DbSyncConfig for all db-sync operations
-    workdir = pl.Path.cwd()
-    config = db_sync.create_db_sync_config(env=env, workdir=workdir)
+    # Create test_workdir for all logs and test data (but not artifacts)
+    root_dir = pl.Path.cwd()
+    test_workdir = root_dir / "test_workdir"
+    test_workdir.mkdir(exist_ok=True)
+    LOGGER.info(f"Using test_workdir for logs: {test_workdir}")
+
+    # Create DbSyncConfig for all db-sync operations - use test_workdir for logs
+    config = db_sync.create_db_sync_config(env=env, workdir=test_workdir)
+    
+    # Create and clear db-sync logfile early so it's ready when db-sync starts
+    # This ensures the logfile exists and is empty before db-sync setup begins
+    config.db_sync_log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(config.db_sync_log_file, "w") as f:
+        f.write("")
+    LOGGER.info(f"Created and cleared db-sync logfile: {config.db_sync_log_file}")
+    LOGGER.info(f"DB sync will write logs to: {config.db_sync_log_file}")
+    LOGGER.info(f"Monitor db-sync logs with: tail -f {config.db_sync_log_file}")
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
     LOGGER.info(f"Node PR number: {node_pr}")
@@ -44,32 +59,34 @@ def run_test(args: argparse.Namespace) -> None:
     node_branch = helpers.get_arg_value(args=args, key="node_branch", default="")
     LOGGER.info(f"Node branch: {node_branch}")
 
-    node_version_from_gh_action = helpers.get_arg_value(
-        args=args, key="node_version_gh_action", default=""
-    )
-    LOGGER.info(f"Node version: {node_version_from_gh_action}")
+    node_revision = helpers.get_arg_value(args=args, key="node_revision")
+    LOGGER.info(f"Node revision: {node_revision}")
 
     db_branch = helpers.get_arg_value(args=args, key="db_sync_branch", default="")
     LOGGER.info(f"DB sync branch: {db_branch}")
 
-    db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="")
+    # `helpers.get_arg_value` can return None if the arg is missing; keep this as a string.
+    db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="") or ""
 
-    db_sync_version_from_gh_action = (
-        helpers.get_arg_value(args=args, key="db_sync_version_gh_action", default="")
-        + " "
-        + db_start_options
-    )
-    LOGGER.info(f"DB sync version: {db_sync_version_from_gh_action}")
+    db_sync_revision = helpers.get_arg_value(args=args, key="db_sync_revision")
+    db_sync_rev_with_opts = db_sync_revision + (" " + db_start_options if db_start_options else "")
+    LOGGER.info(f"DB sync revision: {db_sync_rev_with_opts}")
 
-    # cardano-node setup
+    # cardano-node setup - keep in root_dir (original behavior) to maintain socket path compatibility
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
     bin_dir = pl.Path("bin")
     bin_dir.mkdir(exist_ok=True)
     node.add_to_path(path=bin_dir)
 
+    # Ensure we start from a clean DB dir to avoid NetworkMagic mismatch between environments
+    db_dir = base_dir / "db"
+    if db_dir.exists():
+        LOGGER.info(f"Removing existing node DB directory for clean start: {db_dir}")
+        shutil.rmtree(db_dir, ignore_errors=True)
+
     node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_version_from_gh_action, base_dir=base_dir)
+    node.get_node_files(node_rev=node_revision, base_dir=base_dir)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
     # TODO: change the default to P2P when full P2P will be supported on Mainnet
@@ -77,21 +94,61 @@ def run_test(args: argparse.Namespace) -> None:
         env=env,
         node_topology_type="",
         conf_dir=conf_dir,
-        use_genesis_mode=False,
+        disable_genesis_mode_flag=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(base_dir=base_dir, node_start_arguments=())
-    node.wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
+
+    # Clear node logfile before starting (like node_sync_test.py does)
+    # Ensure it's completely truncated, not just unlinked
+    # Node logfile goes to test_workdir for consistency with db-sync logs
+    node_logfile_path = config.node_log_file
+    node_logfile_path.parent.mkdir(parents=True, exist_ok=True)
+    # Truncate to 0 bytes if exists, create if not
+    with open(node_logfile_path, "w") as f:
+        f.write("")
+    LOGGER.info(f"Cleared node logfile: {node_logfile_path}")
+    LOGGER.info(f"Node will write logs to: {node_logfile_path}")
+    LOGGER.info(f"Monitor node logs with: tail -f {node_logfile_path}")
+
+    node.start_node(
+        base_dir=base_dir,
+        node_start_arguments=(),
+        logfile_path=node_logfile_path,
+    )
+    # Allow more time for initial tip availability on preview (full era history, fresh DB).
+    node.wait_node_start(
+        env=env,
+        base_dir=base_dir,
+        timeout_minutes=30,
+        logfile_path=node_logfile_path,
+    )
 
     LOGGER.info("--- Node startup")
-    helpers.print_last_n_lines(config.node_log_file, 80)
+    helpers.print_last_n_lines(node_logfile_path, 80)
 
-    # Wait for node to reach Shelley era before starting db-sync (optimized start time)
-    LOGGER.info("--- Waiting for node to reach Shelley era")
-    node.wait_for_shelley_era(env=env, base_dir=base_dir, timeout_minutes=60)
+    # Wait for node to reach at least Shelley era before starting db-sync (for testing we
+    # start earlier than \"full\" sync to see db-sync activity sooner).
+    # Show periodic progress similar to wait_for_node_to_sync()
+    LOGGER.info("--- Waiting for node to reach Shelley era (min_era=shelley)")
+    # Mainnet can take many hours from Byron to Shelley; use a generous timeout.
+    shelley_timeout_minutes = 720 if env == "mainnet" else 60
+    node.wait_for_shelley_era(
+        env=env,
+        base_dir=base_dir,
+        timeout_minutes=shelley_timeout_minutes,
+        min_era="shelley",
+    )
+    
+    # Show node sync progress after reaching Shelley
+    LOGGER.info("--- Node sync progress after reaching Shelley era")
+    tip = node.get_current_tip(env=env)
+    LOGGER.warning(
+        f"Node era: {tip.era}, epoch: {tip.epoch}, block: {tip.block}, "
+        f"slot: {tip.slot}, syncProgress: {tip.sync_progress}"
+    )
 
     # cardano-db sync setup
-    db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_version_from_gh_action.rstrip())
+    db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_sync_revision)
     current_dir = os.getcwd()
     os.chdir(db_sync_dir)
     LOGGER.info("--- Db sync setup")
@@ -101,7 +158,15 @@ def run_test(args: argparse.Namespace) -> None:
     helpers.execute_command("nix build -v .#cardano-db-sync -o db-sync-node")
     helpers.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool")
     db_sync.copy_db_sync_executables(config, build_method="nix")
-    LOGGER.info("--- Db sync startup")
+    
+    # Ensure db-sync logfile is still clear before starting (in case anything wrote to it)
+    with open(config.db_sync_log_file, "w") as f:
+        f.write("")
+    LOGGER.info(f"Re-cleared db-sync logfile before startup: {config.db_sync_log_file}")
+    LOGGER.info(f"--- Db sync startup")
+    LOGGER.info(f"Node logs: {node_logfile_path}")
+    LOGGER.info(f"DB sync logs: {config.db_sync_log_file}")
+    LOGGER.info(f"Both logfiles are in test_workdir: {test_workdir}")
     db_sync.start_db_sync(config, start_args=db_start_options)
     db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version(config)
     helpers.print_last_n_lines(config.db_sync_log_file, 30)
@@ -144,9 +209,9 @@ def run_test(args: argparse.Namespace) -> None:
     test_data["env"] = env
     test_data["node_pr"] = node_pr
     test_data["node_branch"] = node_branch
-    test_data["node_version"] = node_version_from_gh_action
+    test_data["node_version"] = node_revision
     test_data["db_sync_branch"] = db_branch
-    test_data["db_version"] = db_sync_version_from_gh_action
+    test_data["db_version"] = db_sync_rev_with_opts
     test_data["node_cli_version"] = cli_version
     test_data["node_git_revision"] = cli_git_rev
     test_data["db_sync_version"] = db_sync_version
@@ -172,27 +237,69 @@ def run_test(args: argparse.Namespace) -> None:
     )
     test_data["system_metrics"] = perf_stats
 
+    # Extract log-based metrics from db-sync log file
+    LOGGER.info("Extracting log-based metrics from db-sync log file...")
+    try:
+        db_sync_log_metrics = db_sync_metrics_extractor.get_db_sync_data_from_logs(config.db_sync_log_file)
+        test_data["epoch_timings"] = db_sync_log_metrics["epoch_timings"]
+        test_data["block_insertion_rates"] = db_sync_log_metrics["block_insertions"]
+        test_data["epoch_details"] = db_sync_log_metrics["epoch_details"]
+        LOGGER.info(f"Extracted metrics for {len(db_sync_log_metrics['epoch_timings'])} epochs")
+    except Exception as e:
+        LOGGER.warning(f"Failed to extract log-based metrics: {e}")
+        test_data["epoch_timings"] = {}
+        test_data["block_insertion_rates"] = []
+        test_data["epoch_details"] = {}
+
     helpers.write_json_to_file(test_results_file, test_data)
 
-    # compress artifacts
-    helpers.zip_file(config.node_archive_name, config.node_log_file)
-    helpers.zip_file(config.db_sync_archive_name, config.db_sync_log_file)
+    # Artifact handling: logs remain in test_workdir/ for debugging
+    # Only create zip files if Build kite is available (for CI artifact upload)
+    # Use actual node logfile path (timestamped in test_workdir)
+    node_logfile_path = config.node_log_file
+    
+    # Check if we're in CI (Buildkite available)
+    from sync_tests.utils import artifacts
+    is_ci = artifacts.is_ci_environment()
+    
+    if is_ci:
+        # In CI: create zip files for Buildkite upload
+        artifact_dir = root_dir
+        LOGGER.info("CI environment detected - creating zip files for Buildkite upload")
+    
+        node_archive_path = artifact_dir / config.node_archive_name
+        db_sync_archive_path = artifact_dir / config.db_sync_archive_name
+        helpers.zip_file(str(node_archive_path), node_logfile_path)
+        helpers.zip_file(str(db_sync_archive_path), config.db_sync_log_file)
 
-    # upload artifacts
-    db_sync.upload_artifact(config.node_archive_name)
-    db_sync.upload_artifact(config.db_sync_archive_name)
-    db_sync.upload_artifact(str(test_results_file))
+        # Upload zipped logs to Build kite (logs remain in test_workdir/ for debugging)
+        db_sync.upload_artifact(str(node_archive_path))
+        db_sync.upload_artifact(str(db_sync_archive_path))
+        # test_results_file is already in test_workdir, upload it to Build kite
+        db_sync.upload_artifact(str(test_results_file))
+    else:
+        # Local run: skip zipping logs (they're already accessible in test_workdir/)
+        LOGGER.info("Local environment detected - logs remain in test_workdir/ for debugging")
+        LOGGER.info(f"Node logs: {node_logfile_path}")
+        LOGGER.info(f"DB sync logs: {config.db_sync_log_file}")
+        LOGGER.info(f"Test results: {test_results_file}")
 
-    # send results to aws database
-    aws_db.upload_sync_results_to_aws(config, test_results_file)
+    # AWS/S3 uploads removed; results remain local in the test_workdir
 
-    # create and upload compressed node db archive
-    if env != "mainnet":
+    # create and upload a compressed node db archive (only in CI)
+    if env != "mainnet" and is_ci:
         node_db = db_sync.create_node_database_archive(config)
-        db_sync.upload_artifact(str(node_db))
+        # Move the node_db archive to artifact_dir if needed
+        artifact_dir = root_dir
+        if node_db.parent != artifact_dir:
+            node_db_target = artifact_dir / node_db.name
+            node_db.rename(node_db_target)
+            db_sync.upload_artifact(str(node_db_target))
+        else:
+            db_sync.upload_artifact(str(node_db))
 
     # search db-sync log for issues
-    log_analyzer.check_db_sync_logs()
+    log_analyzer.check_db_sync_logs(log_file=config.db_sync_log_file)
 
 
 def get_args() -> argparse.Namespace:
@@ -212,13 +319,13 @@ def get_args() -> argparse.Namespace:
         "-nv",
         "--node-revision",
         required=True,
-        help=("Desired cardano-node revision - cardano-node tag or branch"),
+        help="Desired cardano-node revision - cardano-node tag or branch",
     )
     parser.add_argument(
         "-dv",
         "--db-sync-revision",
         required=True,
-        help=("Desired db-sync revision - db-sync tag or branch"),
+        help="Desired db-sync revision - db-sync tag or branch",
     )
     parser.add_argument(
         "-dsa",
