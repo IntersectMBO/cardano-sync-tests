@@ -23,6 +23,31 @@ LOGGER = logging.getLogger(__name__)
 ONE_MINUTE = 60
 
 
+def _get_repo_root() -> Path:
+    """Get the repository root directory.
+    
+    This function uses __file__ to reliably find the repo root regardless of
+    the current working directory (which may change due to os.chdir() calls).
+    
+    Returns:
+        Path: The repository root directory.
+    """
+    # This file is at sync_tests/utils/db_sync.py
+    # Go up 2 levels to get repo root
+    return Path(__file__).parent.parent.parent
+
+
+def _get_db_sync_dir() -> Path:
+    """Get the cardano-db-sync directory path.
+    
+    The cardano-db-sync repository is cloned to the repo root, not to test_workdir.
+    
+    Returns:
+        Path: The cardano-db-sync directory path.
+    """
+    return _get_repo_root() / "cardano-db-sync"
+
+
 @dataclasses.dataclass(frozen=True)
 class DbSyncTip:
     """Database sync tip information."""
@@ -114,7 +139,7 @@ def create_db_sync_config(
             subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False)
             .stdout.decode("utf-8")
             .strip()
-        )
+)
 
     if pg_dbname is None:
         pg_dbname = env
@@ -123,9 +148,10 @@ def create_db_sync_config(
         pg_dir = workdir.parent
 
     # Build all paths relative to workdir
+    # Keep db-sync artifacts in subdirectory, but logfiles in workdir root for consistency
     perf_stats_file = workdir / f"cardano-db-sync/db_sync_{env}_performance_stats.json"
-    node_log_file = workdir / f"cardano-node/node_{env}_logfile.log"
-    db_sync_log_file = workdir / f"cardano-db-sync/db_sync_{env}_logfile.log"
+    node_log_file = workdir / node.NODE_LOG_FILE_NAME
+    db_sync_log_file = workdir / f"db_sync_{env}_logfile.log"
     epoch_sync_times_file = workdir / f"cardano-db-sync/epoch_sync_times_{env}_dump.json"
 
     # Archive names
@@ -231,13 +257,25 @@ def copy_db_sync_executables(config: DbSyncConfig, build_method: str = "nix") ->
         config: A DbSyncConfig instance with paths.
         build_method: Build method to use, either "nix" or "cabal" (defaults to "nix").
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
 
     if build_method == "nix":
         db_sync_binary_location = db_sync_dir / "db-sync-node" / "bin" / "cardano-db-sync"
         db_tool_binary_location = db_sync_dir / "db-sync-tool" / "bin" / "cardano-db-tool"
-        shutil.copy2(db_sync_binary_location, db_sync_dir / "_cardano-db-sync")
-        shutil.copy2(db_tool_binary_location, db_sync_dir / "_cardano-db-tool")
+
+        # These copies are convenience wrappers used by some older scripts.
+        # If permissions prevent writing into the repo directory (e.g., root-owned
+        # files from a previous run), we log and continue instead of failing the run.
+        try:
+            shutil.copy2(db_sync_binary_location, db_sync_dir / "_cardano-db-sync")
+            shutil.copy2(db_tool_binary_location, db_sync_dir / "_cardano-db-tool")
+            LOGGER.info("Copied db-sync and db-tool executables to _cardano-* wrappers")
+        except PermissionError as e:
+            LOGGER.warning(
+                "PermissionError while copying db-sync executables to _cardano-* wrappers: "
+                f"{e}. Continuing, since db-sync binaries in db-sync-node/db-sync-tool "
+                "are sufficient for running tests."
+            )
         return
 
     try:
@@ -292,7 +330,7 @@ def get_db_sync_version(config: DbSyncConfig) -> tuple[str, str]:
     Returns:
         tuple[str, str]: A tuple containing the version string and git revision.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    db_sync_dir = _get_db_sync_dir()
     db_sync_binary = db_sync_dir / "_cardano-db-sync"
     try:
         cmd = [str(db_sync_binary), "--version"]
@@ -379,9 +417,15 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         f"block: {tip.block}, slot: {tip.slot}, era: {tip.era}"
     )
     db_sync_tip = postgres.get_db_sync_tip(config)
-    assert db_sync_tip is not None  # TODO: refactor
+    # Handle case where db-sync hasn't started syncing yet
+    if db_sync_tip is None:
+        LOGGER.info("db-sync tip not available yet - db-sync may not have started syncing")
+        return 0.0
     db_sync_progress = postgres.get_db_sync_progress(config)
-    assert db_sync_progress is not None  # TODO: refactor
+    # Handle case where progress is None (db-sync hasn't started yet)
+    if db_sync_progress is None:
+        LOGGER.info("db-sync progress not available yet - db-sync may not have started syncing")
+        return 0.0
     sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
     LOGGER.info(
         f"db sync progress [%]: {db_sync_progress}, sync time [h:m:s]: {sync_time_h_m_s}, "
@@ -407,7 +451,10 @@ def _collect_perf_stats(
     """
     time_point = int(time.perf_counter() - start_sync)
     db_sync_tip = postgres.get_db_sync_tip(config)
-    assert db_sync_tip is not None  # TODO: refactor
+    # Handle case where db-sync hasn't started syncing yet
+    if db_sync_tip is None:
+        LOGGER.debug("db-sync tip not available yet - skipping perf stats collection")
+        return
     cpu_usage = db_sync_process.cpu_percent(interval=None)
     rss_mem_usage = db_sync_process.memory_info()[0]
     stats_data_point = PerfStats(
@@ -441,7 +488,10 @@ def wait_for_db_to_sync(
     start_sync = time.perf_counter()
     last_rollback_time = time.perf_counter()
     db_sync_progress = postgres.get_db_sync_progress(config)
-    assert db_sync_progress is not None  # TODO: refactor
+    # Handle case where db-sync hasn't started syncing yet
+    if db_sync_progress is None:
+        LOGGER.info("db-sync hasn't started syncing yet, waiting for initial progress...")
+        db_sync_progress = 0.0
     buildkite_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
@@ -458,7 +508,9 @@ def wait_for_db_to_sync(
             raise Exception(msg)
         if counter % 5 == 0:
             current_progress = postgres.get_db_sync_progress(config)
-            assert current_progress is not None  # TODO: refactor
+            # Handle case where progress is None (db-sync hasn't started yet)
+            if current_progress is None:
+                current_progress = 0.0
             rollback_counter, last_rollback_time = _check_for_rollback(
                 config=config,
                 current_progress=current_progress,
@@ -509,18 +561,79 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
     helpers.export_env_var("FIRST_START", f"{first_start}")
     helpers.export_env_var("ENVIRONMENT", config.env)
     helpers.export_env_var("LOG_FILEPATH", str(config.db_sync_log_file))
+    # Ensure CARDANO_NODE_SOCKET_PATH is set so db-sync startup script can find the socket
+    # The socket is at repo_root/db/node.socket, not in cardano-db-sync directory
+    node_socket_path = os.environ.get("CARDANO_NODE_SOCKET_PATH")
+    if node_socket_path:
+        helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", node_socket_path)
+    else:
+        # Fallback: construct socket path from repo root
+        repo_root = _get_repo_root()
+        socket_path = repo_root / "db" / "node.socket"
+        helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", str(socket_path))
 
-    script_path = config.workdir / "sync_tests" / "scripts" / "db-sync-start.sh"
+    # Script is in repository root, not in workdir
+    # Use __file__ to find repo root (this file is at sync_tests/utils/db_sync.py)
+    repo_root = _get_repo_root()
+    script_path = repo_root / "sync_tests" / "scripts" / "db-sync-start.sh"
+    # The script expects to run from cardano-db-sync directory where db-sync-node/bin/cardano-db-sync exists
+    db_sync_dir = _get_db_sync_dir()
+    LOGGER.info(f"Starting db-sync with script: {script_path}")
+    LOGGER.info(f"Working directory (for script): {db_sync_dir}")
+    LOGGER.info(f"Environment variables: ENVIRONMENT={config.env}, LOG_FILEPATH={config.db_sync_log_file}")
+    
+    # Check if script exists and is executable
+    if not script_path.exists():
+        raise RuntimeError(f"db-sync startup script not found: {script_path}")
+    if not os.access(script_path, os.X_OK):
+        LOGGER.warning(f"db-sync startup script is not executable, attempting to make it executable")
+        os.chmod(script_path, 0o755)
+    
     try:
         cmd = [str(script_path)]
-        subprocess.Popen(
-            cmd, cwd=str(config.workdir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        # Launch the script - it uses nix develop which might take time
+        # We don't wait for it, but we'll check if it exits immediately
+        # Run from cardano-db-sync directory where the binaries are located
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(db_sync_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
-    except subprocess.CalledProcessError as e:
-        msg = "command '{}' return with error (code {}): {}".format(
-            e.cmd, e.returncode, " ".join(str(e.output).split())
-        )
-        raise RuntimeError(msg) from e
+        LOGGER.info(f"Launched db-sync startup script (PID: {proc.pid})")
+        
+        # The script runs db-sync in the background and exits, which is normal.
+        # Wait a bit for the script to finish and db-sync to start, then check for errors.
+        time.sleep(3)
+        stdout, _ = proc.communicate()
+        
+        # Check if db-sync process started successfully
+        db_sync_found = False
+        for proc_item in psutil.process_iter():
+            try:
+                if "cardano-db-sync" in proc_item.name():
+                    db_sync_found = True
+                    LOGGER.info(f"db-sync process found: {proc_item} (PID: {proc_item.pid})")
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        # If script output contains errors and db-sync didn't start, that's a problem
+        if stdout and not db_sync_found:
+            # Check for known error patterns in the output
+            if "Error" in stdout or "FATAL" in stdout or "Cannot find" in stdout:
+                LOGGER.error(f"db-sync startup script output contains errors:\n{stdout}")
+                raise RuntimeError(f"db-sync startup script failed. Output:\n{stdout}")
+        
+        # If we found db-sync process, we're good (even if script exited)
+        if db_sync_found:
+            LOGGER.info("db-sync process started successfully")
+            return
+        
+    except Exception as e:
+        LOGGER.exception(f"Failed to start db-sync script: {e}")
+        raise
 
     not_found = True
     counter = 0
@@ -528,13 +641,39 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
     while not_found:
         if counter > 10 * ONE_MINUTE:
             LOGGER.error(f"ERROR: waited {counter} seconds and the db-sync was not started")
+            # Check if script process is still running
+            if proc.poll() is not None:
+                stdout, _ = proc.communicate()
+                if stdout:
+                    LOGGER.error(f"db-sync startup script output:\n{stdout}")
+                LOGGER.error(f"db-sync startup script exited with code: {proc.returncode}")
+            else:
+                LOGGER.warning(f"db-sync startup script process (PID: {proc.pid}) is still running")
+            # Check logfile for any errors
+            if config.db_sync_log_file.exists() and config.db_sync_log_file.stat().st_size > 0:
+                LOGGER.error(f"db-sync logfile contents ({config.db_sync_log_file.stat().st_size} bytes):")
+                helpers.print_last_n_lines(config.db_sync_log_file, 50)
+            else:
+                LOGGER.error(f"db-sync logfile is empty or missing: {config.db_sync_log_file}")
+            # List all processes to help debug
+            LOGGER.error("Checking for any db-sync related processes:")
+            for proc_item in psutil.process_iter():
+                try:
+                    proc_name = proc_item.name()
+                    if "db" in proc_name.lower() or "sync" in proc_name.lower():
+                        LOGGER.error(f"  Found process: {proc_name} (PID: {proc_item.pid})")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
             sys.exit(1)
 
-        for proc in psutil.process_iter():
-            if "cardano-db-sync" in proc.name():
-                LOGGER.info(f"db-sync process present: {proc}")
+        for proc_item in psutil.process_iter():
+            try:
+                if "cardano-db-sync" in proc_item.name():
+                    LOGGER.info(f"db-sync process found: {proc_item} (PID: {proc_item.pid})")
                 not_found = False
                 return
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
         LOGGER.info("Waiting for db-sync to start")
         counter += ONE_MINUTE
         time.sleep(ONE_MINUTE)

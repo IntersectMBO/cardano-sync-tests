@@ -16,7 +16,10 @@ if [ "${2:-""}" = "-k" ]; then
   # try to kill whatever is listening on postgres port
   listening_pid="$(lsof -i:"$PGPORT" -t || echo "")"
   if [ -n "$listening_pid" ]; then
-    kill "$listening_pid"
+    if ! kill "$listening_pid"; then
+      echo "Warning: failed to kill PID $listening_pid on port $PGPORT." >&2
+      echo "Another postgres may be running. Stop it or set PGPORT to a free port." >&2
+    fi
   fi
 
   rm -rf "$POSTGRES_DIR/data"
@@ -35,3 +38,9 @@ sleep 5
 cat "$POSTGRES_DIR/postgres.log"
 echo
 ps -fp "$PSQL_PID"
+
+if grep -E -q "could not bind IPv4 address|could not create any TCP/IP sockets" "$POSTGRES_DIR/postgres.log"; then
+  echo "Postgres failed to start: port $PGPORT is already in use." >&2
+  echo "Stop the system postgres or export PGPORT=<free_port> before running tests." >&2
+  exit 1
+fi

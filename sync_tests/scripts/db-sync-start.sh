@@ -1,14 +1,34 @@
-#! /usr/bin/env -S nix develop --accept-flake-config .#postgres -i -k LOG_FILEPATH -k ENVIRONMENT -k DB_SYNC_START_ARGS -k POSTGRES_DIR -k PGUSER -k PGPORT -k FIRST_START -c bash
+#! /usr/bin/env bash
 # shellcheck shell=bash
+# Note: Removed nix develop wrapper - db-sync binary is already built and available
+# The script now runs directly without nix develop, which was failing because .#postgres devShell doesn't exist
 
-
-cd cardano-db-sync
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT/cardano-db-sync"
 export PGPASSFILE="config/pgpass-$ENVIRONMENT"
 
 if [[ $FIRST_START == "True" ]]; then
     cd config
-    wget -O "$ENVIRONMENT-db-config.json https://book.play.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json"
-    sed -i "s/NodeConfigFile.*/NodeConfigFile\": \"..\/..\/cardano-node\/$ENVIRONMENT-config.json\",/g" "$ENVIRONMENT-db-config.json"
+    wget -O "$ENVIRONMENT-db-config.json" "https://book.world.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json"
+    # The sync-tests harness starts the node in the workdir and uses `config.json` at repo root.
+    # Prefer that layout, but keep fallback for the older `cardano-node/<env>-config.json` layout.
+    # The sync-tests harness starts the node in the workdir and uses `config.json` at repo root.
+    # From cardano-db-sync/config, we need to go up two levels to reach the repo root.
+    if [[ -f "../../config.json" ]]; then
+        # Use absolute path to avoid any relative path resolution issues
+        # Try readlink -f first, fallback to realpath or manual resolution
+        if command -v readlink >/dev/null 2>&1; then
+            ABS_CONFIG_PATH=$(readlink -f "../../config.json" 2>/dev/null || realpath "../../config.json" 2>/dev/null || echo "$(cd ../.. && pwd)/config.json")
+        else
+            ABS_CONFIG_PATH="$(cd ../.. && pwd)/config.json"
+        fi
+        # Match the exact pattern in the JSON file and replace it
+        sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"$ABS_CONFIG_PATH\"|g" "$ENVIRONMENT-db-config.json"
+    else
+        # Fallback to older layout
+        sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"..\\/..\\/cardano-node\\/$ENVIRONMENT-config.json\"|g" "$ENVIRONMENT-db-config.json"
+    fi
     cd ..
 fi
 
@@ -18,4 +38,39 @@ cat /dev/null > "$LOG_FILEPATH"
 # set abort on first error flag and start db-sync
 export DbSyncAbortOnPanic=1
 # shellcheck disable=SC2086
-PGPASSFILE="$PGPASSFILE" db-sync-node/bin/cardano-db-sync --config "config/$ENVIRONMENT-db-config.json" --socket-path ../cardano-node/db/node.socket --schema-dir schema/ --state-dir "ledger-state/$ENVIRONMENT" ${DB_SYNC_START_ARGS} >> $"LOG_FILEPATH" &
+# Resolve socket path to absolute path to avoid relative path resolution issues
+# First, check if CARDANO_NODE_SOCKET_PATH is set (preferred method - always use if set)
+if [[ -n "${CARDANO_NODE_SOCKET_PATH:-}" ]]; then
+    # Use the environment variable if set (even if socket doesn't exist yet - node will create it)
+    if command -v readlink >/dev/null 2>&1; then
+        NODE_SOCKET_PATH=$(readlink -f "$CARDANO_NODE_SOCKET_PATH" 2>/dev/null || realpath "$CARDANO_NODE_SOCKET_PATH" 2>/dev/null || echo "$CARDANO_NODE_SOCKET_PATH")
+    else
+        NODE_SOCKET_PATH="$CARDANO_NODE_SOCKET_PATH"
+    fi
+# Otherwise, search for the socket in common locations
+elif [[ -f "../test_workdir/db/node.socket" ]] || [[ -S "../test_workdir/db/node.socket" ]]; then
+    # Node is in test_workdir (from cardano-db-sync, go up one level, then test_workdir/db/node.socket)
+    if command -v readlink >/dev/null 2>&1; then
+        NODE_SOCKET_PATH=$(readlink -f "../test_workdir/db/node.socket" 2>/dev/null || realpath "../test_workdir/db/node.socket" 2>/dev/null || echo "$(cd .. && pwd)/test_workdir/db/node.socket")
+    else
+        NODE_SOCKET_PATH="$(cd .. && pwd)/test_workdir/db/node.socket"
+    fi
+elif [[ -f "../db/node.socket" ]] || [[ -S "../db/node.socket" ]]; then
+    # Node is in workdir (from cardano-db-sync, go up one level to workdir, then db/node.socket)
+    if command -v readlink >/dev/null 2>&1; then
+        NODE_SOCKET_PATH=$(readlink -f "../db/node.socket" 2>/dev/null || realpath "../db/node.socket" 2>/dev/null || echo "$(cd .. && pwd)/db/node.socket")
+    else
+        NODE_SOCKET_PATH="$(cd .. && pwd)/db/node.socket"
+    fi
+elif [[ -f "../cardano-node/db/node.socket" ]] || [[ -S "../cardano-node/db/node.socket" ]]; then
+    # Fallback to older layout
+    if command -v readlink >/dev/null 2>&1; then
+        NODE_SOCKET_PATH=$(readlink -f "../cardano-node/db/node.socket" 2>/dev/null || realpath "../cardano-node/db/node.socket" 2>/dev/null || echo "$(cd ../cardano-node && pwd)/db/node.socket")
+    else
+        NODE_SOCKET_PATH="$(cd ../cardano-node && pwd)/db/node.socket"
+    fi
+else
+    # Default to workdir/db/node.socket (absolute)
+    NODE_SOCKET_PATH="$(cd .. && pwd)/db/node.socket"
+fi
+PGPASSFILE="$PGPASSFILE" db-sync-node/bin/cardano-db-sync --config "config/$ENVIRONMENT-db-config.json" --socket-path "$NODE_SOCKET_PATH" --schema-dir schema/ --state-dir "ledger-state/$ENVIRONMENT" ${DB_SYNC_START_ARGS} >> "$LOG_FILEPATH" 2>&1 &

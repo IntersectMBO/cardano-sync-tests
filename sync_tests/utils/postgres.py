@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib as pl
@@ -30,7 +32,11 @@ def setup_postgres(config: db_sync.DbSyncConfig, pg_port: str | None = None) -> 
     helpers.export_env_var("PGUSER", config.pg_user)
     helpers.export_env_var("PGPORT", postgres_port)
 
-    script_path = config.workdir / "sync_tests" / "scripts" / "postgres-start.sh"
+    # Script is in repository root, not in workdir
+    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
+    # Go up 2 levels from this file to get repo root
+    repo_root = pl.Path(__file__).parent.parent.parent
+    script_path = repo_root / "sync_tests" / "scripts" / "postgres-start.sh"
     try:
         cmd = [str(script_path), str(config.pg_dir), "-k"]
         output = (
@@ -52,7 +58,11 @@ def create_pgpass_file(config: db_sync.DbSyncConfig) -> None:
     Args:
         config: A DbSyncConfig instance with paths and PostgreSQL settings.
     """
-    db_sync_config_dir = config.workdir / "cardano-db-sync" / "config"
+    # cardano-db-sync is cloned to repository root, not config.workdir
+    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
+    # Go up 2 levels from this file to get repo root
+    repo_root = pl.Path(__file__).parent.parent.parent
+    db_sync_config_dir = repo_root / "cardano-db-sync" / "config"
     db_sync_config_dir.mkdir(parents=True, exist_ok=True)
 
     pgpass_file = db_sync_config_dir / f"pgpass-{config.env}"
@@ -71,7 +81,11 @@ def create_database(config: db_sync.DbSyncConfig) -> None:
     Args:
         config: A DbSyncConfig instance with paths and settings.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    # cardano-db-sync is cloned to repository root, not config.workdir
+    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
+    # Go up 2 levels from this file to get repo root
+    repo_root = pl.Path(__file__).parent.parent.parent
+    db_sync_dir = repo_root / "cardano-db-sync"
     script_path = db_sync_dir / "scripts" / "postgresql-setup.sh"
 
     try:
@@ -146,29 +160,83 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
         output_string = ""
         try:
             outs, errs = p.communicate(timeout=180)
-            output_string = outs.decode("utf-8")
-            epoch_no_str, block_no_str, slot_no_str = [
-                e.strip() for e in outs.decode("utf-8").split("|")
-            ]
+            output_string = outs.decode("utf-8").strip()
+            err_msg = errs.decode("utf-8").strip() if errs else ""
+            
+            # Check for PostgreSQL connection errors
+            if err_msg and ("connection" in err_msg.lower() or "fatal" in err_msg.lower()):
+                raise RuntimeError(f"PostgreSQL connection error: {err_msg}")
+            
+            # Check if query returned empty (no blocks synced yet)
+            if not output_string or output_string.isspace():
+                if counter > 5:
+                    LOGGER.warning("No blocks found in database yet - db-sync may not have started syncing")
+                    return None
+                # Not an error yet - db-sync might just be starting up
+                LOGGER.debug(f"No blocks in database yet (attempt {counter + 1}/6), waiting...")
+                counter += 1
+                time.sleep(ONE_MINUTE)
+                # Create new subprocess for next attempt
+                p = subprocess.Popen(
+                    [
+                        "psql",
+                        "-P",
+                        "pager=off",
+                        "-qt",
+                        "-U",
+                        config.pg_user,
+                        "-d",
+                        config.pg_dbname,
+                        "-c",
+                        "select epoch_no, block_no, slot_no from block order by id desc limit 1;",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                continue
+            
+            # Parse the query result (format: epoch_no | block_no | slot_no)
+            parts = [e.strip() for e in output_string.split("|")]
+            if len(parts) != 3 or not all(parts):
+                raise ValueError(f"Unexpected query result format: {output_string}")
+            
+            epoch_no_str, block_no_str, slot_no_str = parts
             return db_sync.DbSyncTip(
                 epoch_no=int(epoch_no_str),
                 block_no=int(block_no_str),
                 slot_no=int(slot_no_str),
             )
-        except Exception:
+        except Exception as e:
             if counter > 5:
                 should_try = False
                 artifacts.emergency_upload_artifacts(config, [])
-                LOGGER.exception("Failed to get the tip")
+                LOGGER.exception("Failed to get the tip after multiple retries")
                 p.kill()
                 raise
-            err_msg = errs.decode("utf-8") if errs else "N/A"
-            LOGGER.exception(
-                f"db-sync tip data unavailable, possible postgress failure. "
-                f"Output from psql: {output_string}, errs: {err_msg}"
+            err_msg = errs.decode("utf-8").strip() if errs else str(e)
+            LOGGER.warning(
+                f"db-sync tip data unavailable (attempt {counter + 1}/6). "
+                f"Output from psql: '{output_string}', errs: '{err_msg}'. Retrying..."
             )
             counter += 1
             time.sleep(ONE_MINUTE)
+            # Create new subprocess for next attempt
+            p = subprocess.Popen(
+                [
+                    "psql",
+                    "-P",
+                    "pager=off",
+                    "-qt",
+                    "-U",
+                    config.pg_user,
+                    "-d",
+                    config.pg_dbname,
+                    "-c",
+                    "select epoch_no, block_no, slot_no from block order by id desc limit 1;",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
 
     return None
 
@@ -210,7 +278,37 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
         progress_string = ""
         try:
             outs, _errs = p.communicate(timeout=300)
-            progress_string = outs.decode("utf-8")
+            progress_string = outs.decode("utf-8").strip()
+            # Handle empty string (db-sync hasn't started syncing yet)
+            if not progress_string or progress_string.isspace():
+                if counter > 5:
+                    LOGGER.warning("No sync progress available - db-sync may not have started syncing yet")
+                    return None
+                # Not an error yet - db-sync might just be starting up
+                LOGGER.debug(f"No sync progress available yet (attempt {counter + 1}/6), waiting...")
+                counter += 1
+                time.sleep(ONE_MINUTE)
+                # Create new subprocess for next attempt
+                p = subprocess.Popen(
+                    [
+                        "psql",
+                        "-P",
+                        "pager=off",
+                        "-qt",
+                        "-U",
+                        config.pg_user,
+                        "-d",
+                        config.pg_dbname,
+                        "-c",
+                        "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
+                        "- extract (epoch from (min (time) at time zone 'UTC'))) "
+                        "/ (extract (epoch from (now () at time zone 'UTC')) "
+                        "- extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                continue
             db_sync_progress = round(float(progress_string), 2)
         except Exception:
             if counter > 5:
@@ -277,7 +375,11 @@ def export_epoch_sync_times_from_db(
     Returns:
         str: Output from psql command, or None on error.
     """
-    db_sync_dir = config.workdir / "cardano-db-sync"
+    # cardano-db-sync is cloned to repository root, not config.workdir
+    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
+    # Go up 2 levels from this file to get repo root
+    repo_root = pl.Path(__file__).parent.parent.parent
+    db_sync_dir = repo_root / "cardano-db-sync"
     output_file = pl.Path(file).resolve() if not isinstance(file, Path) else file.resolve()
     try:
         p = subprocess.Popen(
