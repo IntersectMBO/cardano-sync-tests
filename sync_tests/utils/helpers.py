@@ -167,7 +167,6 @@ def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
         json.dump(data, json_file, indent=2)
 
 
-
 def make_executable(path: pl.Path) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
@@ -191,6 +190,7 @@ def manage_process(proc_name: str, action: str) -> psutil.Process:
                 msg = "Action must be 'get' or 'terminate'"
                 raise ValueError(msg)
     return None
+
 
 # utility functions from db sync
 def export_env_var(name: str, value: tp.Any) -> None:

@@ -530,9 +530,7 @@ def wait_for_shelley_era(
     Raises:
         exceptions.SyncError: If the target era is not reached within timeout.
     """
-    LOGGER.info(
-        f"Waiting for node to reach at least {min_era} era before starting db-sync"
-    )
+    LOGGER.info(f"Waiting for node to reach at least {min_era} era before starting db-sync")
     start_time = time.perf_counter()
     timeout_seconds = timeout_minutes * 60
     count = 0
@@ -829,9 +827,7 @@ def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") ->
         helpers.execute_command(
             "nix build -v .#cardano-node -o cardano-node-bin", cwd=node_repo_dir
         )
-        helpers.execute_command(
-            "nix build -v .#cardano-cli -o cardano-cli-bin", cwd=node_repo_dir
-        )
+        helpers.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin", cwd=node_repo_dir)
         ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     elif build_tool == "cabal":

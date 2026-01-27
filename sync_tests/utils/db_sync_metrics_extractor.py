@@ -100,9 +100,7 @@ def get_db_sync_data_from_logs(log_file: Path) -> dict[str, tp.Any]:
     last_timestamp: datetime.datetime | None = None
 
     # Regex patterns
-    timestamp_pattern = re.compile(
-        r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{2}) UTC\]"
-    )
+    timestamp_pattern = re.compile(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{2}) UTC\]")
     block_insert_pattern = re.compile(
         r"Insert (Alonzo|Babbage|Conway|Byron|Shelley|Mary|Allegra) "
         r"Block: epoch (\d+), slot (\d+), block (\d+)"
@@ -151,9 +149,7 @@ def get_db_sync_data_from_logs(log_file: Path) -> dict[str, tp.Any]:
 
                 if current_epoch not in epoch_timings:
                     start_time = (
-                        current_epoch_start_time.isoformat()
-                        if current_epoch_start_time
-                        else None
+                        current_epoch_start_time.isoformat() if current_epoch_start_time else None
                     )
                     epoch_timings[current_epoch] = {
                         "start_time": start_time,
@@ -295,16 +291,17 @@ def get_db_sync_data_from_logs(log_file: Path) -> dict[str, tp.Any]:
     for epoch_no, timing_info in epoch_timings.items():
         if epoch_no not in epoch_details:
             epoch_details[epoch_no] = {}
-        epoch_details[epoch_no].update({
-            "start_time": timing_info.get("start_time"),
-            "end_time": timing_info.get("end_time"),
-            "duration_sec": timing_info.get("duration_sec"),
-            "blocks_count": timing_info.get("blocks_count", 0),
-        })
+        epoch_details[epoch_no].update(
+            {
+                "start_time": timing_info.get("start_time"),
+                "end_time": timing_info.get("end_time"),
+                "duration_sec": timing_info.get("duration_sec"),
+                "blocks_count": timing_info.get("blocks_count", 0),
+            }
+        )
 
     return {
         "epoch_timings": epoch_timings,
         "block_insertions": block_insertions,
         "epoch_details": epoch_details,
     }
-

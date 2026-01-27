@@ -69,4 +69,3 @@ def create_sync_stats_chart(config: db_sync.DbSyncConfig) -> None:
     ax_perf.plot(times, rss_mem_usage)
     chart_path = db_sync_dir / config.chart_name
     fig.savefig(chart_path)
-

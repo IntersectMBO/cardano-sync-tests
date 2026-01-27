@@ -39,9 +39,7 @@ def are_rollbacks_present_in_logs(log_file: str | pl.Path) -> bool:
 def check_db_sync_logs(log_file: str | pl.Path = DB_SYNC_LOG_FILE) -> None:
     """Search for error indicators in the database synchronization logs and logs the results."""
     LOGGER.info("Checking DB sync logs for errors, rollbacks, and other potential issues.")
-    if is_string_present_in_file(
-        file_to_check=log_file, search_string="db-sync-node:Error"
-    ):
+    if is_string_present_in_file(file_to_check=log_file, search_string="db-sync-node:Error"):
         LOGGER.warning(f"Errors present in {log_file}")
 
     if are_rollbacks_present_in_logs(log_file=log_file):

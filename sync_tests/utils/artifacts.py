@@ -8,7 +8,6 @@ from pathlib import Path
 
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
-from sync_tests.utils import postgres
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,8 +59,7 @@ def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None
             LOGGER.info(f"Saved artifact locally to {local_path} (no Buildkite available).")
         else:
             LOGGER.info(
-                f"Artifact already in target location: {local_path} "
-                "(no Buildkite available)."
+                f"Artifact already in target location: {local_path} (no Buildkite available)."
             )
     else:
         LOGGER.warning(
@@ -113,7 +111,7 @@ def emergency_upload_artifacts(config: db_sync.DbSyncConfig, perf_stats: list[di
         perf_stats: A list of performance statistics dictionaries.
     """
     helpers.write_json_to_file(config.perf_stats_file, perf_stats)
-    postgres.export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
+    db_sync.export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
 
     helpers.zip_file(config.perf_stats_archive_name, config.perf_stats_file)
     helpers.zip_file(config.sync_data_archive_name, config.epoch_sync_times_file)
@@ -127,4 +125,3 @@ def emergency_upload_artifacts(config: db_sync.DbSyncConfig, perf_stats: list[di
 
     helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
     helpers.manage_process(proc_name="cardano-node", action="terminate")
-

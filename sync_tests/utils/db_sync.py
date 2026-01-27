@@ -137,7 +137,7 @@ def create_db_sync_config(
             subprocess.run(["whoami"], stdout=subprocess.PIPE, check=False)
             .stdout.decode("utf-8")
             .strip()
-)
+        )
 
     if pg_dbname is None:
         pg_dbname = env
@@ -704,4 +704,43 @@ def get_file_size(file: str) -> int:
 # Re-export functions from other modules for backward compatibility
 
 
+def export_epoch_sync_times_from_db(
+    config: DbSyncConfig, file: str | Path, snapshot_epoch_no: int | str = 0
+) -> str | None:
+    """Export epoch synchronization times from the database to a file."""
+    return postgres.export_epoch_sync_times_from_db(config, file, snapshot_epoch_no)
 
+
+def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
+    """Set up PostgreSQL for use with Cardano DB Sync."""
+    postgres.setup_postgres(config, pg_port=pg_port)
+
+
+def create_pgpass_file(config: DbSyncConfig) -> None:
+    """Create a PostgreSQL password file for the specified environment."""
+    postgres.create_pgpass_file(config)
+
+
+def create_database(config: DbSyncConfig) -> None:
+    """Set up the PostgreSQL database for use with Cardano DB Sync."""
+    postgres.create_database(config)
+
+
+def list_databases(config: DbSyncConfig) -> None:
+    """List all databases available in the PostgreSQL instance."""
+    postgres.list_databases(config)
+
+
+def get_db_sync_tip(config: DbSyncConfig) -> DbSyncTip | None:
+    """Retrieve the tip information from the Cardano DB Sync database."""
+    return postgres.get_db_sync_tip(config)
+
+
+def get_db_sync_progress(config: DbSyncConfig) -> float | None:
+    """Calculate the synchronization progress of the Cardano DB Sync database."""
+    return postgres.get_db_sync_progress(config)
+
+
+def get_total_db_size(config: DbSyncConfig) -> str:
+    """Fetch the total size of the Cardano DB Sync database."""
+    return postgres.get_total_db_size(config)

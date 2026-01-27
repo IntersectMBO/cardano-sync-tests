@@ -18,7 +18,6 @@ from sync_tests.utils import helpers as utils
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-
 def main() -> int:
     if utils.get_arg_value(args=args, key="run_only_sync_test", default=False) == "true":
         print("--- Skipping Db sync snapshot creation")

@@ -182,10 +182,7 @@ def run_test(args: argparse.Namespace) -> None:
 
     LOGGER.info("--- Summary & Artifacts uploading")
     db_sync_progress = db_sync.get_db_sync_progress(config)
-    LOGGER.info(
-        f"FINAL db-sync progress: {db_sync_progress}, "
-        f"epoch: {epoch_no}, block: {block_no}"
-    )
+    LOGGER.info(f"FINAL db-sync progress: {db_sync_progress}, epoch: {epoch_no}, block: {block_no}")
     LOGGER.info(f"TOTAL sync time [sec]: {db_full_sync_time_in_secs}")
 
     # shut down services

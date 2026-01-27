@@ -298,4 +298,3 @@ def create_db_sync_snapshot_stage_2(config: db_sync.DbSyncConfig, stage_2_cmd: s
         raise RuntimeError(msg) from e
     else:
         return snapshot_path
-

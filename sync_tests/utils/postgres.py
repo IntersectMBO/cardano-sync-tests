@@ -11,6 +11,7 @@ from pathlib import Path
 import psycopg2
 from assertpy import assert_that
 
+from sync_tests.utils import artifacts
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
 
@@ -135,8 +136,6 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
         db_sync.DbSyncTip: Tip information with epoch, block, and slot numbers.
         None: If tip data cannot be retrieved after retries.
     """
-    from sync_tests.utils import artifacts  # noqa: PLC0415
-
     p = subprocess.Popen(
         [
             "psql",
@@ -176,9 +175,7 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
                     )
                     return None
                 # Not an error yet - db-sync might just be starting up
-                LOGGER.debug(
-                    "No blocks in database yet (attempt %s/6), waiting...", counter + 1
-                )
+                LOGGER.debug("No blocks in database yet (attempt %s/6), waiting...", counter + 1)
                 counter += 1
                 time.sleep(ONE_MINUTE)
                 # Create new subprocess for next attempt
@@ -256,8 +253,6 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
     Returns:
         float: Sync progress percentage, or None if unavailable.
     """
-    from sync_tests.utils import artifacts  # noqa: PLC0415
-
     progress_query = (
         "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
         "- extract (epoch from (min (time) at time zone 'UTC'))) "
@@ -542,4 +537,3 @@ def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exc
         helpers.print_message(f"Warning - validation errors: {e}\n\n", type="warn")
         return e
     return None
-
