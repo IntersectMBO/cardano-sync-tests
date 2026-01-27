@@ -1,13 +1,14 @@
 import argparse
 import datetime
 import logging
-import shutil
 import os
 import pathlib as pl
+import shutil
 import sys
 import typing as tp
 from collections import OrderedDict
 
+from sync_tests.utils import artifacts
 from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import db_sync_metrics_extractor
@@ -43,7 +44,7 @@ def run_test(args: argparse.Namespace) -> None:
 
     # Create DbSyncConfig for all db-sync operations - use test_workdir for logs
     config = db_sync.create_db_sync_config(env=env, workdir=test_workdir)
-    
+
     # Create and clear db-sync logfile early so it's ready when db-sync starts
     # This ensures the logfile exists and is empty before db-sync setup begins
     config.db_sync_log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -66,13 +67,15 @@ def run_test(args: argparse.Namespace) -> None:
     LOGGER.info(f"DB sync branch: {db_branch}")
 
     # `helpers.get_arg_value` can return None if the arg is missing; keep this as a string.
-    db_start_options = helpers.get_arg_value(args=args, key="db_sync_start_options", default="") or ""
+    db_start_options = (
+        helpers.get_arg_value(args=args, key="db_sync_start_options", default="") or ""
+    )
 
     db_sync_revision = helpers.get_arg_value(args=args, key="db_sync_revision")
     db_sync_rev_with_opts = db_sync_revision + (" " + db_start_options if db_start_options else "")
     LOGGER.info(f"DB sync revision: {db_sync_rev_with_opts}")
 
-    # cardano-node setup - keep in root_dir (original behavior) to maintain socket path compatibility
+    # cardano-node setup keeps root_dir to preserve socket path compatibility.
     conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
     bin_dir = pl.Path("bin")
@@ -138,7 +141,7 @@ def run_test(args: argparse.Namespace) -> None:
         timeout_minutes=shelley_timeout_minutes,
         min_era="shelley",
     )
-    
+
     # Show node sync progress after reaching Shelley
     LOGGER.info("--- Node sync progress after reaching Shelley era")
     tip = node.get_current_tip(env=env)
@@ -156,12 +159,12 @@ def run_test(args: argparse.Namespace) -> None:
     helpers.execute_command("nix build -v .#cardano-db-sync -o db-sync-node", cwd=db_sync_dir)
     helpers.execute_command("nix build -v .#cardano-db-tool -o db-sync-tool", cwd=db_sync_dir)
     db_sync.copy_db_sync_executables(config, build_method="nix")
-    
+
     # Ensure db-sync logfile is still clear before starting (in case anything wrote to it)
     with open(config.db_sync_log_file, "w") as f:
         f.write("")
     LOGGER.info(f"Re-cleared db-sync logfile before startup: {config.db_sync_log_file}")
-    LOGGER.info(f"--- Db sync startup")
+    LOGGER.info("--- Db sync startup")
     LOGGER.info(f"Node logs: {node_logfile_path}")
     LOGGER.info(f"DB sync logs: {config.db_sync_log_file}")
     LOGGER.info(f"Both logfiles are in test_workdir: {test_workdir}")
@@ -231,7 +234,9 @@ def run_test(args: argparse.Namespace) -> None:
     # Extract log-based metrics from db-sync log file
     LOGGER.info("Extracting log-based metrics from db-sync log file...")
     try:
-        db_sync_log_metrics = db_sync_metrics_extractor.get_db_sync_data_from_logs(config.db_sync_log_file)
+        db_sync_log_metrics = db_sync_metrics_extractor.get_db_sync_data_from_logs(
+            config.db_sync_log_file
+        )
         test_data["epoch_timings"] = db_sync_log_metrics["epoch_timings"]
         test_data["block_insertion_rates"] = db_sync_log_metrics["block_insertions"]
         test_data["epoch_details"] = db_sync_log_metrics["epoch_details"]
@@ -248,16 +253,15 @@ def run_test(args: argparse.Namespace) -> None:
     # Only create zip files if Build kite is available (for CI artifact upload)
     # Use actual node logfile path (timestamped in test_workdir)
     node_logfile_path = config.node_log_file
-    
+
     # Check if we're in CI (Buildkite available)
-    from sync_tests.utils import artifacts
     is_ci = artifacts.is_ci_environment()
-    
+
     if is_ci:
         # In CI: create zip files for Buildkite upload
         artifact_dir = root_dir
         LOGGER.info("CI environment detected - creating zip files for Buildkite upload")
-    
+
         node_archive_path = artifact_dir / config.node_archive_name
         db_sync_archive_path = artifact_dir / config.db_sync_archive_name
         helpers.zip_file(str(node_archive_path), node_logfile_path)

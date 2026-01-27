@@ -1,6 +1,5 @@
 import argparse
 import datetime
-import json
 import logging
 import os
 import sys
@@ -11,8 +10,9 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-import sync_tests.utils.db_sync as utils_db_sync
-import sync_tests.utils.helpers as utils
+from sync_tests.utils import aws_db
+from sync_tests.utils import db_sync as utils_db_sync
+from sync_tests.utils import helpers as utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -54,10 +54,6 @@ def main() -> int:
     )
     print(f"DB sync GH version: {db_sync_version_from_gh_action}")
 
-    # cardano-db-sync is cloned to repository root, not config.workdir
-    # Use __file__ to find repo root (this file is at sync_tests/tests/snapshot_creation.py)
-    repo_root = Path(__file__).parent.parent.parent
-    db_sync_dir = repo_root / "cardano-db-sync"
     start_snapshot_creation = time.perf_counter()
     stage_2_cmd = utils_db_sync.create_db_sync_snapshot_stage_1(config)
     print(f"Stage 2 command: {stage_2_cmd}")
@@ -107,7 +103,7 @@ def main() -> int:
         utils_db_sync.upload_artifact(snapshot_file)
 
     # send results to aws database
-    upload_snapshot_creation_results_to_aws(config)
+    aws_db.upload_snapshot_creation_results_to_aws(config, test_results_file)
 
     print("--- Summary: snapshot creation details")
     snapsot_creation_outcome = test_data["stage_2_result"]

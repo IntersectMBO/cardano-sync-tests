@@ -75,7 +75,7 @@ def create_pgpass_file(config: db_sync.DbSyncConfig) -> None:
     os.chmod(pgpass_file, 0o600)
 
 
-def create_database(config: db_sync.DbSyncConfig) -> None:
+def create_database(_config: db_sync.DbSyncConfig) -> None:
     """Set up the PostgreSQL database for use with Cardano DB Sync.
 
     Args:
@@ -135,7 +135,7 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
         db_sync.DbSyncTip: Tip information with epoch, block, and slot numbers.
         None: If tip data cannot be retrieved after retries.
     """
-    from sync_tests.utils import artifacts
+    from sync_tests.utils import artifacts  # noqa: PLC0415
 
     p = subprocess.Popen(
         [
@@ -162,18 +162,23 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
             outs, errs = p.communicate(timeout=180)
             output_string = outs.decode("utf-8").strip()
             err_msg = errs.decode("utf-8").strip() if errs else ""
-            
+
             # Check for PostgreSQL connection errors
             if err_msg and ("connection" in err_msg.lower() or "fatal" in err_msg.lower()):
-                raise RuntimeError(f"PostgreSQL connection error: {err_msg}")
-            
+                msg = f"PostgreSQL connection error: {err_msg}"
+                raise RuntimeError(msg)
+
             # Check if query returned empty (no blocks synced yet)
             if not output_string or output_string.isspace():
                 if counter > 5:
-                    LOGGER.warning("No blocks found in database yet - db-sync may not have started syncing")
+                    LOGGER.warning(
+                        "No blocks found in database yet - db-sync may not have started syncing"
+                    )
                     return None
                 # Not an error yet - db-sync might just be starting up
-                LOGGER.debug(f"No blocks in database yet (attempt {counter + 1}/6), waiting...")
+                LOGGER.debug(
+                    "No blocks in database yet (attempt %s/6), waiting...", counter + 1
+                )
                 counter += 1
                 time.sleep(ONE_MINUTE)
                 # Create new subprocess for next attempt
@@ -194,12 +199,13 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
                     stderr=subprocess.PIPE,
                 )
                 continue
-            
+
             # Parse the query result (format: epoch_no | block_no | slot_no)
             parts = [e.strip() for e in output_string.split("|")]
             if len(parts) != 3 or not all(parts):
-                raise ValueError(f"Unexpected query result format: {output_string}")
-            
+                msg = f"Unexpected query result format: {output_string}"
+                raise ValueError(msg)
+
             epoch_no_str, block_no_str, slot_no_str = parts
             return db_sync.DbSyncTip(
                 epoch_no=int(epoch_no_str),
@@ -250,7 +256,14 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
     Returns:
         float: Sync progress percentage, or None if unavailable.
     """
-    from sync_tests.utils import artifacts
+    from sync_tests.utils import artifacts  # noqa: PLC0415
+
+    progress_query = (
+        "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
+        "- extract (epoch from (min (time) at time zone 'UTC'))) "
+        "/ (extract (epoch from (now () at time zone 'UTC')) "
+        "- extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;"
+    )
 
     p = subprocess.Popen(
         [
@@ -263,10 +276,7 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
             "-d",
             config.pg_dbname,
             "-c",
-            "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
-            "- extract (epoch from (min (time) at time zone 'UTC'))) "
-            "/ (extract (epoch from (now () at time zone 'UTC')) "
-            "- extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;",
+            progress_query,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -282,10 +292,15 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
             # Handle empty string (db-sync hasn't started syncing yet)
             if not progress_string or progress_string.isspace():
                 if counter > 5:
-                    LOGGER.warning("No sync progress available - db-sync may not have started syncing yet")
+                    LOGGER.warning(
+                        "No sync progress available - db-sync may not have started syncing yet"
+                    )
                     return None
                 # Not an error yet - db-sync might just be starting up
-                LOGGER.debug(f"No sync progress available yet (attempt {counter + 1}/6), waiting...")
+                LOGGER.debug(
+                    "No sync progress available yet (attempt %s/6), waiting...",
+                    counter + 1,
+                )
                 counter += 1
                 time.sleep(ONE_MINUTE)
                 # Create new subprocess for next attempt
@@ -300,10 +315,7 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
                         "-d",
                         config.pg_dbname,
                         "-c",
-                        "select 100 * (extract (epoch from (max (time) at time zone 'UTC')) "
-                        "- extract (epoch from (min (time) at time zone 'UTC'))) "
-                        "/ (extract (epoch from (now () at time zone 'UTC')) "
-                        "- extract (epoch from (min (time) at time zone 'UTC'))) as sync_percent from block ;",
+                        progress_query,
                     ],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

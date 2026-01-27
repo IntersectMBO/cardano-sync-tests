@@ -41,7 +41,9 @@ def run_test(args: argparse.Namespace) -> int:
     test_workdir = root_dir / "test_workdir"
     test_workdir.mkdir(exist_ok=True)
     config = db_sync.create_db_sync_config(env=env, workdir=test_workdir, pg_port="5433")
-    test_results_file = config.workdir / f"db_sync_{config.env}_local_snapshot_restoration_test_results.json"
+    test_results_file = (
+        config.workdir / f"db_sync_{config.env}_local_snapshot_restoration_test_results.json"
+    )
     db_sync_restoration_archive = f"cardano_db_sync_{config.env}_restoration.zip"
 
     node_pr = helpers.get_arg_value(args=args, key="node_pr", default="")
@@ -70,10 +72,6 @@ def run_test(args: argparse.Namespace) -> int:
     db_sync.create_database(config)
 
     # snapshot restoration
-    # cardano-db-sync is cloned to repository root, not config.workdir
-    # Use __file__ to find repo root (this file is at sync_tests/tests/local_snapshot_restoration.py)
-    repo_root = pl.Path(__file__).parent.parent.parent
-    db_sync_dir = repo_root / "cardano-db-sync"
     snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
     LOGGER.info("--- Local snapshot restoration - restoration process")
     LOGGER.info(f"Snapshot file from key-store: {snapshot_file}")
@@ -100,7 +98,7 @@ def run_test(args: argparse.Namespace) -> int:
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
     node.get_node_files(node_rev=node_version_from_gh_action, base_dir=base_dir)
-    cli_version, cli_git_rev = node.get_node_version()
+    _cli_version, _cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
     # TODO: change the default to P2P when full P2P will be supported on Mainnet
     node.get_node_config_files(
@@ -131,7 +129,7 @@ def run_test(args: argparse.Namespace) -> int:
     helpers.print_last_n_lines(config.db_sync_log_file, 20)
     time.sleep(60)  # ONE_MINUTE = 60
     db_sync_version, db_sync_git_rev = db_sync.get_db_sync_version(config)
-    db_full_sync_time_in_secs, perf_stats = db_sync.wait_for_db_to_sync(config)
+    db_full_sync_time_in_secs, _perf_stats = db_sync.wait_for_db_to_sync(config)
     end_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
     wait_time = 20
     LOGGER.info(f"Waiting for additional {wait_time} minutes to continue syncying...")

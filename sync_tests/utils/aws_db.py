@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import pathlib as pl
 import sys
 import typing as tp
@@ -273,6 +274,35 @@ def upload_snapshot_restoration_results_to_aws(
     LOGGER.info(f"  ==== Write test values into the {test_summary_table} DB table:")
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
+
+    if not insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
+        LOGGER.error(f"Failed to insert values into {test_summary_table}")
+        sys.exit(1)
+
+
+def upload_snapshot_creation_results_to_aws(
+    config: db_sync.DbSyncConfig, test_results_file: pl.Path
+) -> None:
+    """Upload snapshot creation test results to AWS database.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
+    LOGGER.info("--- Write snapshot creation results to AWS Database")
+    with open(test_results_file) as json_file:
+        snapshot_creation_results_dict = json.load(json_file)
+
+    test_summary_table = config.env + "_db_sync_snapshot_creation"
+    last_identifier = get_last_identifier(test_summary_table)
+    assert last_identifier is not None  # TODO: refactor
+    test_id = str(int(last_identifier.split("_")[-1]) + 1)
+    identifier = config.env + "_snapshot_creation_" + test_id
+    snapshot_creation_results_dict["identifier"] = identifier
+
+    LOGGER.info(f"  ==== Write test values into the {test_summary_table} DB table:")
+    col_to_insert = list(snapshot_creation_results_dict.keys())
+    val_to_insert = list(snapshot_creation_results_dict.values())
 
     if not insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
         LOGGER.error(f"Failed to insert values into {test_summary_table}")

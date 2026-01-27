@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import subprocess
 import typing as tp
@@ -9,6 +8,7 @@ from pathlib import Path
 
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
+from sync_tests.utils import postgres
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,10 +16,15 @@ LOGGER = logging.getLogger(__name__)
 def is_buildkite_available() -> bool:
     """Check if Buildkite agent is available."""
     try:
-        subprocess.run(["buildkite-agent", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=5)
-        return True
+        subprocess.run(
+            ["buildkite-agent", "--version"],
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return False
+    return True
 
 
 def is_ci_environment() -> bool:
@@ -29,7 +34,7 @@ def is_ci_environment() -> bool:
 
 def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None = None) -> None:
     """Upload an artifact to Buildkite if available, otherwise save locally.
-    
+
     Args:
         file: Path to the file to upload.
         destination: Upload destination ("buildkite", "auto"). Defaults to "auto".
@@ -39,11 +44,12 @@ def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None
         try:
             cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
             subprocess.run(cmd, check=True)
-            LOGGER.info(f"Uploaded {file} to Buildkite.")
-            return
         except (subprocess.CalledProcessError, FileNotFoundError):
             LOGGER.warning("Buildkite agent not available.")
-    
+        else:
+            LOGGER.info(f"Uploaded {file} to Buildkite.")
+            return
+
     # If Buildkite not available and local_dir is provided, save locally
     if local_dir:
         local_path = Path(local_dir) / Path(file).name
@@ -53,7 +59,10 @@ def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None
             shutil.copy2(file, local_path)
             LOGGER.info(f"Saved artifact locally to {local_path} (no Buildkite available).")
         else:
-            LOGGER.info(f"Artifact already in target location: {local_path} (no Buildkite available).")
+            LOGGER.info(
+                f"Artifact already in target location: {local_path} "
+                "(no Buildkite available)."
+            )
     else:
         LOGGER.warning(
             "Skipping artifact upload (no Buildkite agent available). "
@@ -103,8 +112,6 @@ def emergency_upload_artifacts(config: db_sync.DbSyncConfig, perf_stats: list[di
         config: A DbSyncConfig instance with paths and settings.
         perf_stats: A list of performance statistics dictionaries.
     """
-    from sync_tests.utils import postgres
-
     helpers.write_json_to_file(config.perf_stats_file, perf_stats)
     postgres.export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
 

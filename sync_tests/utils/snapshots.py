@@ -21,10 +21,10 @@ LOGGER = logging.getLogger(__name__)
 
 def _get_repo_root() -> Path:
     """Get the repository root directory.
-    
+
     This function uses __file__ to reliably find the repo root regardless of
     the current working directory (which may change due to os.chdir() calls).
-    
+
     Returns:
         Path: The repository root directory.
     """
@@ -35,9 +35,9 @@ def _get_repo_root() -> Path:
 
 def _get_db_sync_dir() -> Path:
     """Get the cardano-db-sync directory path.
-    
+
     The cardano-db-sync repository is cloned to the repo root, not to test_workdir.
-    
+
     Returns:
         Path: The cardano-db-sync directory path.
     """

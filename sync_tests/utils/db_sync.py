@@ -12,11 +12,9 @@ from pathlib import Path
 import psutil
 
 from sync_tests.utils import artifacts
-from sync_tests.utils import charts
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 from sync_tests.utils import postgres
-from sync_tests.utils import snapshots
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,10 +23,10 @@ ONE_MINUTE = 60
 
 def _get_repo_root() -> Path:
     """Get the repository root directory.
-    
+
     This function uses __file__ to reliably find the repo root regardless of
     the current working directory (which may change due to os.chdir() calls).
-    
+
     Returns:
         Path: The repository root directory.
     """
@@ -39,9 +37,9 @@ def _get_repo_root() -> Path:
 
 def _get_db_sync_dir() -> Path:
     """Get the cardano-db-sync directory path.
-    
+
     The cardano-db-sync repository is cloned to the repo root, not to test_workdir.
-    
+
     Returns:
         Path: The cardano-db-sync directory path.
     """
@@ -250,7 +248,7 @@ def set_node_socket_path_env_var_in_cwd(config: DbSyncConfig) -> None:
     helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", str(socket_path))
 
 
-def copy_db_sync_executables(config: DbSyncConfig, build_method: str = "nix") -> None:
+def copy_db_sync_executables(_config: DbSyncConfig, build_method: str = "nix") -> None:
     """Copy the Cardano DB Sync executables built with the specified build method.
 
     Args:
@@ -321,7 +319,7 @@ def copy_db_sync_executables(config: DbSyncConfig, build_method: str = "nix") ->
         raise RuntimeError(msg) from e
 
 
-def get_db_sync_version(config: DbSyncConfig) -> tuple[str, str]:
+def get_db_sync_version(_config: DbSyncConfig) -> tuple[str, str]:
     """Retrieve the version of the Cardano DB Sync executable.
 
     Args:
@@ -576,19 +574,24 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
     # Use __file__ to find repo root (this file is at sync_tests/utils/db_sync.py)
     repo_root = _get_repo_root()
     script_path = repo_root / "sync_tests" / "scripts" / "db-sync-start.sh"
-    # The script expects to run from cardano-db-sync directory where db-sync-node/bin/cardano-db-sync exists
+    # The script expects to run from cardano-db-sync where db-sync-node/bin/cardano-db-sync exists.
     db_sync_dir = _get_db_sync_dir()
     LOGGER.info(f"Starting db-sync with script: {script_path}")
     LOGGER.info(f"Working directory (for script): {db_sync_dir}")
-    LOGGER.info(f"Environment variables: ENVIRONMENT={config.env}, LOG_FILEPATH={config.db_sync_log_file}")
-    
+    LOGGER.info(
+        "Environment variables: ENVIRONMENT=%s, LOG_FILEPATH=%s",
+        config.env,
+        config.db_sync_log_file,
+    )
+
     # Check if script exists and is executable
     if not script_path.exists():
-        raise RuntimeError(f"db-sync startup script not found: {script_path}")
+        msg = f"db-sync startup script not found: {script_path}"
+        raise RuntimeError(msg)
     if not os.access(script_path, os.X_OK):
-        LOGGER.warning(f"db-sync startup script is not executable, attempting to make it executable")
+        LOGGER.warning("db-sync startup script is not executable, attempting to make it executable")
         os.chmod(script_path, 0o755)
-    
+
     try:
         cmd = [str(script_path)]
         # Launch the script - it uses nix develop which might take time
@@ -602,12 +605,12 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
             text=True,
         )
         LOGGER.info(f"Launched db-sync startup script (PID: {proc.pid})")
-        
+
         # The script runs db-sync in the background and exits, which is normal.
         # Wait a bit for the script to finish and db-sync to start, then check for errors.
         time.sleep(3)
         stdout, _ = proc.communicate()
-        
+
         # Check if db-sync process started successfully
         db_sync_found = False
         for proc_item in psutil.process_iter():
@@ -618,21 +621,24 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
                     break
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-        
+
         # If script output contains errors and db-sync didn't start, that's a problem
-        if stdout and not db_sync_found:
-            # Check for known error patterns in the output
-            if "Error" in stdout or "FATAL" in stdout or "Cannot find" in stdout:
-                LOGGER.error(f"db-sync startup script output contains errors:\n{stdout}")
-                raise RuntimeError(f"db-sync startup script failed. Output:\n{stdout}")
-        
+        if (
+            stdout
+            and not db_sync_found
+            and ("Error" in stdout or "FATAL" in stdout or "Cannot find" in stdout)
+        ):
+            LOGGER.error("db-sync startup script output contains errors:\n%s", stdout)
+            msg = f"db-sync startup script failed. Output:\n{stdout}"
+            raise RuntimeError(msg)
+
         # If we found db-sync process, we're good (even if script exited)
         if db_sync_found:
             LOGGER.info("db-sync process started successfully")
             return
-        
-    except Exception as e:
-        LOGGER.exception(f"Failed to start db-sync script: {e}")
+
+    except Exception:
+        LOGGER.exception("Failed to start db-sync script")
         raise
 
     not_found = True
@@ -651,7 +657,10 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
                 LOGGER.warning(f"db-sync startup script process (PID: {proc.pid}) is still running")
             # Check logfile for any errors
             if config.db_sync_log_file.exists() and config.db_sync_log_file.stat().st_size > 0:
-                LOGGER.error(f"db-sync logfile contents ({config.db_sync_log_file.stat().st_size} bytes):")
+                LOGGER.error(
+                    "db-sync logfile contents (%s bytes):",
+                    config.db_sync_log_file.stat().st_size,
+                )
                 helpers.print_last_n_lines(config.db_sync_log_file, 50)
             else:
                 LOGGER.error(f"db-sync logfile is empty or missing: {config.db_sync_log_file}")
@@ -669,11 +678,17 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
         for proc_item in psutil.process_iter():
             try:
                 if "cardano-db-sync" in proc_item.name():
-                    LOGGER.info(f"db-sync process found: {proc_item} (PID: {proc_item.pid})")
-                not_found = False
-                return
+                    LOGGER.info(
+                        "db-sync process found: %s (PID: %s)",
+                        proc_item,
+                        proc_item.pid,
+                    )
+                    not_found = False
+                    break
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        if not not_found:
+            return
         LOGGER.info("Waiting for db-sync to start")
         counter += ONE_MINUTE
         time.sleep(ONE_MINUTE)
@@ -687,36 +702,6 @@ def get_file_size(file: str) -> int:
 
 
 # Re-export functions from other modules for backward compatibility
-from sync_tests.utils.artifacts import (
-    create_node_database_archive,
-    emergency_upload_artifacts,
-    get_buildkite_meta_data,
-    set_buildkite_meta_data,
-    upload_artifact,
-)
 
-from sync_tests.utils.charts import create_sync_stats_chart
 
-from sync_tests.utils.postgres import (
-    check_database,
-    create_database,
-    create_pgpass_file,
-    export_epoch_sync_times_from_db,
-    get_db_indexes,
-    get_db_schema,
-    get_db_sync_progress,
-    get_db_sync_tip,
-    get_total_db_size,
-    list_databases,
-    setup_postgres,
-)
 
-from sync_tests.utils.snapshots import (
-    create_db_sync_snapshot_stage_1,
-    create_db_sync_snapshot_stage_2,
-    download_and_extract_node_snapshot,
-    download_db_sync_snapshot,
-    get_latest_snapshot_url,
-    get_snapshot_sha_256_sum,
-    restore_db_sync_from_snapshot,
-)

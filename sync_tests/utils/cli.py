@@ -60,7 +60,12 @@ def cli(
     env = os.environ.copy()
     for __ in range(3):
         retcode = None
-        with subprocess.Popen(cli_args_strs, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env) as p:
+        with subprocess.Popen(
+            cli_args_strs,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        ) as p:
             stdout, stderr = p.communicate(timeout=timeout)
             retcode = p.returncode
 

@@ -86,10 +86,10 @@ def run_test(args: argparse.Namespace) -> None:
     helpers.print_last_n_lines(config.node_log_file, 80)
     (
         sync_time_seconds,
-        last_slot_no,
-        latest_chunk_no,
-        era_details_dict,
-        epoch_details_dict,
+        _last_slot_no,
+        _latest_chunk_no,
+        _era_details_dict,
+        _epoch_details_dict,
     ) = node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
     # cardano-db sync setup

@@ -10,7 +10,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def update_mainnet_tx_count_per_epoch() -> None:
-    _env, table_name = "mainnet", "mainnet_tx_count"
     current_epoch_no = blockfrost_utils.get_current_epoch_no()
     assert current_epoch_no is not None  # TODO: refactor
     print(f"current_epoch_no   : {current_epoch_no}")
@@ -35,8 +34,6 @@ def update_mainnet_tx_count_per_epoch() -> None:
             new_row = pd.DataFrame([new_row_data])
             df = pd.concat([df, new_row], ignore_index=True)
 
-        col_to_insert = list(df.columns)
-        val_to_insert = df.values.tolist()
         output_file = "mainnet_tx_count_updates.json"
         df.to_json(output_file, orient="records", indent=2)
         print(f"Wrote tx count updates to {output_file}")
