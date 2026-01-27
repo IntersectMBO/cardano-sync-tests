@@ -95,14 +95,12 @@ def run_test(args: argparse.Namespace) -> None:
     # cardano-db sync setup
     LOGGER.info("--- Db sync setup")
     db_sync_dir = gitpython.clone_repo("cardano-db-sync", db_branch)
-    current_dir = os.getcwd()
-    os.chdir(db_sync_dir)
     db_sync.setup_postgres(config)
     db_sync.create_pgpass_file(config)
     db_sync.create_database(config)
     db_sync.list_databases(config)
-    helpers.execute_command("nix build .#cardano-db-sync -o db-sync-node")
-    helpers.execute_command("nix build .#cardano-db-tool -o db-sync-tool")
+    helpers.execute_command("nix build .#cardano-db-sync -o db-sync-node", cwd=db_sync_dir)
+    helpers.execute_command("nix build .#cardano-db-tool -o db-sync-tool", cwd=db_sync_dir)
     LOGGER.info("--- Download and check db-sync snapshot")
     db_sync.copy_db_sync_executables(config, build_method="nix")
     snapshot_name = db_sync.download_db_sync_snapshot(snapshot_url)
@@ -142,7 +140,6 @@ def run_test(args: argparse.Namespace) -> None:
     epoch_no = db_sync_tip.epoch_no
     block_no = db_sync_tip.block_no
     slot_no = db_sync_tip.slot_no
-    os.chdir(current_dir)
 
     # shut down services
     LOGGER.info("--- Stop cardano services")

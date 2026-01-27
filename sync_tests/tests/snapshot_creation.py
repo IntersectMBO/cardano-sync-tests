@@ -58,13 +58,10 @@ def main() -> int:
     # Use __file__ to find repo root (this file is at sync_tests/tests/snapshot_creation.py)
     repo_root = Path(__file__).parent.parent.parent
     db_sync_dir = repo_root / "cardano-db-sync"
-    current_dir = os.getcwd()
-    os.chdir(db_sync_dir)
     start_snapshot_creation = time.perf_counter()
     stage_2_cmd = utils_db_sync.create_db_sync_snapshot_stage_1(config)
     print(f"Stage 2 command: {stage_2_cmd}")
     stage_2_result = utils_db_sync.create_db_sync_snapshot_stage_2(config, stage_2_cmd)
-    os.chdir(current_dir)
     print(f"Stage 2 result: {stage_2_result}")
     end_snapshot_creation = time.perf_counter()
 

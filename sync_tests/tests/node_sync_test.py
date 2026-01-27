@@ -20,7 +20,6 @@ def run_test(args: argparse.Namespace) -> None:
     """Run the node sync test."""
     workdir: pl.Path = args.workdir
     workdir.mkdir(exist_ok=True)
-    os.chdir(workdir)
 
     print("--- Test data information", flush=True)
     start_test_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
@@ -213,14 +212,13 @@ def run_test(args: argparse.Namespace) -> None:
     }
 
     print("--- AWS DB upload removed; saving sync data locally")
-    with open("sync_data_payload.json", "w") as payload_file:
+    with open(workdir / "sync_data_payload.json", "w") as payload_file:
         json.dump(sync_data, payload_file, indent=2)
 
     print("--- Write tests results to file")
-    current_directory = pl.Path.cwd()
-    print(f"current_directory: {current_directory}")
-    print(f"Write the test values to the {current_directory / RESULTS_FILE_NAME} file")
-    with open(RESULTS_FILE_NAME, "w") as results_file:
+    print(f"workdir: {workdir}")
+    print(f"Write the test values to the {workdir / RESULTS_FILE_NAME} file")
+    with open(workdir / RESULTS_FILE_NAME, "w") as results_file:
         json.dump(test_values_dict, results_file, indent=2)
 
 

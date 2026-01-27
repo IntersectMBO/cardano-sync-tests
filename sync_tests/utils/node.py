@@ -778,13 +778,13 @@ def copy_cabal_cli_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
 
 
 def ln_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
-    (dst_dir / "cardano-node").unlink(missing_ok=True)  # Remove existing file if any
+    (dst_dir / "cardano-node").unlink(missing_ok=True)
     os.symlink(
         repo_dir / "cardano-node-bin" / "bin" / "cardano-node",
         dst_dir / "cardano-node",
     )
 
-    (dst_dir / "cardano-cli").unlink(missing_ok=True)  # Remove existing file if any
+    (dst_dir / "cardano-cli").unlink(missing_ok=True)
     os.symlink(
         repo_dir / "cardano-cli-bin" / "bin" / "cardano-cli",
         dst_dir / "cardano-cli",
@@ -818,45 +818,47 @@ def get_cli_repo(cli_rev: str, base_dir: pl.Path) -> git.Repo:
 
 
 def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") -> git.Repo:
-    bin_directory = pl.Path("bin")
+    bin_directory = base_dir / "bin"
 
     node_repo = get_node_repo(node_rev=node_rev, base_dir=base_dir)
     node_repo_dir = pl.Path(node_repo.git_dir)
 
     if build_tool == "nix":
-        with helpers.temporary_chdir(path=node_repo_dir):
-            pl.Path("cardano-node-bin").unlink(missing_ok=True)
-            pl.Path("cardano-cli-bin").unlink(missing_ok=True)
-            helpers.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
-            helpers.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
+        (node_repo_dir / "cardano-node-bin").unlink(missing_ok=True)
+        (node_repo_dir / "cardano-cli-bin").unlink(missing_ok=True)
+        helpers.execute_command(
+            "nix build -v .#cardano-node -o cardano-node-bin", cwd=node_repo_dir
+        )
+        helpers.execute_command(
+            "nix build -v .#cardano-cli -o cardano-cli-bin", cwd=node_repo_dir
+        )
         ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     elif build_tool == "cabal":
-        cabal_local_file = pl.Path("sync_tests") / "cabal.project.local"
+        repo_root = pl.Path(__file__).parent.parent.parent
+        cabal_local_file = repo_root / "sync_tests" / "cabal.project.local"
         cli_repo = get_cli_repo(cli_rev="main", base_dir=base_dir)
         cli_repo_dir = pl.Path(cli_repo.git_dir)
 
         # Build cli
-        with helpers.temporary_chdir(path=cli_repo_dir):
-            shutil.copy2(cabal_local_file, cli_repo_dir)
-            LOGGER.debug(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
-            shutil.rmtree("dist-newstyle", ignore_errors=True)
-            for line in fileinput.input("cabal.project", inplace=True):
-                LOGGER.debug(line.replace("tests: True", "tests: False"))
-            helpers.execute_command("cabal update")
-            helpers.execute_command("cabal build cardano-cli")
+        shutil.copy2(cabal_local_file, cli_repo_dir)
+        LOGGER.debug(f" - listdir cli_repo_dir: {os.listdir(cli_repo_dir)}")
+        shutil.rmtree(cli_repo_dir / "dist-newstyle", ignore_errors=True)
+        for line in fileinput.input(str(cli_repo_dir / "cabal.project"), inplace=True):
+            LOGGER.debug(line.replace("tests: True", "tests: False"))
+        helpers.execute_command("cabal update", cwd=cli_repo_dir)
+        helpers.execute_command("cabal build cardano-cli", cwd=cli_repo_dir)
         copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_dir=bin_directory)
         gitpython.git_checkout(cli_repo, "cabal.project")
 
         # Build node
-        with helpers.temporary_chdir(path=node_repo_dir):
-            shutil.copy2(cabal_local_file, node_repo_dir)
-            LOGGER.debug(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
-            shutil.rmtree("dist-newstyle", ignore_errors=True)
-            for line in fileinput.input("cabal.project", inplace=True):
-                LOGGER.debug(line.replace("tests: True", "tests: False"))
-            helpers.execute_command("cabal update")
-            helpers.execute_command("cabal build cardano-node")
+        shutil.copy2(cabal_local_file, node_repo_dir)
+        LOGGER.debug(f" - listdir node_repo_dir: {os.listdir(node_repo_dir)}")
+        shutil.rmtree(node_repo_dir / "dist-newstyle", ignore_errors=True)
+        for line in fileinput.input(str(node_repo_dir / "cabal.project"), inplace=True):
+            LOGGER.debug(line.replace("tests: True", "tests: False"))
+        helpers.execute_command("cabal update", cwd=node_repo_dir)
+        helpers.execute_command("cabal build cardano-node", cwd=node_repo_dir)
         copy_cabal_node_exe(repo_dir=node_repo_dir, dst_dir=bin_directory)
         gitpython.git_checkout(node_repo, "cabal.project")
 
@@ -882,7 +884,7 @@ def config_sync(
     LOGGER.info("Get the cardano-node and cardano-cli files")
     start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
 
-    bin_dir = pl.Path("bin")
+    bin_dir = base_dir / "bin"
     bin_dir.mkdir(exist_ok=True)
     add_to_path(path=bin_dir)
 

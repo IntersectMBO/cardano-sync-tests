@@ -1,5 +1,4 @@
 import argparse
-import contextlib
 import hashlib
 import json
 import logging
@@ -112,13 +111,18 @@ def get_arg_value(args: argparse.Namespace, key: str, default: tp.Any | None = N
     return value
 
 
-def execute_command(command: str) -> None:
+def execute_command(command: str, cwd: str | pl.Path | None = None) -> None:
     """Execute a shell command and logs its output and errors."""
-    LOGGER.info(f"--- Execute command {command}")
+    cwd_display = f" (cwd={cwd})" if cwd else ""
+    LOGGER.info(f"--- Execute command {command}{cwd_display}")
     try:
         cmd = shlex.split(command)
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            cwd=str(cwd) if cwd else None,
         )
         outs, errors = process.communicate(timeout=3600)
 
@@ -162,15 +166,6 @@ def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
     with open(file_path, "w") as json_file:
         json.dump(data, json_file, indent=2)
 
-
-@contextlib.contextmanager
-def temporary_chdir(path: pl.Path) -> tp.Iterator[None]:
-    prev_cwd = pl.Path.cwd()  # Store the current working directory
-    try:
-        os.chdir(path)  # Change to the new directory
-        yield
-    finally:
-        os.chdir(prev_cwd)  # Restore the original working directory
 
 
 def make_executable(path: pl.Path) -> None:

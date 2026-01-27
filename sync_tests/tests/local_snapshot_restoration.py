@@ -74,8 +74,6 @@ def run_test(args: argparse.Namespace) -> int:
     # Use __file__ to find repo root (this file is at sync_tests/tests/local_snapshot_restoration.py)
     repo_root = pl.Path(__file__).parent.parent.parent
     db_sync_dir = repo_root / "cardano-db-sync"
-    current_dir = os.getcwd()
-    os.chdir(db_sync_dir)
     snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
     LOGGER.info("--- Local snapshot restoration - restoration process")
     LOGGER.info(f"Snapshot file from key-store: {snapshot_file}")
@@ -86,7 +84,6 @@ def run_test(args: argparse.Namespace) -> int:
     snapshot_epoch_no = db_sync_tip.epoch_no
     snapshot_block_no = db_sync_tip.block_no
     snapshot_slot_no = db_sync_tip.slot_no
-    os.chdir(current_dir)
     LOGGER.info(
         f"db-sync tip after snapshot restoration: epoch: {snapshot_epoch_no}, "
         f"block: {snapshot_block_no}, slot: {snapshot_slot_no}"
@@ -129,7 +126,6 @@ def run_test(args: argparse.Namespace) -> int:
 
     # start db-sync
     LOGGER.info("--- Db-sync startup after snapshot restoration")
-    os.chdir(db_sync_dir)
     helpers.export_env_var("PGPORT", "5433")
     db_sync.start_db_sync(config, start_args="", first_start="False")
     helpers.print_last_n_lines(config.db_sync_log_file, 20)
@@ -147,7 +143,6 @@ def run_test(args: argparse.Namespace) -> int:
     slot_no = db_sync_tip.slot_no
     LOGGER.info(f"Test end time: {end_test_time}")
     helpers.print_last_n_lines(config.db_sync_log_file, 60)
-    os.chdir(current_dir)
 
     # stop cardano-node and cardano-db-sync
     LOGGER.info("--- Stop cardano services")
