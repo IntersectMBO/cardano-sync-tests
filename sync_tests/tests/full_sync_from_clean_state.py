@@ -92,7 +92,7 @@ def run_test(args: argparse.Namespace) -> None:
     node.get_node_files(node_rev=node_revision, base_dir=base_dir)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
-    # TODO: change the default to P2P when full P2P will be supported on Mainnet
+    # Use non-P2P topology by default; enable P2P when fully supported on mainnet.
     node.get_node_config_files(
         env=env,
         node_topology_type="",
@@ -174,7 +174,9 @@ def run_test(args: argparse.Namespace) -> None:
     db_full_sync_time_in_secs, perf_stats = db_sync.wait_for_db_to_sync(config)
     LOGGER.info("--- Skipping DB schema and indexes validation (not required)")
     db_sync_tip = db_sync.get_db_sync_tip(config)
-    assert db_sync_tip is not None  # TODO: refactor
+    if db_sync_tip is None:
+        msg = "db-sync tip unavailable after full sync; check db-sync logs for errors"
+        raise RuntimeError(msg)
     epoch_no = db_sync_tip.epoch_no
     block_no = db_sync_tip.block_no
     slot_no = db_sync_tip.slot_no

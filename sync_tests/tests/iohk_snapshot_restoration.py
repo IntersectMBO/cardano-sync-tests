@@ -72,7 +72,7 @@ def run_test(args: argparse.Namespace) -> None:
     node.get_node_files(node_rev=node_version_from_gh_action, base_dir=base_dir)
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
-    # TODO: change the default to P2P when full P2P will be supported on Mainnet
+    # Use non-P2P topology by default; enable P2P when fully supported on mainnet.
     node.get_node_config_files(
         env=env,
         node_topology_type="",
@@ -115,7 +115,9 @@ def run_test(args: argparse.Namespace) -> None:
     )
     LOGGER.info(f"Restoration time [sec]: {restoration_time}")
     db_sync_tip = db_sync.get_db_sync_tip(config)
-    assert db_sync_tip is not None  # TODO: refactor
+    if db_sync_tip is None:
+        msg = "db-sync tip unavailable after snapshot restoration"
+        raise RuntimeError(msg)
     snapshot_epoch_no = db_sync_tip.epoch_no
     snapshot_block_no = db_sync_tip.block_no
     snapshot_slot_no = db_sync_tip.slot_no
@@ -136,7 +138,9 @@ def run_test(args: argparse.Namespace) -> None:
     time.sleep(wait_time * 60)  # ONE_MINUTE = 60
     helpers.print_last_n_lines(config.db_sync_log_file, 60)
     db_sync_tip = db_sync.get_db_sync_tip(config)
-    assert db_sync_tip is not None  # TODO: refactor
+    if db_sync_tip is None:
+        msg = "db-sync tip unavailable after post-restore sync wait"
+        raise RuntimeError(msg)
     epoch_no = db_sync_tip.epoch_no
     block_no = db_sync_tip.block_no
     slot_no = db_sync_tip.slot_no

@@ -184,7 +184,9 @@ def upload_sync_results_to_aws(config: db_sync.DbSyncConfig, test_results_file: 
 
     test_summary_table = config.env + "_db_sync"
     last_identifier = get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
+    if last_identifier is None:
+        LOGGER.error(f"Failed to fetch last identifier from {test_summary_table}")
+        sys.exit(1)
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
     identifier = config.env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
@@ -266,7 +268,9 @@ def upload_snapshot_restoration_results_to_aws(
 
     test_summary_table = config.env + "_db_sync_snapshot_restoration"
     last_identifier = get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
+    if last_identifier is None:
+        LOGGER.error(f"Failed to fetch last identifier from {test_summary_table}")
+        sys.exit(1)
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
     identifier = config.env + "_restoration_" + test_id
     sync_test_results_dict["identifier"] = identifier
@@ -295,7 +299,9 @@ def upload_snapshot_creation_results_to_aws(
 
     test_summary_table = config.env + "_db_sync_snapshot_creation"
     last_identifier = get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
+    if last_identifier is None:
+        LOGGER.error(f"Failed to fetch last identifier from {test_summary_table}")
+        sys.exit(1)
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
     identifier = config.env + "_snapshot_creation_" + test_id
     snapshot_creation_results_dict["identifier"] = identifier

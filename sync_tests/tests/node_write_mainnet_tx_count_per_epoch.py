@@ -11,7 +11,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 def update_mainnet_tx_count_per_epoch() -> None:
     current_epoch_no = blockfrost_utils.get_current_epoch_no()
-    assert current_epoch_no is not None  # TODO: refactor
+    if current_epoch_no is None:
+        msg = "Failed to fetch current epoch number from Blockfrost"
+        raise RuntimeError(msg)
     print(f"current_epoch_no   : {current_epoch_no}")
 
     # AWS DB uploads removed; use local storage instead.
