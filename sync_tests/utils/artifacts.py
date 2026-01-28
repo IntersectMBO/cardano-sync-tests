@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
+from sync_tests.utils.db_sync_config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def upload_artifact(file: str, destination: str = "auto", local_dir: Path | None
         )
 
 
-def create_node_database_archive(config: db_sync.DbSyncConfig) -> Path:
+def create_node_database_archive(config: DbSyncConfig) -> Path:
     """Create an archive of the Cardano node database for the specified environment.
 
     Args:
@@ -103,7 +104,7 @@ def get_buildkite_meta_data(key: str) -> str:
     return outs.decode("utf-8").strip()
 
 
-def emergency_upload_artifacts(config: db_sync.DbSyncConfig, perf_stats: list[dict]) -> None:
+def emergency_upload_artifacts(config: DbSyncConfig, perf_stats: list[dict]) -> None:
     """Upload artifacts for debugging in case of an emergency.
 
     Args:

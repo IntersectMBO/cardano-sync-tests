@@ -6,23 +6,46 @@ import shutil
 import subprocess
 import sys
 import time
+import typing as tp
 from datetime import timedelta
 from pathlib import Path
 
 import psutil
 
 from sync_tests.utils import artifacts
+from sync_tests.utils import db_sync_config
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 from sync_tests.utils import postgres
+from sync_tests.utils import snapshots
 from sync_tests.utils.db_sync_config import DbSyncConfig
 from sync_tests.utils.db_sync_config import DbSyncTip
 from sync_tests.utils.db_sync_config import PerfStats
-from sync_tests.utils.db_sync_config import create_db_sync_config
 
 LOGGER = logging.getLogger(__name__)
 
 ONE_MINUTE = 60
+
+
+def create_db_sync_config(
+    env: str,
+    workdir: Path | None = None,
+    pg_host: str = "localhost",
+    pg_port: str = "5432",
+    pg_user: str | None = None,
+    pg_dbname: str | None = None,
+    pg_dir: Path | None = None,
+) -> DbSyncConfig:
+    """Create a DbSyncConfig instance from environment variables and parameters."""
+    return db_sync_config.create_db_sync_config(
+        env=env,
+        workdir=workdir,
+        pg_host=pg_host,
+        pg_port=pg_port,
+        pg_user=pg_user,
+        pg_dbname=pg_dbname,
+        pg_dir=pg_dir,
+    )
 
 
 def _get_repo_root() -> Path:
@@ -601,3 +624,55 @@ def get_db_sync_progress(config: DbSyncConfig) -> float | None:
 def get_total_db_size(config: DbSyncConfig) -> str:
     """Fetch the total size of the Cardano DB Sync database."""
     return postgres.get_total_db_size(config)
+
+
+def upload_artifact(file: str, destination: str = "auto") -> None:
+    """Upload an artifact using the configured artifact handler."""
+    artifacts.upload_artifact(file, destination=destination)
+
+
+def create_node_database_archive(config: DbSyncConfig) -> Path:
+    """Create an archive of the node database for the specified environment."""
+    return artifacts.create_node_database_archive(config)
+
+
+def set_buildkite_meta_data(key: str, value: tp.Any) -> None:
+    """Set Buildkite metadata for the specified key and value."""
+    artifacts.set_buildkite_meta_data(key, value)
+
+
+def get_buildkite_meta_data(key: str) -> str:
+    """Retrieve Buildkite metadata for the specified key."""
+    return artifacts.get_buildkite_meta_data(key)
+
+
+def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
+    """Retrieve the latest snapshot URL for the specified environment."""
+    return snapshots.get_latest_snapshot_url(env, args)
+
+
+def download_db_sync_snapshot(snapshot_url: str) -> str:
+    """Download a db-sync snapshot from the specified URL."""
+    return snapshots.download_db_sync_snapshot(snapshot_url)
+
+
+def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
+    """Retrieve the expected sha256 checksum for the specified snapshot."""
+    return snapshots.get_snapshot_sha_256_sum(snapshot_url)
+
+
+def restore_db_sync_from_snapshot(
+    config: DbSyncConfig, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
+) -> float:
+    """Restore db-sync from a snapshot file."""
+    return snapshots.restore_db_sync_from_snapshot(config, snapshot_file, remove_ledger_dir)
+
+
+def create_db_sync_snapshot_stage_1(config: DbSyncConfig) -> str:
+    """Create a db-sync snapshot (stage 1) and return the snapshot file path."""
+    return snapshots.create_db_sync_snapshot_stage_1(config)
+
+
+def create_db_sync_snapshot_stage_2(config: DbSyncConfig, stage_2_cmd: str) -> str:
+    """Create a db-sync snapshot (stage 2) and return the snapshot file path."""
+    return snapshots.create_db_sync_snapshot_stage_2(config, stage_2_cmd)

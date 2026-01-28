@@ -5,31 +5,33 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$REPO_ROOT/cardano-db-sync"
+cd "$REPO_ROOT/cardano-db-sync" || exit 1
 export PGPASSFILE="config/pgpass-$ENVIRONMENT"
+CONFIG_DIR="$REPO_ROOT/cardano-db-sync/config"
 
 if [[ $FIRST_START == "True" ]]; then
-    cd config
-    wget -O "$ENVIRONMENT-db-config.json" "https://book.world.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json"
-    # The sync-tests harness starts the node in the workdir and uses `config.json` at repo root.
-    # Prefer that layout, but keep fallback for the older `cardano-node/<env>-config.json` layout.
-    # The sync-tests harness starts the node in the workdir and uses `config.json` at repo root.
-    # From cardano-db-sync/config, we need to go up two levels to reach the repo root.
-    if [[ -f "../../config.json" ]]; then
-        # Use absolute path to avoid any relative path resolution issues
-        # Try readlink -f first, fallback to realpath or manual resolution
-        if command -v readlink >/dev/null 2>&1; then
-            ABS_CONFIG_PATH=$(readlink -f "../../config.json" 2>/dev/null || realpath "../../config.json" 2>/dev/null || echo "$(cd ../.. && pwd)/config.json")
+    (
+        cd "$CONFIG_DIR" || exit 1
+        wget -O "$ENVIRONMENT-db-config.json" "https://book.world.dev.cardano.org/environments/$ENVIRONMENT/db-sync-config.json"
+        # The sync-tests harness starts the node in the workdir and uses `config.json` at repo root.
+        # Prefer that layout, but keep fallback for the older `cardano-node/<env>-config.json` layout.
+        if [[ -f "$REPO_ROOT/config.json" ]]; then
+            # Use absolute path to avoid any relative path resolution issues
+            # Try readlink -f first, fallback to realpath or manual resolution
+            if command -v readlink >/dev/null 2>&1; then
+                ABS_CONFIG_PATH=$(
+                    readlink -f "$REPO_ROOT/config.json" 2>/dev/null || realpath "$REPO_ROOT/config.json" 2>/dev/null || echo "$REPO_ROOT/config.json"
+                )
+            else
+                ABS_CONFIG_PATH="$REPO_ROOT/config.json"
+            fi
+            # Match the exact pattern in the JSON file and replace it
+            sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"$ABS_CONFIG_PATH\"|g" "$ENVIRONMENT-db-config.json"
         else
-            ABS_CONFIG_PATH="$(cd ../.. && pwd)/config.json"
+            # Fallback to older layout
+            sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"..\\/..\\/cardano-node\\/$ENVIRONMENT-config.json\"|g" "$ENVIRONMENT-db-config.json"
         fi
-        # Match the exact pattern in the JSON file and replace it
-        sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"$ABS_CONFIG_PATH\"|g" "$ENVIRONMENT-db-config.json"
-    else
-        # Fallback to older layout
-        sed -i "s|\"NodeConfigFile\": \".*\"|\"NodeConfigFile\": \"..\\/..\\/cardano-node\\/$ENVIRONMENT-config.json\"|g" "$ENVIRONMENT-db-config.json"
-    fi
-    cd ..
+    )
 fi
 
 # clear log file
@@ -37,7 +39,6 @@ cat /dev/null > "$LOG_FILEPATH"
 
 # set abort on first error flag and start db-sync
 export DbSyncAbortOnPanic=1
-# shellcheck disable=SC2086
 # Resolve socket path to absolute path to avoid relative path resolution issues
 # First, check if CARDANO_NODE_SOCKET_PATH is set (preferred method - always use if set)
 if [[ -n "${CARDANO_NODE_SOCKET_PATH:-}" ]]; then
@@ -73,4 +74,8 @@ else
     # Default to workdir/db/node.socket (absolute)
     NODE_SOCKET_PATH="$(cd .. && pwd)/db/node.socket"
 fi
-PGPASSFILE="$PGPASSFILE" db-sync-node/bin/cardano-db-sync --config "config/$ENVIRONMENT-db-config.json" --socket-path "$NODE_SOCKET_PATH" --schema-dir schema/ --state-dir "ledger-state/$ENVIRONMENT" ${DB_SYNC_START_ARGS} >> "$LOG_FILEPATH" 2>&1 &
+db_sync_args=()
+if [[ -n "${DB_SYNC_START_ARGS:-}" ]]; then
+    read -r -a db_sync_args <<< "$DB_SYNC_START_ARGS"
+fi
+PGPASSFILE="$PGPASSFILE" db-sync-node/bin/cardano-db-sync --config "config/$ENVIRONMENT-db-config.json" --socket-path "$NODE_SOCKET_PATH" --schema-dir schema/ --state-dir "ledger-state/$ENVIRONMENT" "${db_sync_args[@]}" >> "$LOG_FILEPATH" 2>&1 &

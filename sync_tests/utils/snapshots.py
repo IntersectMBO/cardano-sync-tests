@@ -13,8 +13,8 @@ from pathlib import Path
 import requests
 import xmltodict
 
-from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
+from sync_tests.utils.db_sync_config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
 
 
 def restore_db_sync_from_snapshot(
-    config: db_sync.DbSyncConfig, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
+    config: DbSyncConfig, snapshot_file: str | Path, remove_ledger_dir: str = "yes"
 ) -> int:
     """Restore the Cardano DB Sync database from a snapshot.
 
@@ -215,7 +215,7 @@ def restore_db_sync_from_snapshot(
     return int(end_restoration - start_restoration)
 
 
-def create_db_sync_snapshot_stage_1(config: db_sync.DbSyncConfig) -> str:
+def create_db_sync_snapshot_stage_1(config: DbSyncConfig) -> str:
     """Perform the first stage of creating a DB Sync snapshot.
 
     Args:
@@ -254,7 +254,7 @@ def create_db_sync_snapshot_stage_1(config: db_sync.DbSyncConfig) -> str:
         return final_line_with_script_cmd
 
 
-def create_db_sync_snapshot_stage_2(config: db_sync.DbSyncConfig, stage_2_cmd: str) -> str:
+def create_db_sync_snapshot_stage_2(config: DbSyncConfig, stage_2_cmd: str) -> str:
     """Perform the second stage of creating a DB Sync snapshot.
 
     Args:

@@ -77,7 +77,7 @@ def run_test(args: argparse.Namespace) -> None:
         env=env,
         node_topology_type="",
         conf_dir=conf_dir,
-        use_genesis_mode=False,
+        disable_genesis_mode_flag=False,
     )
     node.configure_node(config_file=conf_dir / "config.json")
     node.start_node(base_dir=base_dir, node_start_arguments=())
