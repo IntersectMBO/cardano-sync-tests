@@ -6,7 +6,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from sync_tests.utils import db_sync
+from sync_tests.utils.db_sync_config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _get_db_sync_dir() -> Path:
     return _get_repo_root() / "cardano-db-sync"
 
 
-def create_sync_stats_chart(config: db_sync.DbSyncConfig) -> None:
+def create_sync_stats_chart(config: DbSyncConfig) -> None:
     """Create a chart showing sync statistics.
 
     Args:

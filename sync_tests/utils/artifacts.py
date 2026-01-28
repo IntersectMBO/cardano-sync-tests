@@ -6,9 +6,9 @@ import subprocess
 import typing as tp
 from pathlib import Path
 
-from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
 from sync_tests.utils.db_sync_config import DbSyncConfig
+from sync_tests.utils.db_sync_data import export_epoch_sync_times_from_db
 
 LOGGER = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def emergency_upload_artifacts(config: DbSyncConfig, perf_stats: list[dict]) -> 
         perf_stats: A list of performance statistics dictionaries.
     """
     helpers.write_json_to_file(config.perf_stats_file, perf_stats)
-    db_sync.export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
+    export_epoch_sync_times_from_db(config, config.epoch_sync_times_file)
 
     helpers.zip_file(config.perf_stats_archive_name, config.perf_stats_file)
     helpers.zip_file(config.sync_data_archive_name, config.epoch_sync_times_file)

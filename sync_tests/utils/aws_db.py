@@ -9,7 +9,7 @@ import typing as tp
 
 import pymysql.cursors
 
-from sync_tests.utils import db_sync
+from sync_tests.utils.db_sync_config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ def get_max_epoch(table_name: str) -> int | None:
         conn.close()
 
 
-def upload_sync_results_to_aws(config: db_sync.DbSyncConfig, test_results_file: pl.Path) -> None:
+def upload_sync_results_to_aws(config: DbSyncConfig, test_results_file: pl.Path) -> None:
     """Upload sync test results to AWS database.
 
     Args:
@@ -254,7 +254,7 @@ def upload_sync_results_to_aws(config: db_sync.DbSyncConfig, test_results_file: 
 
 
 def upload_snapshot_restoration_results_to_aws(
-    config: db_sync.DbSyncConfig, test_results_file: pl.Path
+    config: DbSyncConfig, test_results_file: pl.Path
 ) -> None:
     """Upload snapshot restoration test results to AWS database.
 
@@ -285,7 +285,7 @@ def upload_snapshot_restoration_results_to_aws(
 
 
 def upload_snapshot_creation_results_to_aws(
-    config: db_sync.DbSyncConfig, test_results_file: pl.Path
+    config: DbSyncConfig, test_results_file: pl.Path
 ) -> None:
     """Upload snapshot creation test results to AWS database.
 

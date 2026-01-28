@@ -12,15 +12,16 @@ import psycopg2
 from assertpy import assert_that
 
 from sync_tests.utils import artifacts
-from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
+from sync_tests.utils.db_sync_config import DbSyncConfig
+from sync_tests.utils.db_sync_config import DbSyncTip
 
 LOGGER = logging.getLogger(__name__)
 
 ONE_MINUTE = 60
 
 
-def setup_postgres(config: db_sync.DbSyncConfig, pg_port: str | None = None) -> None:
+def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
     """Set up PostgreSQL for use with Cardano DB Sync.
 
     Args:
@@ -53,7 +54,7 @@ def setup_postgres(config: db_sync.DbSyncConfig, pg_port: str | None = None) -> 
         raise RuntimeError(msg) from e
 
 
-def create_pgpass_file(config: db_sync.DbSyncConfig) -> None:
+def create_pgpass_file(config: DbSyncConfig) -> None:
     """Create a PostgreSQL password file for the specified environment.
 
     Args:
@@ -76,7 +77,7 @@ def create_pgpass_file(config: db_sync.DbSyncConfig) -> None:
     os.chmod(pgpass_file, 0o600)
 
 
-def create_database(_config: db_sync.DbSyncConfig) -> None:
+def create_database(_config: DbSyncConfig) -> None:
     """Set up the PostgreSQL database for use with Cardano DB Sync.
 
     Args:
@@ -107,7 +108,7 @@ def create_database(_config: db_sync.DbSyncConfig) -> None:
         raise RuntimeError(msg)
 
 
-def list_databases(config: db_sync.DbSyncConfig) -> None:
+def list_databases(config: DbSyncConfig) -> None:
     """List all databases available in the PostgreSQL instance.
 
     Args:
@@ -126,14 +127,14 @@ def list_databases(config: db_sync.DbSyncConfig) -> None:
         raise
 
 
-def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
+def get_db_sync_tip(config: DbSyncConfig) -> DbSyncTip | None:
     """Retrieve the tip information from the Cardano DB Sync database.
 
     Args:
         config: A DbSyncConfig instance with database connection settings.
 
     Returns:
-        db_sync.DbSyncTip: Tip information with epoch, block, and slot numbers.
+        DbSyncTip: Tip information with epoch, block, and slot numbers.
         None: If tip data cannot be retrieved after retries.
     """
     p = subprocess.Popen(
@@ -204,7 +205,7 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
                 raise ValueError(msg)
 
             epoch_no_str, block_no_str, slot_no_str = parts
-            return db_sync.DbSyncTip(
+            return DbSyncTip(
                 epoch_no=int(epoch_no_str),
                 block_no=int(block_no_str),
                 slot_no=int(slot_no_str),
@@ -244,7 +245,7 @@ def get_db_sync_tip(config: db_sync.DbSyncConfig) -> db_sync.DbSyncTip | None:
     return None
 
 
-def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
+def get_db_sync_progress(config: DbSyncConfig) -> float | None:
     """Calculate the synchronization progress of the Cardano DB Sync database.
 
     Args:
@@ -334,7 +335,7 @@ def get_db_sync_progress(config: db_sync.DbSyncConfig) -> float | None:
     return None
 
 
-def get_total_db_size(config: db_sync.DbSyncConfig) -> str:
+def get_total_db_size(config: DbSyncConfig) -> str:
     """Fetch the total size of the Cardano DB Sync database.
 
     Args:
@@ -369,67 +370,7 @@ def get_total_db_size(config: db_sync.DbSyncConfig) -> str:
         raise
 
 
-def export_epoch_sync_times_from_db(
-    config: db_sync.DbSyncConfig, file: str | Path, snapshot_epoch_no: int | str = 0
-) -> str | None:
-    """Export epoch synchronization times from the database to a file.
-
-    Args:
-        config: A DbSyncConfig instance with database connection settings.
-        file: Path to the output file.
-        snapshot_epoch_no: Minimum epoch number to export (defaults to 0).
-
-    Returns:
-        str: Output from psql command, or None on error.
-    """
-    # cardano-db-sync is cloned to repository root, not config.workdir
-    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
-    # Go up 2 levels from this file to get repo root
-    repo_root = pl.Path(__file__).parent.parent.parent
-    db_sync_dir = repo_root / "cardano-db-sync"
-    output_file = pl.Path(file).resolve() if not isinstance(file, Path) else file.resolve()
-    try:
-        p = subprocess.Popen(
-            [
-                "psql",
-                config.pg_dbname,
-                "-t",
-                "-c",
-                rf"\o {output_file}",
-                "-c",
-                "SELECT array_to_json(array_agg(epoch_sync_time), FALSE) FROM "
-                f"epoch_sync_time where no >= {snapshot_epoch_no};",
-            ],
-            cwd=str(db_sync_dir),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        outs, errs = p.communicate(timeout=600)
-        out = outs.decode("utf-8").strip() if outs else ""
-        err = errs.decode("utf-8").strip() if errs else ""
-        if err:
-            LOGGER.error(
-                f"Error during exporting epoch sync times from db: {err}. "
-                "Killing extraction process."
-            )
-            p.kill()
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        p.kill()
-        LOGGER.exception(
-            "Error during exporting epoch sync times from db. Killing extraction process."
-        )
-    except Exception:
-        LOGGER.exception(
-            "Error during exporting epoch sync times from db. Killing extraction process."
-        )
-        p.kill()
-    else:
-        return out
-
-    return None
-
-
-def get_db_schema(config: db_sync.DbSyncConfig) -> dict:
+def get_db_schema(config: DbSyncConfig) -> dict:
     """Retrieve the schema of the Cardano DB Sync database.
 
     Args:
@@ -475,7 +416,7 @@ def get_db_schema(config: db_sync.DbSyncConfig) -> dict:
     return db_schema
 
 
-def get_db_indexes(config: db_sync.DbSyncConfig) -> dict:
+def get_db_indexes(config: DbSyncConfig) -> dict:
     """Fetch the indexes of tables in the Cardano DB Sync database.
 
     Args:

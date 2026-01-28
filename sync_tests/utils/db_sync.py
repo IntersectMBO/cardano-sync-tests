@@ -14,6 +14,7 @@ import psutil
 
 from sync_tests.utils import artifacts
 from sync_tests.utils import db_sync_config
+from sync_tests.utils import db_sync_data
 from sync_tests.utils import helpers
 from sync_tests.utils import node
 from sync_tests.utils import postgres
@@ -588,7 +589,7 @@ def export_epoch_sync_times_from_db(
     config: DbSyncConfig, file: str | Path, snapshot_epoch_no: int | str = 0
 ) -> str | None:
     """Export epoch synchronization times from the database to a file."""
-    return postgres.export_epoch_sync_times_from_db(config, file, snapshot_epoch_no)
+    return db_sync_data.export_epoch_sync_times_from_db(config, file, snapshot_epoch_no)
 
 
 def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
