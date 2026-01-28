@@ -6,7 +6,6 @@ import pathlib as pl
 import subprocess
 import time
 import typing as tp
-from pathlib import Path
 
 import psycopg2
 from assertpy import assert_that

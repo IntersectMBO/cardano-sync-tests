@@ -151,4 +151,3 @@ def create_db_sync_config(
         db_sync_branch=db_sync_branch,
         db_sync_version=db_sync_version,
     )
-
