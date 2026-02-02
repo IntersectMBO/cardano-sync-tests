@@ -14,23 +14,14 @@ import requests
 import xmltodict
 
 from sync_tests.utils import helpers
-from sync_tests.utils.db_sync_config import DbSyncConfig
+from sync_tests.utils.db_sync.config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
 
 def _get_repo_root() -> Path:
-    """Get the repository root directory.
-
-    This function uses __file__ to reliably find the repo root regardless of
-    the current working directory (which may change due to os.chdir() calls).
-
-    Returns:
-        Path: The repository root directory.
-    """
-    # This file is at sync_tests/utils/snapshots.py
-    # Go up 2 levels to get repo root
-    return Path(__file__).parent.parent.parent
+    """Get the repository root directory."""
+    return Path(__file__).parent.parent.parent.parent
 
 
 def _get_db_sync_dir() -> Path:

@@ -3,8 +3,7 @@ import pathlib as pl
 import subprocess
 from pathlib import Path
 
-from sync_tests.utils import helpers
-from sync_tests.utils.db_sync_config import DbSyncConfig
+from sync_tests.utils.db_sync.config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ def export_epoch_sync_times_from_db(
     Returns:
         str: Output from psql command, or None on error.
     """
-    repo_root = pl.Path(__file__).parent.parent.parent
+    repo_root = pl.Path(__file__).parent.parent.parent.parent
     db_sync_dir = repo_root / "cardano-db-sync"
     output_file = pl.Path(file).resolve() if not isinstance(file, Path) else file.resolve()
     try:
@@ -56,10 +55,11 @@ def export_epoch_sync_times_from_db(
             "Error during exporting epoch sync times from db. Killing extraction process."
         )
     except Exception:
-        LOGGER.exception("Error during exporting epoch sync times from db. Killing extraction process.")
+        LOGGER.exception(
+            "Error during exporting epoch sync times from db. Killing extraction process."
+        )
         p.kill()
     else:
         return out
 
     return None
-

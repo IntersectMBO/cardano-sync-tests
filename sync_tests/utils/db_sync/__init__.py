@@ -12,16 +12,16 @@ from pathlib import Path
 
 import psutil
 
-from sync_tests.utils import artifacts
-from sync_tests.utils import db_sync_config
-from sync_tests.utils import db_sync_data
 from sync_tests.utils import helpers
 from sync_tests.utils import node
-from sync_tests.utils import postgres
-from sync_tests.utils import snapshots
-from sync_tests.utils.db_sync_config import DbSyncConfig
-from sync_tests.utils.db_sync_config import DbSyncTip
-from sync_tests.utils.db_sync_config import PerfStats
+from sync_tests.utils import artifacts
+from sync_tests.utils.db_sync import config as db_sync_config
+from sync_tests.utils.db_sync import data as db_sync_data
+from sync_tests.utils.db_sync import postgres
+from sync_tests.utils.db_sync import snapshots
+from sync_tests.utils.db_sync.config import DbSyncConfig
+from sync_tests.utils.db_sync.config import DbSyncTip
+from sync_tests.utils.db_sync.config import PerfStats
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,16 +51,8 @@ def create_db_sync_config(
 
 def _get_repo_root() -> Path:
     """Get the repository root directory.
-
-    This function uses __file__ to reliably find the repo root regardless of
-    the current working directory (which may change due to os.chdir() calls).
-
-    Returns:
-        Path: The repository root directory.
     """
-    # This file is at sync_tests/utils/db_sync.py
-    # Go up 2 levels to get repo root
-    return Path(__file__).parent.parent.parent
+    return Path(__file__).parent.parent.parent.parent
 
 
 def _get_db_sync_dir() -> Path:
@@ -451,8 +443,6 @@ def start_db_sync(config: DbSyncConfig, start_args: str = "", first_start: str =
         socket_path = repo_root / "db" / "node.socket"
         helpers.export_env_var("CARDANO_NODE_SOCKET_PATH", str(socket_path))
 
-    # Script is in repository root, not in workdir
-    # Use __file__ to find repo root (this file is at sync_tests/utils/db_sync.py)
     repo_root = _get_repo_root()
     script_path = repo_root / "sync_tests" / "scripts" / "db-sync-start.sh"
     # The script expects to run from cardano-db-sync where db-sync-node/bin/cardano-db-sync exists.

@@ -10,9 +10,9 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-from sync_tests.utils import aws_db
 from sync_tests.utils import db_sync as utils_db_sync
 from sync_tests.utils import helpers as utils
+from sync_tests.utils.external import aws_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

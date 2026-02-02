@@ -9,7 +9,7 @@ import typing as tp
 
 import pymysql.cursors
 
-from sync_tests.utils.db_sync_config import DbSyncConfig
+from sync_tests.utils.db_sync.config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 

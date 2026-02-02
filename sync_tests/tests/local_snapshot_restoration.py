@@ -10,11 +10,11 @@ from collections import OrderedDict
 
 sys.path.append(os.getcwd())
 
-from sync_tests.utils import color_logger
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
-from sync_tests.utils import log_analyzer
 from sync_tests.utils import node
+from sync_tests.utils.logs import color_logger
+from sync_tests.utils.logs import log_analyzer
 
 LOGGER = logging.getLogger(__name__)
 

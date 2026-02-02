@@ -15,12 +15,12 @@ import urllib.request
 
 import git
 
-from sync_tests.utils import blockfrost
-from sync_tests.utils import cli
 from sync_tests.utils import exceptions
-from sync_tests.utils import explorer
-from sync_tests.utils import gitpython
 from sync_tests.utils import helpers
+from sync_tests.utils.external import blockfrost
+from sync_tests.utils.external import explorer
+from sync_tests.utils.external import gitpython
+from sync_tests.utils.node import cli
 
 LOGGER = logging.getLogger(__name__)
 
@@ -831,7 +831,7 @@ def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") ->
         ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     elif build_tool == "cabal":
-        repo_root = pl.Path(__file__).parent.parent.parent
+        repo_root = pl.Path(__file__).parent.parent.parent.parent
         cabal_local_file = repo_root / "sync_tests" / "cabal.project.local"
         cli_repo = get_cli_repo(cli_rev="main", base_dir=base_dir)
         cli_repo_dir = pl.Path(cli_repo.git_dir)

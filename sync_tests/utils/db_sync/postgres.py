@@ -12,8 +12,8 @@ from assertpy import assert_that
 
 from sync_tests.utils import artifacts
 from sync_tests.utils import helpers
-from sync_tests.utils.db_sync_config import DbSyncConfig
-from sync_tests.utils.db_sync_config import DbSyncTip
+from sync_tests.utils.db_sync.config import DbSyncConfig
+from sync_tests.utils.db_sync.config import DbSyncTip
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,10 +33,7 @@ def setup_postgres(config: DbSyncConfig, pg_port: str | None = None) -> None:
     helpers.export_env_var("PGUSER", config.pg_user)
     helpers.export_env_var("PGPORT", postgres_port)
 
-    # Script is in repository root, not in workdir
-    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
-    # Go up 2 levels from this file to get repo root
-    repo_root = pl.Path(__file__).parent.parent.parent
+    repo_root = pl.Path(__file__).parent.parent.parent.parent
     script_path = repo_root / "sync_tests" / "scripts" / "postgres-start.sh"
     try:
         cmd = [str(script_path), str(config.pg_dir), "-k"]
@@ -59,10 +56,7 @@ def create_pgpass_file(config: DbSyncConfig) -> None:
     Args:
         config: A DbSyncConfig instance with paths and PostgreSQL settings.
     """
-    # cardano-db-sync is cloned to repository root, not config.workdir
-    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
-    # Go up 2 levels from this file to get repo root
-    repo_root = pl.Path(__file__).parent.parent.parent
+    repo_root = pl.Path(__file__).parent.parent.parent.parent
     db_sync_config_dir = repo_root / "cardano-db-sync" / "config"
     db_sync_config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,10 +76,7 @@ def create_database(_config: DbSyncConfig) -> None:
     Args:
         config: A DbSyncConfig instance with paths and settings.
     """
-    # cardano-db-sync is cloned to repository root, not config.workdir
-    # Use __file__ to find repo root (this file is at sync_tests/utils/postgres.py)
-    # Go up 2 levels from this file to get repo root
-    repo_root = pl.Path(__file__).parent.parent.parent
+    repo_root = pl.Path(__file__).parent.parent.parent.parent
     db_sync_dir = repo_root / "cardano-db-sync"
     script_path = db_sync_dir / "scripts" / "postgresql-setup.sh"
 

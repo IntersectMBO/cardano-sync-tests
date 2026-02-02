@@ -7,8 +7,8 @@ import typing as tp
 from pathlib import Path
 
 from sync_tests.utils import helpers
-from sync_tests.utils.db_sync_config import DbSyncConfig
-from sync_tests.utils.db_sync_data import export_epoch_sync_times_from_db
+from sync_tests.utils.db_sync.config import DbSyncConfig
+from sync_tests.utils.db_sync.data import export_epoch_sync_times_from_db
 
 LOGGER = logging.getLogger(__name__)
 

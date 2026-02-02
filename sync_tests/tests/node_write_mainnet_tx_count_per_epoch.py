@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-import sync_tests.utils.blockfrost as blockfrost_utils
+import sync_tests.utils.external.blockfrost as blockfrost_utils
 import sync_tests.utils.helpers as utils
 
 # Configure logging
