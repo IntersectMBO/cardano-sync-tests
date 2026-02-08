@@ -189,13 +189,17 @@ def manage_process(proc_name: str, action: str) -> psutil.Process:
                     proc.wait(timeout=30)  # Wait for the process to terminate
                     if proc.is_running():
                         logging.warning(
-                            f"Termination failed, forcefully killing the {proc_name} process - {proc}"
+                            "Termination failed, forcefully killing the %s process - %s",
+                            proc_name,
+                            proc,
                         )
                         proc.kill()
                 except (psutil.NoSuchProcess, psutil.TimeoutExpired):
                     if proc.is_running():
                         logging.warning(
-                            f"Termination timed out, forcefully killing the {proc_name} process - {proc}"
+                            "Termination timed out, forcefully killing the %s process - %s",
+                            proc_name,
+                            proc,
                         )
                         proc.kill()
                     continue

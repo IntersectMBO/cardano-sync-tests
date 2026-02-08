@@ -12,9 +12,9 @@ from pathlib import Path
 
 import psutil
 
+from sync_tests.utils import artifacts
 from sync_tests.utils import helpers
 from sync_tests.utils import node
-from sync_tests.utils import artifacts
 from sync_tests.utils.db_sync import config as db_sync_config
 from sync_tests.utils.db_sync import data as db_sync_data
 from sync_tests.utils.db_sync import postgres
@@ -50,8 +50,7 @@ def create_db_sync_config(
 
 
 def _get_repo_root() -> Path:
-    """Get the repository root directory.
-    """
+    """Get the repository root directory."""
     return Path(__file__).parent.parent.parent.parent
 
 
@@ -103,9 +102,7 @@ def get_last_perf_stats_point(perf_stats: list[dict]) -> PerfStats:
         return default_stats
 
 
-def enrich_perf_stats_with_era(
-    perf_stats: list[dict], era_activation: list[dict]
-) -> list[dict]:
+def enrich_perf_stats_with_era(perf_stats: list[dict], era_activation: list[dict]) -> list[dict]:
     """Attach era activation metadata to each perf stats sample."""
     if not era_activation:
         return perf_stats

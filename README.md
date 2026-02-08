@@ -6,13 +6,13 @@ Sync tests for `cardano-node` and `cardano-db-sync`.
 
 All sync workflows use a single entry point:
 
-```
+```bash
 python3 sync_tests/tests/full_sync_from_clean_state.py
 ```
 
 ### Node-only sync
 
-```
+```bash
 python3 sync_tests/tests/full_sync_from_clean_state.py \
   --node-revision master \
   --environment preview
@@ -20,7 +20,7 @@ python3 sync_tests/tests/full_sync_from_clean_state.py \
 
 ### Full sync (node + db-sync)
 
-```
+```bash
 python3 sync_tests/tests/full_sync_from_clean_state.py \
   --node-revision master \
   --db-sync-revision master \
@@ -29,7 +29,7 @@ python3 sync_tests/tests/full_sync_from_clean_state.py \
 
 ### Full sync with era override
 
-```
+```bash
 python3 sync_tests/tests/full_sync_from_clean_state.py \
   --node-revision master \
   --db-sync-revision master \
@@ -39,7 +39,7 @@ python3 sync_tests/tests/full_sync_from_clean_state.py \
 
 ### DB-sync only (attach to an existing node)
 
-```
+```bash
 python3 sync_tests/tests/full_sync_from_clean_state.py \
   --db-sync-revision master \
   --environment preview \

@@ -104,9 +104,7 @@ def get_buildkite_meta_data(key: str) -> str:
     return outs.decode("utf-8").strip()
 
 
-def _enrich_perf_stats_with_era(
-    perf_stats: list[dict], era_activation: list[dict]
-) -> list[dict]:
+def _enrich_perf_stats_with_era(perf_stats: list[dict], era_activation: list[dict]) -> list[dict]:
     if not era_activation:
         return perf_stats
 
@@ -154,6 +152,7 @@ def emergency_upload_artifacts(
     Args:
         config: A DbSyncConfig instance with paths and settings.
         perf_stats: A list of performance statistics dictionaries.
+        era_activation: Optional era activation metadata to enrich perf stats.
     """
     output_perf_stats = perf_stats
     if era_activation:

@@ -546,10 +546,11 @@ def get_era_activation_data(config: DbSyncConfig) -> list[dict]:
             )
         cursor.close()
         conn.commit()
-        return era_activation
     except (Exception, psycopg2.DatabaseError):
         LOGGER.exception("Failed to query era activation data")
-        return []
+    else:
+        return era_activation
     finally:
         if conn is not None:
             conn.close()
+    return []

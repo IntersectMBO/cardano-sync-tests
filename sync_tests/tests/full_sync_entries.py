@@ -142,4 +142,3 @@ def run_db_sync(
         perf_stats=perf_stats,
         db_sync_tip=db_sync_tip,
     )
-
