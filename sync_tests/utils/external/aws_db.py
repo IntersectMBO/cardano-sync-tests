@@ -221,7 +221,12 @@ def upload_sync_results_to_aws(config: DbSyncConfig, test_results_file: pl.Path)
         sys.exit(1)
 
     with open(config.perf_stats_file) as json_perf_stats_file:
-        db_sync_performance_stats = json.load(json_perf_stats_file)
+        perf_stats_payload = json.load(json_perf_stats_file)
+
+    if isinstance(perf_stats_payload, dict):
+        db_sync_performance_stats = perf_stats_payload.get("system_metrics", [])
+    else:
+        db_sync_performance_stats = perf_stats_payload
 
     db_sync_performance_stats_table = config.env + "_performance_stats_db_sync"
     LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")

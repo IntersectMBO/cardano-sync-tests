@@ -103,6 +103,54 @@ def get_last_perf_stats_point(perf_stats: list[dict]) -> PerfStats:
         return default_stats
 
 
+def enrich_perf_stats_with_era(
+    perf_stats: list[dict], era_activation: list[dict]
+) -> list[dict]:
+    """Attach era activation metadata to each perf stats sample."""
+    if not era_activation:
+        return perf_stats
+
+    sorted_eras = sorted(era_activation, key=lambda era: era["absolute_slot"])
+    slots = [era["absolute_slot"] for era in sorted_eras]
+    enriched: list[dict] = []
+
+    for sample in perf_stats:
+        slot_no = sample.get("slot_no")
+        if slot_no is None:
+            enriched.append(sample)
+            continue
+
+        idx = 0
+        for i, activation_slot in enumerate(slots):
+            if activation_slot <= slot_no:
+                idx = i
+            else:
+                break
+        era = sorted_eras[idx] if slots[idx] <= slot_no else None
+        if era is None:
+            enriched.append(sample)
+            continue
+
+        enriched.append(
+            {
+                **sample,
+                "protocol_version": era["protocol_version"],
+                "era_name": era["era_name"],
+                "activation_epoch": era["activation_epoch"],
+                "first_block_number": era["first_block_number"],
+                "absolute_slot": era["absolute_slot"],
+                "activation_time_utc": era["activation_time_utc"],
+                "first_block_hash": era["first_block_hash"],
+            }
+        )
+    return enriched
+
+
+def get_era_activation_data(config: DbSyncConfig) -> list[dict]:
+    """Retrieve era activation metadata from the db-sync database."""
+    return postgres.get_era_activation_data(config)
+
+
 def get_log_output_frequency(env: str) -> int:
     """Determine the log output frequency based on the environment."""
     if env == "mainnet":
@@ -265,7 +313,8 @@ def _check_for_rollback(
     if rollback_counter > 15:
         LOGGER.info(f"Progress decreasing for {rollback_counter * counter} minutes.")
         LOGGER.exception("Shutting down all services and emergency uploading artifacts")
-        artifacts.emergency_upload_artifacts(config, perf_stats)
+        era_activation = postgres.get_era_activation_data(config)
+        artifacts.emergency_upload_artifacts(config, perf_stats, era_activation)
         msg = "Rollback taking too long. Shutting down..."
         raise Exception(msg)
     return rollback_counter, last_rollback_time
@@ -374,7 +423,8 @@ def wait_for_db_to_sync(
     while db_sync_progress < sync_percentage:
         sync_time_in_sec = time.perf_counter() - start_sync
         if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
-            artifacts.emergency_upload_artifacts(config, perf_stats)
+            era_activation = postgres.get_era_activation_data(config)
+            artifacts.emergency_upload_artifacts(config, perf_stats, era_activation)
             msg = "Emergency uploading artifacts before buid timeout exception..."
             raise Exception(msg)
         if counter % 5 == 0:
@@ -409,7 +459,8 @@ def wait_for_db_to_sync(
             end_sync = time.perf_counter()
             db_full_sync_time_in_secs = int(end_sync - start_sync)
             LOGGER.exception("Unexpected error during sync process")
-            artifacts.emergency_upload_artifacts(config, perf_stats)
+            era_activation = postgres.get_era_activation_data(config)
+            artifacts.emergency_upload_artifacts(config, perf_stats, era_activation)
             return db_full_sync_time_in_secs, perf_stats
         time.sleep(ONE_MINUTE)
         counter += 1
@@ -417,6 +468,9 @@ def wait_for_db_to_sync(
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
     LOGGER.info(f"db sync progress [%] before finalizing process: {db_sync_progress}")
+    era_activation = postgres.get_era_activation_data(config)
+    enriched_perf_stats = enrich_perf_stats_with_era(perf_stats, era_activation)
+    helpers.write_json_to_file(config.perf_stats_file, enriched_perf_stats)
     return sync_time_seconds, perf_stats
 
 

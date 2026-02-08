@@ -52,7 +52,12 @@ def create_sync_stats_chart(config: DbSyncConfig) -> None:
     ax_perf.set_title("RSS usage")
 
     with open(config.perf_stats_file) as json_db_dump_file:
-        perf_stats = json.load(json_db_dump_file)
+        perf_stats_payload = json.load(json_db_dump_file)
+
+    if isinstance(perf_stats_payload, dict):
+        perf_stats = perf_stats_payload.get("system_metrics", [])
+    else:
+        perf_stats = perf_stats_payload
 
     times = [e["time"] / 60 for e in perf_stats]
     rss_mem_usage = [e["rss_mem_usage"] for e in perf_stats]

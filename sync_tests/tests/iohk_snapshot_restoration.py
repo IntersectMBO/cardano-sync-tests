@@ -199,7 +199,9 @@ def run_test(args: argparse.Namespace) -> None:
 
     test_results_file = config.workdir / TEST_RESULTS
     helpers.write_json_to_file(test_results_file, test_data)
-    helpers.write_json_to_file(config.perf_stats_file, perf_stats)
+    era_activation = db_sync.get_era_activation_data(config)
+    enriched_perf_stats = db_sync.enrich_perf_stats_with_era(perf_stats, era_activation)
+    helpers.write_json_to_file(config.perf_stats_file, enriched_perf_stats)
     db_sync.export_epoch_sync_times_from_db(config, config.epoch_sync_times_file, snapshot_epoch_no)
 
     helpers.print_last_n_lines(test_results_file, 0)

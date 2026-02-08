@@ -174,18 +174,31 @@ def make_executable(path: pl.Path) -> None:
 def manage_process(proc_name: str, action: str) -> psutil.Process:
     """Manage a process by retrieving, terminating, or killing based on the action specified."""
     for proc in psutil.process_iter():
-        if proc_name in proc.name():
+        try:
+            proc_label = proc.name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+        if proc_name in proc_label:
             if action == "get":
                 return proc
             if action == "terminate":
                 logging.info(f"Attempting to terminate the {proc_name} process - {proc}")
-                proc.terminate()
-                proc.wait(timeout=30)  # Wait for the process to terminate
-                if proc.is_running():
-                    logging.warning(
-                        f"Termination failed, forcefully killing the {proc_name} process - {proc}"
-                    )
-                    proc.kill()
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=30)  # Wait for the process to terminate
+                    if proc.is_running():
+                        logging.warning(
+                            f"Termination failed, forcefully killing the {proc_name} process - {proc}"
+                        )
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                    if proc.is_running():
+                        logging.warning(
+                            f"Termination timed out, forcefully killing the {proc_name} process - {proc}"
+                        )
+                        proc.kill()
+                    continue
             else:
                 msg = "Action must be 'get' or 'terminate'"
                 raise ValueError(msg)

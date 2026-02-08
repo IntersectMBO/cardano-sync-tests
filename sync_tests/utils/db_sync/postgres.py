@@ -468,3 +468,88 @@ def check_database(fn: tp.Callable, err_msg: str, expected_value: tp.Any) -> Exc
         helpers.print_message(f"Warning - validation errors: {e}\n\n", type="warn")
         return e
     return None
+
+
+def get_era_activation_data(config: DbSyncConfig) -> list[dict]:
+    """Return era activation metadata derived from db-sync tables."""
+    query = """
+    WITH EraFirstEpoch AS (
+        -- Dynamically find the activation epoch for every protocol version
+        SELECT
+            actual_proto_major,
+            MIN(epoch_no) as epoch_no
+        FROM (
+            -- For modern eras (2+), epoch_param is the official record of activation
+            SELECT epoch_no, protocol_major as actual_proto_major FROM epoch_param
+            UNION
+            -- For Byron (0 and 1), find first epoch where each version is dominant
+            SELECT MIN(epoch_no), proto_major
+            FROM block
+            WHERE proto_major = 0
+            GROUP BY proto_major
+            UNION
+            SELECT MIN(epoch_no), proto_major
+            FROM block
+            WHERE proto_major = 1
+              AND epoch_no > (SELECT MAX(epoch_no) FROM block WHERE proto_major = 0)
+            GROUP BY proto_major
+        ) s
+        GROUP BY actual_proto_major
+    )
+    SELECT DISTINCT ON (efe.actual_proto_major)
+        efe.actual_proto_major AS protocol_version,
+        CASE
+            WHEN efe.actual_proto_major = 0 THEN 'Byron (Genesis)'
+            WHEN efe.actual_proto_major = 1 THEN 'Byron (Reboot)'
+            WHEN efe.actual_proto_major = 2 THEN 'Shelley'
+            WHEN efe.actual_proto_major = 3 THEN 'Allegra'
+            WHEN efe.actual_proto_major = 4 THEN 'Mary'
+            WHEN efe.actual_proto_major = 5 THEN 'Alonzo'
+            WHEN efe.actual_proto_major = 6 THEN 'Alonzo (Intra-Era)'
+            WHEN efe.actual_proto_major = 7 THEN 'Babbage (Vasil)'
+            WHEN efe.actual_proto_major = 8 THEN 'Babbage (Valentine)'
+            WHEN efe.actual_proto_major = 9 THEN 'Conway (Chang 1)'
+            WHEN efe.actual_proto_major = 10 THEN 'Chang 2 (Plomin)'
+            ELSE 'Future Era'
+        END AS era_name,
+        efe.epoch_no AS activation_epoch,
+        b.block_no AS first_block_number,
+        b.slot_no AS absolute_slot,
+        b.time AS activation_time_utc,
+        encode(b.hash, 'hex') AS first_block_hash
+    FROM EraFirstEpoch efe
+    JOIN block b ON b.epoch_no = efe.epoch_no
+    WHERE b.block_no IS NOT NULL
+    ORDER BY efe.actual_proto_major ASC, b.block_no ASC;
+    """
+
+    conn = None
+    try:
+        conn = psycopg2.connect(database=config.pg_dbname, user=config.pg_user)
+        cursor = conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        era_activation = []
+        for row in rows:
+            activation_time = row[5].isoformat() if row[5] else None
+            era_activation.append(
+                {
+                    "protocol_version": row[0],
+                    "era_name": row[1],
+                    "activation_epoch": row[2],
+                    "first_block_number": row[3],
+                    "absolute_slot": row[4],
+                    "activation_time_utc": activation_time,
+                    "first_block_hash": row[6],
+                }
+            )
+        cursor.close()
+        conn.commit()
+        return era_activation
+    except (Exception, psycopg2.DatabaseError):
+        LOGGER.exception("Failed to query era activation data")
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
