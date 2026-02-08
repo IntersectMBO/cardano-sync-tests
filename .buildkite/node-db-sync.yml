@@ -1,0 +1,15 @@
+steps:
+  - label: ':drum_with_drumsticks: Node + DB sync :drum_with_drumsticks:'
+    commands:
+      - >
+        nix develop --accept-flake-config .#python --command python
+        -m sync_tests.tests.full_sync_from_clean_state
+        -nv "${node_version}"
+        -dv "${db_sync_version}"
+        -dsa "${db_sync_start_arguments}"
+        -e "${environment}"
+    timeout_in_minutes: 43200
+    agents:
+      system: x86_64-linux
+      queue: core-tech-bench
+
