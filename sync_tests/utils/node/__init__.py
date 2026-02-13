@@ -147,7 +147,9 @@ def get_node_config_files(
         config_slug=f"{env}/conway-genesis.json", save_as=conf_dir / "conway-genesis.json"
     )
 
-    if env == "mainnet" and node_topology_type == "non-bootstrap-peers":
+    # For mainnet, default to non-bootstrap-peers if topology type is empty
+    # This matches the topology file available at the new configs URL
+    if env == "mainnet" and (not node_topology_type or node_topology_type == "non-bootstrap-peers"):
         download_config_file(
             config_slug=f"{env}/topology-non-bootstrap-peers.json",
             save_as=topology_file_path,
