@@ -102,7 +102,7 @@ def generate_resource_consumption_graphs(
             for value in data.values():
                 if value.get("tip") and value.get(data_type):
                     raw = float(value[data_type])
-                    if raw > 0:
+                    if raw > 0.0:
                         x.append(int(value["tip"]))
                         y.append(raw / unit_conversion)
             plt.plot(x, y, label=dataset_name, color=palette[idx % len(palette)])
