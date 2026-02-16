@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import ast
 import json
 import logging
 import pathlib as pl
@@ -63,12 +62,12 @@ def generate_static_graphs(
                 sync_results = json.load(file)
                 dataset_name = file_path.name
 
-                log_values_dict = ast.literal_eval(str(sync_results["log_values"]))
+                log_values_dict = sync_results["log_values"]
                 log_data[dataset_name] = dict(
                     sorted(log_values_dict.items(), key=lambda item: str(item[0]))
                 )
 
-                sync_duration_dict = ast.literal_eval(str(sync_results["sync_duration_per_epoch"]))
+                sync_duration_dict = sync_results["sync_duration_per_epoch"]
                 sync_duration_data[dataset_name] = sync_duration_dict
 
                 sync_time_per_era = {
