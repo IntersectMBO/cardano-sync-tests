@@ -1,7 +1,6 @@
 import datetime
 import heapq
 import itertools
-import os
 import pathlib as pl
 import re
 import shutil
@@ -44,7 +43,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
     timestamp_pattern = re.compile(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}")
     heap_pattern = re.compile(r'"Heap",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
     rss_pattern = re.compile(r'"RSS",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
-    centi_cpu_pattern = re.compile(r'"CentiCpu",Number (\d+\.\d+)')
+    centi_cpu_pattern = re.compile(r'"CentiCpu",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
 
     def _process_log_line(line: str) -> None:
         """Extract relevant data from a log line and updates dictionaries."""
@@ -109,9 +108,6 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         with open(log_file, encoding="utf-8") as infile:
             _process_log_file(infile=infile)
 
-    # Compute CPU load percentage per core
-    no_of_cpu_cores = os.cpu_count() or 1
-
     for prev_timestamp, curr_timestamp in itertools.pairwise(centi_cpu_dict):
         prev_value = centi_cpu_dict[prev_timestamp]
         curr_value = centi_cpu_dict[curr_timestamp]
@@ -120,7 +116,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         cpu_load_percent = (curr_value - prev_value) / (
             curr_timestamp - prev_timestamp
         ).total_seconds()
-        cpu_details_dict[curr_timestamp] = cpu_load_percent / no_of_cpu_cores
+        cpu_details_dict[curr_timestamp] = cpu_load_percent
 
     # Collect all unique timestamps from different dictionaries
     all_timestamps_list = merge_sorted_unique(tip_details_dict, cpu_details_dict)

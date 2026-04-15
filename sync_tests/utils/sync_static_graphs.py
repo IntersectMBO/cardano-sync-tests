@@ -60,7 +60,14 @@ def generate_static_graphs(
         try:
             with file_path.open(encoding="utf-8") as file:
                 sync_results = json.load(file)
-                dataset_name = file_path.name
+                dataset_name = (
+                    sync_results.get("tag_no1")
+                    or file_path.name.replace("cardano-node-", "")
+                    .replace("sync_results-", "")
+                    .replace(".json", "")
+                    .strip()
+                    or file_path.name.strip()
+                )
 
                 log_values_dict = sync_results["log_values"]
                 log_data[dataset_name] = dict(
