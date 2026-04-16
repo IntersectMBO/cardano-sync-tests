@@ -600,18 +600,21 @@ def copy_cabal_cli_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     helpers.make_executable(path=dst_dir / "cardano-cli")
 
 
-def ln_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
-    (dst_dir / "cardano-node").unlink(missing_ok=True)  # Remove existing file if any
-    os.symlink(
+def copy_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
+    """Copy nix-built binaries instead of symlinking to avoid nix GC issues."""
+    (dst_dir / "cardano-node").unlink(missing_ok=True)
+    shutil.copy2(
         repo_dir / "cardano-node-bin" / "bin" / "cardano-node",
         dst_dir / "cardano-node",
     )
+    helpers.make_executable(path=dst_dir / "cardano-node")
 
-    (dst_dir / "cardano-cli").unlink(missing_ok=True)  # Remove existing file if any
-    os.symlink(
+    (dst_dir / "cardano-cli").unlink(missing_ok=True)
+    shutil.copy2(
         repo_dir / "cardano-cli-bin" / "bin" / "cardano-cli",
         dst_dir / "cardano-cli",
     )
+    helpers.make_executable(path=dst_dir / "cardano-cli")
 
 
 def get_node_repo(node_rev: str, base_dir: pl.Path) -> git.Repo:
@@ -644,7 +647,8 @@ def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") ->
     bin_directory = pl.Path("bin")
 
     node_repo = get_node_repo(node_rev=node_rev, base_dir=base_dir)
-    node_repo_dir = pl.Path(node_repo.git_dir)
+    assert node_repo.working_tree_dir is not None
+    node_repo_dir = pl.Path(node_repo.working_tree_dir)
 
     if build_tool == "nix":
         with helpers.temporary_chdir(path=node_repo_dir):
@@ -652,12 +656,13 @@ def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") ->
             pl.Path("cardano-cli-bin").unlink(missing_ok=True)
             helpers.execute_command("nix build -v .#cardano-node -o cardano-node-bin")
             helpers.execute_command("nix build -v .#cardano-cli -o cardano-cli-bin")
-        ln_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
+        copy_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     elif build_tool == "cabal":
         cabal_local_file = pl.Path("sync_tests") / "cabal.project.local"
         cli_repo = get_cli_repo(cli_rev="main", base_dir=base_dir)
-        cli_repo_dir = pl.Path(cli_repo.git_dir)
+        assert cli_repo.working_tree_dir is not None
+        cli_repo_dir = pl.Path(cli_repo.working_tree_dir)
 
         # Build cli
         with helpers.temporary_chdir(path=cli_repo_dir):
