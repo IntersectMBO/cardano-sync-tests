@@ -313,6 +313,14 @@ def rm_node_config_files(conf_dir: pl.Path) -> None:
         (conf_dir / f).unlink(missing_ok=True)
 
 
+def rm_node_db_dir(base_dir: pl.Path) -> None:
+    """Remove the node database directory at `base_dir / 'db'`."""
+    db_dir = base_dir / "db"
+    if db_dir.exists():
+        LOGGER.info(f"Removing node database directory: {db_dir}")
+        shutil.rmtree(db_dir, ignore_errors=True)
+
+
 def get_epoch_no_d_zero(env: str) -> int | None:
     """Get the epoch number when d=0."""
     if env == "mainnet":

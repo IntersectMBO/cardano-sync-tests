@@ -225,7 +225,11 @@ def get_args() -> argparse.Namespace:
 def main() -> int:
     color_logger.configure_logging()
     args = get_args()
-    run_test(args=args)
+    base_dir = pl.Path.cwd()
+    try:
+        run_test(args=args)
+    finally:
+        node.rm_node_db_dir(base_dir=base_dir)
 
     return 0
 
