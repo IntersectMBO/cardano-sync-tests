@@ -3,26 +3,29 @@ import json
 import logging
 import os
 
-from sync_tests.utils import sync_results_db
-
 LOGGER = logging.getLogger(__name__)
 
 
 def process_failed_sync_data(backup_filename: str) -> None:
     """Read the JSON backup file and insert the stored data into the database."""
     if not os.path.exists(backup_filename):
-        LOGGER.error(f"Backup file {backup_filename} not found. Nothing to process.")
+        LOGGER.error("Backup file %s not found. Nothing to process.", backup_filename)
         return
 
     try:
         with open(backup_filename, encoding="utf-8") as backup_file:
             backup_data = json.load(backup_file)
 
-        LOGGER.info(f"Loaded backup data from {backup_filename}, attempting database insertion.")
-
-        sync_results_db.store_sync_results(sync_data=backup_data)
+        LOGGER.info(
+            "Loaded backup data from %s. AWS DB uploads removed; saving locally instead.",
+            backup_filename,
+        )
+        output_file = "sync_data_reprocessed.json"
+        with open(output_file, "w", encoding="utf-8") as out_file:
+            json.dump(backup_data, out_file, indent=2)
+        LOGGER.info("Wrote backup data to %s", output_file)
     except Exception:
-        LOGGER.exception(f"Error while processing backup file {backup_filename}")
+        LOGGER.exception("Error while processing backup file %s", backup_filename)
 
 
 if __name__ == "__main__":

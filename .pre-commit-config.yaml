@@ -1,3 +1,4 @@
+exclude: ^(cardano-db-sync/|cardano_node_dir/)
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v5.0.0
@@ -36,5 +37,6 @@ repos:
   - id: mypy
     name: mypy
     entry: mypy
+    args: [sync_tests, --no-incremental]
     language: system
-    types: [python]
+    pass_filenames: false

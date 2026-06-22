@@ -1,5 +1,10 @@
+"""Thin wrapper around the cardano-cli binary."""
+
+from __future__ import annotations
+
 import dataclasses
 import logging
+import os
 import pathlib as pl
 import re
 import subprocess
@@ -55,11 +60,26 @@ def cli(
     # Network.Socket.connect: <socket: X>: resource exhausted (Resource temporarily unavailable)
     # or
     # MuxError (MuxIOException writev: resource vanished (Broken pipe)) "(sendAll errored)"
+    # Ensure environment variables (especially CARDANO_NODE_SOCKET_PATH) are passed to subprocess
+    env = os.environ.copy()
     for __ in range(3):
         retcode = None
-        with subprocess.Popen(cli_args_strs, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
-            stdout, stderr = p.communicate(timeout=timeout)
-            retcode = p.returncode
+        try:
+            with subprocess.Popen(
+                cli_args_strs,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            ) as p:
+                stdout, stderr = p.communicate(timeout=timeout)
+                retcode = p.returncode
+        except FileNotFoundError as e:
+            cardano_cli_path = os.environ.get("CARDANO_CLI_PATH")
+            err_msg = (
+                f"Could not execute CLI command `{cmd_str}`. "
+                f"CARDANO_CLI_PATH={cardano_cli_path!r} PATH={os.environ.get('PATH')!r}"
+            )
+            raise exceptions.SyncError(err_msg) from e
 
         if retcode == 0:
             break

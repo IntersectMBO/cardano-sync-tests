@@ -43,7 +43,11 @@
                 [ -e .nix_venv ] || python3 -m venv .nix_venv
                 source .nix_venv/bin/activate
                 export PYTHONPATH=$(echo "$VIRTUAL_ENV"/lib/python3*/site-packages):"$PYTHONPATH"
-                python3 -m pip install --require-virtualenv --upgrade -e .
+                if [ -n "''${GITHUB_ACTIONS:-}" ]; then
+                  python3 -m pip install --require-virtualenv --quiet --upgrade -e . >/dev/null
+                else
+                  python3 -m pip install --require-virtualenv --upgrade -e .
+                fi
                 echo "Environment ready."
               '';
             };

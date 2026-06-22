@@ -6,17 +6,17 @@ on:
       node_version:
         description: "cardano-node version"
         required: true
-        default: "tags/10.1.2"
+        default: "10.6.2"
       db_sync_version:
         description: "db-sync version"
         required: true
-        default: "tags/13.6.0.1"
+        default: "13.6.0.5"
       db_sync_start_arguments:
-        description: "db-sync start arguments"
+        description: "db-sync start arguments, without leading --"
         required: false
-        default: "none"
+        default: ""
       environment:
-        description: "Environment on which Buildkite agent will run tests"
+        description: "Cardano environment to test"
         type: choice
         options:
         - mainnet
@@ -27,30 +27,121 @@ on:
         type: boolean
         default: true
         description: "If checked only full sync test will be run otherwise local snapshot creation and restoration tests will be started after sync test is completed"
+      configs_base_url:
+        description: "Base URL for Cardano environment configs"
+        required: false
+        default: "https://book.world.dev.cardano.org/environments"
+
+permissions:
+  contents: read
+  actions: write
 
 jobs:
-  db_sync_test:
-    runs-on: ubuntu-latest
+  db_sync_pytest_self_hosted:
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - nixos
+    timeout-minutes: 14400
+    env:
+      PYTHONUNBUFFERED: "1"
+      BLOCKFROST_API_KEY: ${{ inputs.environment == 'mainnet' && secrets.BLOCKFROST_API_KEY || '' }}
+      CONFIGS_BASE_URL: ${{ inputs.configs_base_url }}
+      SYNC_TESTS_CLEANUP_LEDGER: "true"
+      SYNC_TESTS_HEARTBEAT_INTERVAL_SEC: "600"
+      SYNC_TESTS_HEARTBEAT_TAIL_LINES: "30"
+      SYNC_TESTS_FAILURE_TAIL_LINES: "300"
+      PYTEST_ADDOPTS: "--log-cli-level=WARNING"
     steps:
-      - name: trigger the Buildkite pipeline - run db-sync full sync test
-        uses: 'buildkite/trigger-pipeline-action@v2.4.1'
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Prepare db-sync inputs
+        id: inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          start_args="${{ inputs.db_sync_start_arguments }}"
+          start_args="${start_args#"${start_args%%[![:space:]]*}"}"
+          start_args="${start_args%"${start_args##*[![:space:]]}"}"
+          if [ "${start_args,,}" = "none" ]; then
+            start_args=""
+          fi
+
+          node_slug="${{ inputs.node_version }}"
+          db_slug="${{ inputs.db_sync_version }}"
+          node_slug="${node_slug//[^A-Za-z0-9._-]/-}"
+          db_slug="${db_slug//[^A-Za-z0-9._-]/-}"
+
+          echo "db_sync_start_options=${start_args}" >> "${GITHUB_OUTPUT}"
+          echo "node_slug=${node_slug}" >> "${GITHUB_OUTPUT}"
+          echo "db_sync_slug=${db_slug}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run db-sync pytest
+        shell: bash
         env:
-          BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
-          PIPELINE: 'input-output-hk/db-sync-sync-tests'
-          BRANCH: ${{ github.ref_name || 'main' }}
-          MESSAGE: ':github: Triggered by GitHub Action'
-          AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
-          AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
-          AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
-          AWS_DB_HOSTNAME: ${{ secrets.AWS_DB_HOSTNAME }}
-          BUILD_ENV_VARS: '{
-          "node_version":"${{ github.event.inputs.node_version }}",
-          "db_sync_version":"${{ github.event.inputs.db_sync_version }}",
-          "db_sync_start_arguments":"${{ github.event.inputs.db_sync_start_arguments }}",
-          "environment":"${{ github.event.inputs.environment }}",
-          "run_only_sync_test":"${{ github.event.inputs.run_only_sync_test }}",
-          "AWS_DB_USERNAME":"${{ secrets.AWS_DB_USERNAME }}",
-          "AWS_DB_PASS":"${{ secrets.AWS_DB_PASS }}",
-          "AWS_DB_NAME":"${{ secrets.AWS_DB_NAME }}",
-          "AWS_DB_HOSTNAME":"${{ secrets.AWS_DB_HOSTNAME }}"
-          }'
+          DB_SYNC_START_OPTIONS: ${{ steps.inputs.outputs.db_sync_start_options }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p test_workdir
+          : > test_workdir/nix_build.log
+
+          bash sync_tests/scripts/heartbeat.sh combined &
+          HB_PID=$!
+          trap 'pkill -P "$HB_PID" 2>/dev/null || true; kill "$HB_PID" 2>/dev/null || true' EXIT
+
+          pytest_args=(
+            sync_tests/tests/
+            -m "node_sync or db_sync"
+            --environment "${{ inputs.environment }}"
+            --node-revision "${{ inputs.node_version }}"
+            --db-sync-revision "${{ inputs.db_sync_version }}"
+            --db-sync-start-options "${DB_SYNC_START_OPTIONS}"
+          )
+
+          if [ "${{ inputs.run_only_sync_test }}" = "true" ]; then
+            pytest_args+=(--run-only-sync-test)
+          fi
+
+          pytest_exit=0
+          {
+            echo "=== ci step started $(date -u +%FT%TZ) ==="
+            nix develop -v --accept-flake-config .#python --command pytest "${pytest_args[@]}"
+          } > test_workdir/ci_step.log 2>&1 || pytest_exit=$?
+
+          bash sync_tests/scripts/print-ci-summary.sh test_workdir/ci_step.log
+          exit "$pytest_exit"
+
+      - name: Recent log tails on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo "::group::Recent log tails"
+          for log in test_workdir/ci_step.log test_workdir/nix_build.log test_workdir/node_sync.log test_workdir/db_sync.log; do
+            if [ -f "$log" ]; then
+              echo "--- $log (last ${SYNC_TESTS_FAILURE_TAIL_LINES:-300}) ---"
+              tail -n "${SYNC_TESTS_FAILURE_TAIL_LINES:-300}" "$log"
+            else
+              echo "[$log not present]"
+            fi
+          done
+          echo "::endgroup::"
+
+      - name: Upload CI bundles
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-sync-ci-bundles-${{ runner.name }}-${{ inputs.environment }}-node-${{ steps.inputs.outputs.node_slug }}-dbsync-${{ steps.inputs.outputs.db_sync_slug }}
+          path: |
+            sync_logs.zip
+            sync_results.zip
+            monitor.zip
+          if-no-files-found: warn
+
+      - name: Cleanup test workdir
+        if: always()
+        run: rm -rf test_workdir

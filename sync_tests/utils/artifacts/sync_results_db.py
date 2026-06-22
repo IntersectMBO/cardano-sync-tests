@@ -1,3 +1,7 @@
+"""Store sync test results in a MySQL/MariaDB database."""
+
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -54,7 +58,7 @@ def insert_sync_run_entry(test_values: dict, cursor: pymysql.cursors.Cursor) -> 
         # Execute the query
         cursor.execute(sql, tuple(filtered_data.values()))
 
-        LOGGER.warning(f"Inserted sync_run entry with ID: {sync_run_id}")
+        LOGGER.warning("Inserted sync_run entry with ID: %s", sync_run_id)
     except Exception:
         LOGGER.exception("Failed to insert sync_run entry into the database")
 
@@ -93,7 +97,7 @@ def insert_details_per_era_entries(
         # Execute batch insert
         cursor.executemany(sql, data_to_insert)
 
-        LOGGER.warning(f"Inserted {len(data_to_insert)} rows into details_per_era table.")
+        LOGGER.warning("Inserted %s rows into details_per_era table.", len(data_to_insert))
     except Exception:
         LOGGER.exception("Failed to insert details_per_era entries into the database")
 
@@ -115,7 +119,7 @@ def insert_epoch_duration_entries(
         # Execute batch insert
         cursor.executemany(sql, data_to_insert)
 
-        LOGGER.warning(f"Inserted {len(data_to_insert)} rows into epoch_duration table.")
+        LOGGER.warning("Inserted %s rows into epoch_duration table.", len(data_to_insert))
     except Exception:
         LOGGER.exception("Failed to insert epoch_duration entries into the database")
 
@@ -149,7 +153,7 @@ def insert_system_metrics_entries(
         # Execute batch insert
         cursor.executemany(sql, data_to_insert)
 
-        LOGGER.warning(f"Inserted {len(data_to_insert)} rows into system_metrics table.")
+        LOGGER.warning("Inserted %s rows into system_metrics table.", len(data_to_insert))
     except Exception:
         LOGGER.exception("Failed to insert system_metrics entries into the database")
 
@@ -193,6 +197,6 @@ def store_sync_results(sync_data: dict) -> None:
         with open(backup_filename, "w", encoding="utf-8") as backup_file:
             json.dump(sync_data, backup_file, indent=4)
 
-        LOGGER.warning(f"Sync data backup saved to {backup_filename} for future processing.")
+        LOGGER.warning("Sync data backup saved to %s for future processing.", backup_filename)
     finally:
         conn.close()

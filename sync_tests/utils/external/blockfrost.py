@@ -1,3 +1,7 @@
+"""Blockfrost API helpers for fetching on-chain epoch and transaction data."""
+
+from __future__ import annotations
+
 import datetime
 import logging
 import os
@@ -28,13 +32,13 @@ def is_blockfrost_healthy(api: BlockFrostApi) -> bool:
 
 def get_tx_count_per_epoch(epoch_no: int) -> int | None:
     """Get the transaction count for a given epoch."""
-    LOGGER.info(f"Fetching transaction count for epoch {epoch_no}")
+    LOGGER.info("Fetching transaction count for epoch %s", epoch_no)
     api = get_blockfrost_api()
     if is_blockfrost_healthy(api):
         try:
             return int(api.epoch(number=epoch_no).tx_count)
         except Exception:
-            LOGGER.exception(f"Error fetching transaction count for epoch {epoch_no}")
+            LOGGER.exception("Error fetching transaction count for epoch %s", epoch_no)
             return None
     else:
         LOGGER.error("Blockfrost API is unhealthy.")
@@ -58,7 +62,7 @@ def get_current_epoch_no() -> int | None:
 
 def get_epoch_start_datetime(epoch_no: int) -> str | None:
     """Get the start datetime of a given epoch."""
-    LOGGER.info(f"Fetching start datetime for epoch {epoch_no}")
+    LOGGER.info("Fetching start datetime for epoch %s", epoch_no)
     api = get_blockfrost_api()
     if is_blockfrost_healthy(api):
         try:
@@ -67,7 +71,7 @@ def get_epoch_start_datetime(epoch_no: int) -> str | None:
                 epoch_data.start_time, tz=datetime.timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
         except Exception:
-            LOGGER.exception(f"Error fetching start datetime for epoch {epoch_no}")
+            LOGGER.exception("Error fetching start datetime for epoch %s", epoch_no)
             return None
     else:
         LOGGER.error("Blockfrost API is unhealthy.")

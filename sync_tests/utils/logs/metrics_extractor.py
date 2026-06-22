@@ -1,34 +1,20 @@
+"""Extract performance metrics from cardano-node log files."""
+
+from __future__ import annotations
+
 import datetime
 import heapq
 import itertools
-import os
 import pathlib as pl
 import re
-import shutil
-import subprocess
 import typing as tp
+
+from sync_tests.utils.logs.filtering import open_filtered_log_fd
 
 
 def merge_sorted_unique(*iterables: tp.Iterable) -> list:
     """Merge and sort multiple sorted iterables while removing duplicates."""
     return [key for key, _ in itertools.groupby(heapq.merge(*iterables))]
-
-
-def filtered_log_fd(log_file: pl.Path, use_rg: bool = False) -> subprocess.Popen:
-    """Run rg or grep to filter log lines and return a file descriptor for reading."""
-    if use_rg:
-        cmd = ["rg", "cardano\\.node\\.resources|new tip", str(log_file)]
-    else:
-        cmd = ["grep", "-E", "cardano\\.node\\.resources|new tip", str(log_file)]
-
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,  # Suppress errors (e.g., if file is missing)
-        text=True,  # Ensures output is treated as text, not bytes
-    )
-
-    return process
 
 
 def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
@@ -38,13 +24,20 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
     heap_ram_details_dict: dict[datetime.datetime, float] = {}
     rss_ram_details_dict: dict[datetime.datetime, float] = {}
     centi_cpu_dict: dict[datetime.datetime, float] = {}
+    cpu_ticks_dict: dict[datetime.datetime, float] = {}
     cpu_details_dict: dict[datetime.datetime, float] = {}
     logs_details_dict: dict[str, dict[str, tp.Any]] = {}
 
     timestamp_pattern = re.compile(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}")
     heap_pattern = re.compile(r'"Heap",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
     rss_pattern = re.compile(r'"RSS",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
-    centi_cpu_pattern = re.compile(r'"CentiCpu",Number (\d+\.\d+)')
+    centi_cpu_pattern = re.compile(
+        r'"CentiCpu",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)',
+    )
+    resources_human_pattern = re.compile(
+        r"Resources:\s+Cpu Ticks\s+(\d+).+?RTS heap\s+(\d+),\s+RSS\s+(\d+)",
+        re.IGNORECASE,
+    )
 
     def _process_log_line(line: str) -> None:
         """Extract relevant data from a log line and updates dictionaries."""
@@ -62,6 +55,17 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
             heap_ram_details_dict[timestamp] = float(heap_match.group(1))
             rss_ram_details_dict[timestamp] = float(rss_match.group(1))
             centi_cpu_dict[timestamp] = float(centi_cpu_match.group(1))
+        elif (
+            "Resources:" in line
+            and (timestamp_match := timestamp_pattern.search(line))
+            and (resources_match := resources_human_pattern.search(line))
+        ):
+            timestamp = datetime.datetime.strptime(
+                timestamp_match.group(0), "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=datetime.timezone.utc)
+            cpu_ticks_dict[timestamp] = float(resources_match.group(1))
+            heap_ram_details_dict[timestamp] = float(resources_match.group(2))
+            rss_ram_details_dict[timestamp] = float(resources_match.group(3))
 
         # Extract slot number
         elif (
@@ -94,36 +98,50 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         if incomplete_line:
             _process_log_line(incomplete_line)
 
-    # Filter the log file with 'rg' (ripgrep) if available
-    if shutil.which("rg"):
-        with filtered_log_fd(log_file, use_rg=True) as process:
+    filter_pattern = r"cardano\.node\.resources|Resources:|new tip"
+
+    process = open_filtered_log_fd(
+        log_file=log_file,
+        pattern=filter_pattern,
+        tool="rg",
+    )
+    if process:
+        with process:
             if process.stdout:
                 _process_log_file(infile=process.stdout)
-    # If 'rg' is not available, check if 'grep' is available
-    if not centi_cpu_dict and shutil.which("grep"):
-        with filtered_log_fd(log_file) as process:
-            if process.stdout:
-                _process_log_file(infile=process.stdout)
+
+    if not centi_cpu_dict and not cpu_ticks_dict:
+        process = open_filtered_log_fd(
+            log_file=log_file,
+            pattern=filter_pattern,
+            tool="grep",
+        )
+        if process:
+            with process:
+                if process.stdout:
+                    _process_log_file(infile=process.stdout)
     # If neither 'rg' nor 'grep' is available, read the log file directly without filtering
-    if not centi_cpu_dict:
+    if not centi_cpu_dict and not cpu_ticks_dict:
         with open(log_file, encoding="utf-8") as infile:
             _process_log_file(infile=infile)
 
-    # Compute CPU load percentage per core
-    no_of_cpu_cores = os.cpu_count() or 1
+    cpu_source = centi_cpu_dict or cpu_ticks_dict
+    cpu_multiplier = 1.0 if centi_cpu_dict else 100.0
+    for prev_timestamp, curr_timestamp in itertools.pairwise(cpu_source):
+        prev_value = cpu_source[prev_timestamp]
+        curr_value = cpu_source[curr_timestamp]
+        elapsed = (curr_timestamp - prev_timestamp).total_seconds()
+        if elapsed <= 0:
+            continue
 
-    for prev_timestamp, curr_timestamp in itertools.pairwise(centi_cpu_dict):
-        prev_value = centi_cpu_dict[prev_timestamp]
-        curr_value = centi_cpu_dict[curr_timestamp]
-
-        # Compute CPU load percentage over elapsed time
-        cpu_load_percent = (curr_value - prev_value) / (
-            curr_timestamp - prev_timestamp
-        ).total_seconds()
-        cpu_details_dict[curr_timestamp] = cpu_load_percent / no_of_cpu_cores
+        # Compute CPU load percentage over elapsed time (no per-core split; matches CentiCpu scale).
+        cpu_load_percent = ((curr_value - prev_value) * cpu_multiplier) / elapsed
+        cpu_details_dict[curr_timestamp] = cpu_load_percent
 
     # Collect all unique timestamps from different dictionaries
-    all_timestamps_list = merge_sorted_unique(tip_details_dict, cpu_details_dict)
+    all_timestamps_list = merge_sorted_unique(
+        tip_details_dict, cpu_details_dict, rss_ram_details_dict, heap_ram_details_dict
+    )
 
     # Populate logs_details_dict with merged data
     tip = -1
@@ -133,6 +151,12 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         if tip == -1:
             continue
         cpu = cpu_details_dict.get(timestamp)
+        if cpu is None and cpu_details_dict:
+            # Carry forward previous CPU sample if current timestamp has only tip/RSS update.
+            earlier_cpu_ts = [ts for ts in cpu_details_dict if ts <= timestamp]
+            if earlier_cpu_ts:
+                latest_ts = max(earlier_cpu_ts)
+                cpu = cpu_details_dict.get(latest_ts)
         if cpu is None:
             continue
         logs_details_dict[str(timestamp)] = {
