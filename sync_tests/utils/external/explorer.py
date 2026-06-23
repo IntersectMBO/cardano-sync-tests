@@ -1,3 +1,7 @@
+"""Cardano explorer API helpers for fetching epoch start times."""
+
+from __future__ import annotations
+
 import json
 import logging
 import time
@@ -10,7 +14,7 @@ MAINNET_EXPLORER_URL = "https://explorer.cardano.org/graphql"
 STAGING_EXPLORER_URL = "https://explorer.staging.cardano.org/graphql"
 TESTNET_EXPLORER_URL = "https://explorer.cardano-testnet.iohkdev.io/graphql"
 SHELLEY_QA_EXPLORER_URL = "https://explorer.shelley-qa.dev.cardano.org/graphql"
-PREPROD_EXPLORER_URL = None
+PREPROD_EXPLORER_URL = "https://preprod.koios.rest/api/v1/epoch_info?_epoch_no="
 PREVIEW_EXPLORER_URL = "https://preview.koios.rest/api/v1/epoch_info?_epoch_no="
 
 EXPLORER_URLS = {
@@ -52,24 +56,32 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
 
     url = EXPLORER_URLS.get(env)
 
-    if url is None:
+    if env not in EXPLORER_URLS:
         LOGGER.error(
-            "The provided 'env' is not supported. Please use one of: "
-            f"{', '.join(EXPLORER_URLS.keys())}"
+            "The provided 'env' is not supported. Please use one of: %s",
+            ", ".join(EXPLORER_URLS.keys()),
+        )
+        return None
+
+    if url is None:
+        LOGGER.warning(
+            "No explorer URL configured for env=%s; cannot fetch epoch start time from explorer.",
+            env,
         )
         return None
 
     result = None
     try:
-        if env == "preview":
+        if env in ("preview", "preprod"):
             url = f"{url}{epoch_no}"
             response = requests.get(url=url, headers=headers)
 
             if response.status_code != 200:
-                LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
+                LOGGER.error("Failed to fetch data from %s: %s", url, response.text)
                 LOGGER.error(
-                    "!!! ERROR: status_code != 200 when getting start time for "
-                    f"epoch {epoch_no} on {env}"
+                    "!!! ERROR: status_code != 200 when getting start time for epoch %s on %s",
+                    epoch_no,
+                    env,
                 )
             else:
                 result = response.json()[0]["start_time"]
@@ -78,23 +90,26 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
             status_code = response.status_code
 
             if status_code != 200:
-                LOGGER.error(f"Failed to fetch data from {url}: {response.text}")
+                LOGGER.error("Failed to fetch data from %s: %s", url, response.text)
                 LOGGER.error(
-                    "!!! ERROR: status_code != 200 when getting start time for "
-                    f"epoch {epoch_no} on {env}"
+                    "!!! ERROR: status_code != 200 when getting start time for epoch %s on %s",
+                    epoch_no,
+                    env,
                 )
             else:
                 count = 0
                 while "data" in response.json() and response.json().get("data") is None:
-                    LOGGER.info(f"Attempt {count}: Response is None. Retrying...")
+                    LOGGER.info("Attempt %s: Response is None. Retrying...", count)
                     time.sleep(30)
                     response = requests.post(url, data=payload, headers=headers)
                     count += 1
 
                     if count > 10:
                         LOGGER.error(
-                            "!!! ERROR: Not able to get start time for "
-                            f"epoch {epoch_no} on {env} after 10 tries"
+                            "!!! ERROR: Not able to get start time for epoch %s on %s"
+                            " after 10 tries",
+                            epoch_no,
+                            env,
                         )
                         break
 
@@ -105,6 +120,6 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
     except requests.RequestException:
         LOGGER.exception("Request failed")
     except KeyError:
-        LOGGER.exception(f"Unexpected response structure: {response.json()}")
+        LOGGER.exception("Unexpected response structure: %s", response.json())
 
     return result

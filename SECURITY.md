@@ -105,4 +105,3 @@ community in helping us maintain the security of our software while
 upholding the highest standards of privacy. Together, we can work to
 identify and address vulnerabilities, ensuring a safer and more secure
 experience for all users.
-

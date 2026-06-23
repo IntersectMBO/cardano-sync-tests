@@ -1,3 +1,7 @@
+"""AWS MySQL/MariaDB helpers for uploading sync test results."""
+
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -7,9 +11,7 @@ import typing as tp
 
 import pymysql.cursors
 
-from sync_tests.utils import db_sync
-
-TEST_RESULTS = f"db_sync_{db_sync.ENVIRONMENT}_full_sync_test_results.json"
+from sync_tests.utils.db_sync.config import DbSyncConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,13 +49,13 @@ def execute_query(
                 return cur.fetchall()
             conn.commit()
     except Exception:
-        LOGGER.exception(f"Query execution failed: {query}")
+        LOGGER.exception("Query execution failed: %s", query)
         return None
 
 
 def get_column_names_from_table(table_name: str) -> list[str]:
     """Retrieve column names from the specified table."""
-    LOGGER.info(f"Getting column names from table: {table_name}")
+    LOGGER.info("Getting column names from table: %s", table_name)
     conn = create_connection()
     if not conn:
         return []
@@ -68,7 +70,7 @@ def get_column_names_from_table(table_name: str) -> list[str]:
 
 def add_column_to_table(table_name: str, column_name: str, column_type: str) -> bool:
     """Add a new column to the specified table."""
-    LOGGER.info(f"Adding column {column_name} of type {column_type} to table {table_name}")
+    LOGGER.info("Adding column %s of type %s to table %s", column_name, column_type, table_name)
     conn = create_connection()
     if not conn:
         return False
@@ -76,7 +78,7 @@ def add_column_to_table(table_name: str, column_name: str, column_type: str) -> 
     try:
         query = f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {column_type}"
         execute_query(conn, query)
-        LOGGER.info(f"Successfully added column {column_name} to table {table_name}")
+        LOGGER.info("Successfully added column %s to table %s", column_name, table_name)
         return True
     finally:
         conn.close()
@@ -88,7 +90,10 @@ def insert_values_into_db(
     """Insert values into the database table."""
     action = "bulk" if bulk else "single"
     LOGGER.info(
-        f"Adding {len(col_values_list) if bulk else 1} {action} entry/entries into {table_name}"
+        "Adding %s %s entry/entries into %s",
+        len(col_values_list) if bulk else 1,
+        action,
+        table_name,
     )
 
     col_names = ", ".join([f"`{col}`" for col in col_names_list])
@@ -106,9 +111,9 @@ def insert_values_into_db(
         else:
             cur.execute(query, col_values_list)
         conn.commit()
-        LOGGER.info(f"Successfully added {cur.rowcount} rows to table {table_name}")
+        LOGGER.info("Successfully added %s rows to table %s", cur.rowcount, table_name)
     except Exception:
-        LOGGER.exception(f"Failed to insert data into {table_name}")
+        LOGGER.exception("Failed to insert data into %s", table_name)
         return False
     finally:
         conn.close()
@@ -117,7 +122,7 @@ def insert_values_into_db(
 
 def get_row_count(table_name: str) -> int | None:
     """Return the row count of a table."""
-    LOGGER.info(f"Getting row count for table: {table_name}")
+    LOGGER.info("Getting row count for table: %s", table_name)
     conn = create_connection()
     if not conn:
         return None
@@ -132,7 +137,7 @@ def get_row_count(table_name: str) -> int | None:
 
 def get_last_identifier(table_name: str) -> str | None:
     """Get the last identifier value from the table."""
-    LOGGER.info(f"Fetching last identifier value from {table_name}")
+    LOGGER.info("Fetching last identifier value from %s", table_name)
 
     if get_row_count(table_name) == 0:
         return f"{table_name}_0"
@@ -154,7 +159,7 @@ def get_last_identifier(table_name: str) -> str | None:
 
 def get_max_epoch(table_name: str) -> int | None:
     """Get the maximum epoch number from the table."""
-    LOGGER.info(f"Fetching max epoch number from {table_name}")
+    LOGGER.info("Fetching max epoch number from %s", table_name)
 
     if get_row_count(table_name) == 0:
         return 0
@@ -171,22 +176,27 @@ def get_max_epoch(table_name: str) -> int | None:
         conn.close()
 
 
-def upload_sync_results_to_aws(env: str) -> None:
-    os.chdir(db_sync.ROOT_TEST_PATH)
-    os.chdir(pl.Path.cwd() / "cardano-db-sync")
+def upload_sync_results_to_aws(config: DbSyncConfig, test_results_file: pl.Path) -> None:
+    """Upload sync test results to AWS database.
 
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
     LOGGER.info("Writing full sync results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
+    with open(test_results_file) as json_file:
         sync_test_results_dict = json.load(json_file)
 
-    test_summary_table = env + "_db_sync"
+    test_summary_table = config.env + "_db_sync"
     last_identifier = get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
+    if last_identifier is None:
+        LOGGER.error("Failed to fetch last identifier from %s", test_summary_table)
+        sys.exit(1)
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_" + test_id
+    identifier = config.env + "_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
-    LOGGER.info(f"Writing test values into {test_summary_table} DB table")
+    LOGGER.info("Writing test values into %s DB table", test_summary_table)
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
@@ -195,14 +205,14 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_names_list=col_to_insert,
         col_values_list=val_to_insert,
     ):
-        LOGGER.error(f"Failed to insert values into {test_summary_table}")
+        LOGGER.error("Failed to insert values into %s", test_summary_table)
         sys.exit(1)
 
-    with open(db_sync.EPOCH_SYNC_TIMES_FILE) as json_db_dump_file:
+    with open(config.epoch_sync_times_file) as json_db_dump_file:
         epoch_sync_times = json.load(json_db_dump_file)
 
-    epoch_duration_table = env + "_epoch_duration_db_sync"
-    LOGGER.info(f"  ==== Write test values into the {epoch_duration_table} DB table:")
+    epoch_duration_table = config.env + "_epoch_duration_db_sync"
+    LOGGER.info("  ==== Write test values into the %s DB table:", epoch_duration_table)
     col_to_insert = ["identifier", "epoch_no", "sync_duration_secs"]
     val_to_insert = [(identifier, e["no"], e["seconds"]) for e in epoch_sync_times]
 
@@ -212,14 +222,19 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_values_list=val_to_insert,
         bulk=True,
     ):
-        LOGGER.error(f"Failed to insert values into {epoch_duration_table}")
+        LOGGER.error("Failed to insert values into %s", epoch_duration_table)
         sys.exit(1)
 
-    with open(db_sync.DB_SYNC_PERF_STATS_FILE) as json_perf_stats_file:
-        db_sync_performance_stats = json.load(json_perf_stats_file)
+    with open(config.perf_stats_file) as json_perf_stats_file:
+        perf_stats_payload = json.load(json_perf_stats_file)
 
-    db_sync_performance_stats_table = env + "_performance_stats_db_sync"
-    LOGGER.info(f"  ==== Write test values into the {db_sync_performance_stats_table} DB table:")
+    if isinstance(perf_stats_payload, dict):
+        db_sync_performance_stats = perf_stats_payload.get("system_metrics", [])
+    else:
+        db_sync_performance_stats = perf_stats_payload
+
+    db_sync_performance_stats_table = config.env + "_performance_stats_db_sync"
+    LOGGER.info("  ==== Write test values into the %s DB table:", db_sync_performance_stats_table)
     col_to_insert = [
         "identifier",
         "time",
@@ -244,26 +259,67 @@ def upload_sync_results_to_aws(env: str) -> None:
         col_values_list=val_to_insert,
         bulk=True,
     ):
-        LOGGER.error(f"Failed to insert values into {db_sync_performance_stats_table}")
+        LOGGER.error("Failed to insert values into %s", db_sync_performance_stats_table)
         sys.exit(1)
 
 
-def upload_snapshot_restoration_results_to_aws(env: str) -> None:
+def upload_snapshot_restoration_results_to_aws(
+    config: DbSyncConfig, test_results_file: pl.Path
+) -> None:
+    """Upload snapshot restoration test results to AWS database.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
     LOGGER.info("--- Write IOHK snapshot restoration results to AWS Database")
-    with open(TEST_RESULTS) as json_file:
+    with open(test_results_file) as json_file:
         sync_test_results_dict = json.load(json_file)
 
-    test_summary_table = env + "_db_sync_snapshot_restoration"
+    test_summary_table = config.env + "_db_sync_snapshot_restoration"
     last_identifier = get_last_identifier(test_summary_table)
-    assert last_identifier is not None  # TODO: refactor
+    if last_identifier is None:
+        LOGGER.error("Failed to fetch last identifier from %s", test_summary_table)
+        sys.exit(1)
     test_id = str(int(last_identifier.split("_")[-1]) + 1)
-    identifier = env + "_restoration_" + test_id
+    identifier = config.env + "_restoration_" + test_id
     sync_test_results_dict["identifier"] = identifier
 
-    LOGGER.info(f"  ==== Write test values into the {test_summary_table} DB table:")
+    LOGGER.info("  ==== Write test values into the %s DB table:", test_summary_table)
     col_to_insert = list(sync_test_results_dict.keys())
     val_to_insert = list(sync_test_results_dict.values())
 
     if not insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
-        LOGGER.error(f"Failed to insert values into {test_summary_table}")
+        LOGGER.error("Failed to insert values into %s", test_summary_table)
+        sys.exit(1)
+
+
+def upload_snapshot_creation_results_to_aws(
+    config: DbSyncConfig, test_results_file: pl.Path
+) -> None:
+    """Upload snapshot creation test results to AWS database.
+
+    Args:
+        config: A DbSyncConfig instance with paths and settings.
+        test_results_file: Path to the test results JSON file.
+    """
+    LOGGER.info("--- Write snapshot creation results to AWS Database")
+    with open(test_results_file) as json_file:
+        snapshot_creation_results_dict = json.load(json_file)
+
+    test_summary_table = config.env + "_db_sync_snapshot_creation"
+    last_identifier = get_last_identifier(test_summary_table)
+    if last_identifier is None:
+        LOGGER.error("Failed to fetch last identifier from %s", test_summary_table)
+        sys.exit(1)
+    test_id = str(int(last_identifier.split("_")[-1]) + 1)
+    identifier = config.env + "_snapshot_creation_" + test_id
+    snapshot_creation_results_dict["identifier"] = identifier
+
+    LOGGER.info("  ==== Write test values into the %s DB table:", test_summary_table)
+    col_to_insert = list(snapshot_creation_results_dict.keys())
+    val_to_insert = list(snapshot_creation_results_dict.values())
+
+    if not insert_values_into_db(test_summary_table, col_to_insert, val_to_insert):
+        LOGGER.error("Failed to insert values into %s", test_summary_table)
         sys.exit(1)

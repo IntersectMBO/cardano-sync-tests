@@ -6,6 +6,32 @@
 # Local temporary files
 tmp/
 
+# IDE
+.idea/
+
+# Runtime node/db-sync directories (generated during test runs)
+bin/
+db/
+data/
+test_workdir/
+test_workdir_node_only/
+cardano-db-sync/
+cardano_node_dir/
+
+# Downloaded per-environment node config files (generated at runtime)
+config.json
+topology.json
+peer-snapshot.json
+checkpoints.json
+alonzo-genesis.json
+byron-genesis.json
+conway-genesis.json
+shelley-genesis.json
+
+# Postgres runtime files
+.s.PGSQL.*.lock
+postgres.log
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

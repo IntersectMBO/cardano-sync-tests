@@ -1,5 +1,5 @@
 steps:
-  - label: ':drum_with_drumsticks: Full sync test :drum_with_drumsticks:'
+  - label: ':drum_with_drumsticks: Node + DB sync :drum_with_drumsticks:'
     commands:
       - >
         nix develop --accept-flake-config .#python --command
@@ -15,4 +15,4 @@ steps:
       - "monitor.zip"
     agents:
       system: x86_64-linux
-      queue: core-tech-bench
+      queue: "${queue_name:-core-tech-bench}"
