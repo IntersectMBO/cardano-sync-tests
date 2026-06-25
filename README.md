@@ -2,16 +2,6 @@
 
 Sync tests for `cardano-node` and `cardano-db-sync`.
 
-## Documentation
-
-| Doc | Purpose |
-|-----|---------|
-| [`doc/LEARNING.md`](doc/LEARNING.md) | Index of learning and troubleshooting docs |
-| [`doc/SYNC_TEST_TROUBLESHOOTING.md`](doc/SYNC_TEST_TROUBLESHOOTING.md) | Buildkite, Postgres, Nix, stuck runs |
-| [`history.md`](history.md) | Branch timeline, incidents, owner conventions |
-| [`ISSUES_ENCOUNTERED.md`](ISSUES_ENCOUNTERED.md) | Known issues and fixes |
-| [`CURSOR_GUIDE.md`](CURSOR_GUIDE.md) | Style and where to save chat takeaways |
-
 ## Setup (local, without Nix)
 
 From the repository root:
@@ -105,15 +95,16 @@ pytest sync_tests/tests/ \
 When db-sync tests are included, `test_dbsync_artifacts.py` generates a comprehensive
 test results JSON and checks db-sync logs for errors and rollbacks.
 
-Current CI artifact behavior (Buildkite `artifact_paths`):
+GitHub Actions uploads these bundles when CI finishes:
 
 - `sync_logs.zip`
 - `sync_results.zip`
 - `monitor.zip`
 
 Bundle generation is CI-agnostic and keyed off standard CI variables
-(`CI`, `GITHUB_ACTIONS`, `BUILDKITE`, `GITLAB_CI`, `CIRCLECI`). The runner uploads
-the zips; local runs keep raw files under `test_workdir/` for debugging.
+(`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`). The workflow uploads the zips
+with `actions/upload-artifact`; local runs keep raw files under `test_workdir/`
+for debugging.
 
 Results JSON includes enriched performance samples under `system_metrics`.
 
@@ -221,16 +212,3 @@ When using `test_workdir/cardano-db-sync/db_sync_performance_stats.json` (list o
 - **Empty graphs**: Epoch Duration, Blocks per Epoch, Block Throughput
 - **Recommendation**: Use full `test_workdir/db_sync_results.json` for complete graph set
 
-## Document Index
-
-| Document | Purpose |
-|----------|---------|
-| [`doc/LEARNING.md`](doc/LEARNING.md) | Short index: doc map, high-signal facts, debugging entry point |
-| [`history.md`](history.md) | Branch timeline, local notes, *What Martin wants*, chat archive pointers |
-| [`doc/SYNC_TEST_TROUBLESHOOTING.md`](doc/SYNC_TEST_TROUBLESHOOTING.md) | Stuck runs, Buildkite, disk / Postgres, Nix `cardano-cli`, agent variance, pipeline YAML (§11) |
-| [`ISSUES_ENCOUNTERED.md`](ISSUES_ENCOUNTERED.md) | Short issue → fix index |
-| [`CURSOR_GUIDE.md`](CURSOR_GUIDE.md) | Style, pytest, Buildkite, where to save chat takeaways |
-| [`SYNC_TESTS_ARCHITECTURE.md`](SYNC_TESTS_ARCHITECTURE.md) | Module layout and pytest model |
-| [`SYNC_TESTS_COMPREHENSIVE_GUIDE.md`](SYNC_TESTS_COMPREHENSIVE_GUIDE.md) | Setup, CLI, markers, Buildkite env mapping |
-| [`NODE_SYNC_TEST_EXECUTION_FLOW.md`](NODE_SYNC_TEST_EXECUTION_FLOW.md) | Node-only pytest flow vs legacy script context |
-| [`REFRACTOR_PLAN.md`](REFRACTOR_PLAN.md) | Planned refactors |
