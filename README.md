@@ -211,4 +211,3 @@ When using `test_workdir/cardano-db-sync/db_sync_performance_stats.json` (list o
 - **Available graphs**: CPU, RSS, Combined Resources
 - **Empty graphs**: Epoch Duration, Blocks per Epoch, Block Throughput
 - **Recommendation**: Use full `test_workdir/db_sync_results.json` for complete graph set
-
