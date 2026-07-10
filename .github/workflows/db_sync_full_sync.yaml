@@ -55,7 +55,7 @@ jobs:
       PYTEST_ADDOPTS: "--log-cli-level=WARNING"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Prepare db-sync inputs
         id: inputs
