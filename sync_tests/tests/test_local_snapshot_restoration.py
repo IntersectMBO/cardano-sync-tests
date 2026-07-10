@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import pathlib as pl
@@ -32,6 +33,9 @@ def local_restoration_result(
     sync_context: SyncContext,
 ) -> tp.Generator[dict[str, tp.Any], None, None]:
     """Restore db-sync from a local snapshot, sync, and yield result data.
+
+    Reads snapshot metadata written by a prior snapshot creation run. Run the
+    snapshot_creation marked tests first to produce that metadata.
 
     Args:
         request: Pytest fixture request for CLI options.
@@ -75,7 +79,17 @@ def local_restoration_result(
     db_sync.create_database()
 
     # restore snapshot
-    snapshot_file = db_sync.get_buildkite_meta_data("snapshot_file")
+    snapshot_state_file = sync_context.workdir / "sync_session_state.json"
+    if not snapshot_state_file.exists():
+        msg = f"Snapshot metadata file not found: {snapshot_state_file}"
+        raise FileNotFoundError(msg)
+    try:
+        with open(snapshot_state_file, encoding="utf-8") as state_fh:
+            snapshot_data = json.load(state_fh)
+        snapshot_file = snapshot_data["snapshot_file"]
+    except (json.JSONDecodeError, KeyError) as exc:
+        msg = f"Invalid snapshot metadata in {snapshot_state_file}: {exc}"
+        raise ValueError(msg) from exc
     LOGGER.info("Restoring from snapshot: %s", snapshot_file)
     restoration_time = db_sync.restore_db_sync_from_snapshot(
         config,

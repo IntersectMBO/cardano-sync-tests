@@ -7,7 +7,7 @@ POSTGRES_DIR="${1:?"Need path to postgres dir"}"
 POSTGRES_DIR="$(readlink -m "$POSTGRES_DIR")"
 
 # Postgres refuses to start if the full Unix socket path exceeds ~107 bytes
-# (directory + "/.s.PGSQL.<port>"). Long CI workdirs (e.g. Buildkite) need a
+# (directory + "/.s.PGSQL.<port>"). Long CI workdirs need a
 # short -k directory; PGDATA stays under POSTGRES_DIR/data.
 _MAX_SOCK_PARENT_LEN=$((107 - 22))
 SOCKET_DIR="$POSTGRES_DIR"

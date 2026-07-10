@@ -26,7 +26,6 @@ jobs:
 
       - name: Get the automated tests results
         env:
-          BUILDKITE_API_ACCESS_TOKEN: ${{ secrets.BUILDKITE_API_ACCESS_TOKEN }}
           AWS_DB_USERNAME: ${{ secrets.AWS_DB_USERNAME }}
           AWS_DB_PASS: ${{ secrets.AWS_DB_PASS }}
           AWS_DB_NAME: ${{ secrets.AWS_DB_NAME }}
