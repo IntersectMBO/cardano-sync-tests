@@ -20,3 +20,7 @@ import typing as tp
 CONFIGS_BASE_URL: tp.Final[str] = (
     os.environ.get("CONFIGS_BASE_URL") or "https://book.world.dev.cardano.org/environments"
 )
+
+#: GitHub org that cardano-node and cardano-db-sync are cloned from.
+#: Override via the ``CARDANO_GITHUB_ORG`` environment variable.
+CARDANO_GITHUB_ORG: tp.Final[str] = os.environ.get("CARDANO_GITHUB_ORG") or "IntersectMBO"

@@ -1,4 +1,4 @@
-"""Git utilities for cloning and checking out IOHK repositories."""
+"""Git utilities for cloning and checking out Cardano repositories."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import pathlib as pl
 
 from git import Repo
 from git.exc import GitCommandError
+
+from sync_tests.utils.configuration import CARDANO_GITHUB_ORG
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,9 +31,9 @@ def _fetch_updates(repo: Repo) -> None:
 
 
 def git_clone_iohk_repo(repo_name: str, repo_dir: pl.Path, repo_branch: str) -> Repo:
-    """Clones an IOHK repository and checks out a specific branch."""
+    """Clones a Cardano repository and checks out a specific branch."""
     try:
-        repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", repo_dir)
+        repo = Repo.clone_from(f"https://github.com/{CARDANO_GITHUB_ORG}/{repo_name}.git", repo_dir)
         repo.git.checkout(repo_branch)
         LOGGER.info(
             "Repository %s successfully cloned to %s and branch %s checked out.",
@@ -84,7 +86,7 @@ def clone_repo(repo_name: str, repo_branch: str) -> str:
         return location
 
     try:
-        repo = Repo.clone_from(f"https://github.com/input-output-hk/{repo_name}.git", location)
+        repo = Repo.clone_from(f"https://github.com/{CARDANO_GITHUB_ORG}/{repo_name}.git", location)
         git_checkout(repo, repo_branch)
         LOGGER.info("Repository %s successfully cloned to %s.", repo_name, location)
     except GitCommandError:
