@@ -118,7 +118,12 @@ post-sync test durations are excluded from measured sync time.
 
 ## Graph Generation
 
-Generate performance graphs from sync test results using `sync_static_graphs.py`:
+In CI, graphs are generated automatically from `node_sync_results.json` /
+`db_sync_results.json` right before the `sync_results.zip` bundle is built, so
+the uploaded artifact bundle already contains them; graph generation failures
+are logged but never fail the test run. To generate graphs from a local run
+(or regenerate them from an old results file), run `sync_static_graphs.py`
+directly:
 
 ### Node-sync graphs
 
