@@ -43,14 +43,37 @@ if [ ! -e "$POSTGRES_DIR/data" ]; then
   mkdir -p "$POSTGRES_DIR/data"
   initdb -D "$POSTGRES_DIR/data" --encoding=UTF8 --locale=en_US.UTF-8 -A trust -U "$PGUSER"
 
-  # Tune postgres for sync-test CI runner (64 GB RAM).
-  # Defaults (e.g. shared_buffers=128MB) are far too conservative for a ~1 TB
-  # mainnet database and cause OOM kills at epoch boundaries.
-  cat >> "$POSTGRES_DIR/data/postgresql.conf" << 'EOF'
+  # Tune postgres relative to the host's actual RAM instead of assuming a
+  # fixed-size CI runner. Defaults (e.g. shared_buffers=128MB) are far too
+  # conservative for a ~1 TB mainnet database and cause OOM kills at epoch
+  # boundaries; a hardcoded 8GB/2GB in turn can fail to start or get OOM
+  # killed on a smaller host. Scale off detected total memory, with the
+  # scaling factors chosen so a 64 GB host lands on the previous fixed
+  # values (8GB / 2GB) unchanged. Override with PG_SHARED_BUFFERS /
+  # PG_MAINTENANCE_WORK_MEM (postgresql.conf memory syntax, e.g. "4GB").
+  _total_mem_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo 2> /dev/null || true)"
+  if [ -z "$_total_mem_kb" ]; then
+    echo "Warning: could not read /proc/meminfo, assuming 64GB host RAM." >&2
+    _total_mem_kb=$((64 * 1024 * 1024))
+  fi
+  _total_mem_gb=$(( _total_mem_kb / 1024 / 1024 ))
+  [ "$_total_mem_gb" -lt 1 ] && _total_mem_gb=1
 
-# Sync-test tuning for 64 GB CI runner
-shared_buffers = 8GB
-maintenance_work_mem = 2GB
+  _default_shared_buffers_gb=$(( _total_mem_gb / 8 ))
+  [ "$_default_shared_buffers_gb" -lt 1 ] && _default_shared_buffers_gb=1
+  _default_maintenance_work_mem_gb=$(( _total_mem_gb / 32 ))
+  [ "$_default_maintenance_work_mem_gb" -lt 1 ] && _default_maintenance_work_mem_gb=1
+
+  PG_SHARED_BUFFERS="${PG_SHARED_BUFFERS:-${_default_shared_buffers_gb}GB}"
+  PG_MAINTENANCE_WORK_MEM="${PG_MAINTENANCE_WORK_MEM:-${_default_maintenance_work_mem_gb}GB}"
+
+  echo "Host RAM: ${_total_mem_gb}GB detected; shared_buffers=${PG_SHARED_BUFFERS} maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM}"
+
+  cat >> "$POSTGRES_DIR/data/postgresql.conf" << EOF
+
+# Sync-test tuning, scaled off detected host RAM (${_total_mem_gb}GB)
+shared_buffers = ${PG_SHARED_BUFFERS}
+maintenance_work_mem = ${PG_MAINTENANCE_WORK_MEM}
 max_parallel_maintenance_workers = 2
 max_wal_size = 8GB
 wal_compression = on
