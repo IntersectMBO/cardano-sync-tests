@@ -277,3 +277,20 @@ def run_db_sync(
         perf_stats=perf_stats,
         db_sync_tip=db_sync_tip,
     )
+
+
+def teardown_node_and_db_sync(base_dir: pl.Path, config: db_sync.DbSyncConfig) -> None:
+    """Terminate node/db-sync processes and clean up after a session.
+
+    Shared by the snapshot-restoration test fixtures so the same teardown
+    sequence isn't hand-rolled in each one.
+
+    Args:
+        base_dir: Root directory the node was started in (for DB dir removal).
+        config: Db-sync configuration used to stop postgres and finalize cleanup.
+    """
+    helpers.manage_process(proc_name="cardano-db-sync", action="terminate")
+    helpers.manage_process(proc_name="cardano-node", action="terminate")
+    node.rm_node_db_dir(base_dir=base_dir)
+    db_sync.stop_postgres(config)
+    db_sync.finalize_session_disk_cleanup(config)

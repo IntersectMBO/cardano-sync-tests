@@ -17,7 +17,7 @@ from _pytest.fixtures import FixtureRequest
 from sync_tests.tests.conftest import SyncContext
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
-from sync_tests.utils import node
+from sync_tests.utils import sync_entries
 from sync_tests.utils.logs import log_analyzer
 
 LOGGER = logging.getLogger(__name__)
@@ -111,38 +111,22 @@ def local_restoration_result(
         snapshot_slot_no,
     )
 
-    # start node
+    # start node (reuses conftest's run_node_sync instead of hand-rolling the same
+    # build+start+wait-for-sync sequence a third time; clean_start=False preserves
+    # this test's original behavior of reusing an already-synced node db if one is
+    # already present from an earlier step in the same session)
     LOGGER.info("Starting node for post-restoration sync")
-    conf_dir = pl.Path.cwd()
     base_dir = pl.Path.cwd()
-    bin_dir = pl.Path("bin")
-    bin_dir.mkdir(exist_ok=True)
-    node.add_to_path(path=bin_dir)
-
-    node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_revision, base_dir=base_dir)
-    _cli_version, _cli_git_rev = node.get_node_version()
-    node.rm_node_config_files(conf_dir=conf_dir)
-    node.get_node_config_files(
+    sync_entries.run_node_sync(
         env=env,
-        node_topology_type="",
-        conf_dir=conf_dir,
-        disable_genesis_mode_flag=False,
-    )
-    node.configure_node(config_file=conf_dir / "config.json")
-    node.start_node(
+        node_revision=node_revision,
+        node_logfile_path=config.node_log_file,
         base_dir=base_dir,
-        node_start_arguments=(),
-        logfile_path=config.node_log_file,
+        conf_dir=base_dir,
+        start_era="shelley",
+        clean_start=False,
+        full_sync=True,
     )
-    node.wait_node_start(
-        env=env,
-        base_dir=base_dir,
-        timeout_minutes=10,
-        logfile_path=config.node_log_file,
-    )
-    helpers.print_last_n_lines(config.node_log_file, 80)
-    node.wait_for_node_to_sync(env=env, base_dir=base_dir)
 
     # start db-sync
     LOGGER.info("Starting db-sync after snapshot restoration")
@@ -194,17 +178,7 @@ def local_restoration_result(
     yield result
 
     LOGGER.info("Teardown: terminating cardano services")
-    helpers.manage_process(
-        proc_name="cardano-db-sync",
-        action="terminate",
-    )
-    helpers.manage_process(
-        proc_name="cardano-node",
-        action="terminate",
-    )
-    node.rm_node_db_dir(base_dir=base_dir)
-    db_sync.stop_postgres(config)
-    db_sync.finalize_session_disk_cleanup(config)
+    sync_entries.teardown_node_and_db_sync(base_dir=base_dir, config=config)
 
 
 class TestLocalSnapshotRestoration:
