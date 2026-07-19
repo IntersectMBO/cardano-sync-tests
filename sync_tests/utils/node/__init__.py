@@ -508,17 +508,23 @@ def start_node(
     socket_path_p.unlink(missing_ok=True)
 
     effective_conf_dir = conf_dir if conf_dir is not None else pl.Path.cwd()
-    start_args = " ".join(node_start_arguments)
-    cmd = (
-        "cardano-node run "
-        f"--topology {effective_conf_dir / 'topology.json'} "
-        f"--database-path {base_dir / 'db'} "
-        f"--socket-path {socket_path} "
-        f"--config {effective_conf_dir / 'config.json'} "
-        "--host-addr 0.0.0.0 "
-        "--port 3000 "
-        f"{start_args}"
-    ).strip()
+    cmd = [
+        "cardano-node",
+        "run",
+        "--topology",
+        str(effective_conf_dir / "topology.json"),
+        "--database-path",
+        str(base_dir / "db"),
+        "--socket-path",
+        str(socket_path),
+        "--config",
+        str(effective_conf_dir / "config.json"),
+        "--host-addr",
+        "0.0.0.0",
+        "--port",
+        "3000",
+        *node_start_arguments,
+    ]
 
     LOGGER.info("Starting node with cmd: %s", cmd)
     # Ensure logfile is cleared/truncated before starting node
@@ -529,7 +535,7 @@ def start_node(
     logfile = open(logfile_path, "w+")
     LOGGER.info("Node logfile opened: %s (will write node output here)", logfile_path)
 
-    proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+    proc = subprocess.Popen(cmd, stdout=logfile, stderr=logfile)
     return proc, logfile
 
 
