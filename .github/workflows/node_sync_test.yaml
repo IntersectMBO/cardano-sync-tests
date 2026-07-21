@@ -86,7 +86,7 @@ jobs:
               --node-revision "${{ steps.rev.outputs.node_revision }}"
           } > test_workdir/ci_step.log 2>&1 || pytest_exit=$?
 
-          bash sync_tests/scripts/print-ci-summary.sh test_workdir/ci_step.log
+          bash sync_tests/scripts/print-ci-summary.sh test_workdir/ci_step.log "$pytest_exit"
           exit "$pytest_exit"
 
       - name: Recent log tails on failure
