@@ -7,7 +7,6 @@ import os
 import pathlib as pl
 import shutil
 
-from sync_tests.scripts.sync_static_graphs import generate_static_graphs
 from sync_tests.utils import helpers
 from sync_tests.utils.db_sync.config import DbSyncConfig
 from sync_tests.utils.db_sync.data import export_epoch_sync_times_from_db
@@ -38,6 +37,11 @@ def generate_result_graphs(
     """
     graphs_dir = workdir / "graphs"
     try:
+        # Imported lazily so a missing/broken graphing dependency (matplotlib,
+        # numpy, seaborn) only skips graphs, caught below, instead of breaking
+        # every caller of this module at import time.
+        from sync_tests.scripts.sync_static_graphs import generate_static_graphs  # noqa: PLC0415
+
         generate_static_graphs(
             file_list=[str(f) for f in results_files],
             output_dir=str(graphs_dir),
