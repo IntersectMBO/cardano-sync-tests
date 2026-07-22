@@ -21,7 +21,7 @@ if [ ! -f "$LOG" ]; then
       echo "## Sync test summary"
       echo ""
       echo "ci_step.log not found."
-    } >> "$GITHUB_STEP_SUMMARY"
+    } >> "$GITHUB_STEP_SUMMARY" || true
   fi
   exit 0
 fi
@@ -69,5 +69,11 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       echo "pytest summary not found; see the job log for details."
     fi
     echo '```'
-  } >> "$GITHUB_STEP_SUMMARY"
+  } >> "$GITHUB_STEP_SUMMARY" || true
 fi
+
+# This script is purely informational (console log + job summary); a glitch
+# writing either one must never fail the calling CI step, which runs under
+# set -euo pipefail and would otherwise abort before it reports pytest's own
+# exit code.
+exit 0
