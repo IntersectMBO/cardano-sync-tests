@@ -938,6 +938,7 @@ def get_node_repo(node_rev: str, base_dir: pl.Path) -> git.Repo:
 
 def get_node_files(node_rev: str, base_dir: pl.Path) -> git.Repo:
     bin_directory = base_dir / "bin"
+    bin_directory.mkdir(parents=True, exist_ok=True)
 
     node_repo = get_node_repo(node_rev=node_rev, base_dir=base_dir)
     # Use working tree (repo root), not .git dir: nix build outputs live in the repo root.
