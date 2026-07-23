@@ -14,14 +14,18 @@ import shlex
 import shutil
 import stat
 import subprocess
+import time
 import typing as tp
 import zipfile
 
 import psutil
+import requests
 from colorama import Fore
 from colorama import Style
 
 LOGGER = logging.getLogger(__name__)
+
+DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 
 _NIX_BUILD_LOG_ENV = "SYNC_TESTS_NIX_BUILD_LOG"
 _DEFAULT_NIX_BUILD_LOG = "test_workdir/nix_build.log"
@@ -396,6 +400,57 @@ def get_file_sha256_sum(filepath: str | pl.Path) -> str:
     """
     with open(filepath, "rb") as f:
         return hashlib.file_digest(f, hashlib.sha256).hexdigest()
+
+
+def request_with_retry(
+    method: str,
+    url: str,
+    max_attempts: int = 3,
+    timeout: float = DEFAULT_HTTP_TIMEOUT_SECONDS,
+    **kwargs: tp.Any,
+) -> requests.Response:
+    """Issue an HTTP request with a timeout and exponential-backoff retry.
+
+    A hung remote endpoint must fail fast and retry rather than block a
+    multi-hour sync-test job indefinitely.
+
+    Args:
+        method: HTTP method, e.g. "get" or "post".
+        url: Request URL.
+        max_attempts: Number of attempts before giving up.
+        timeout: Per-request timeout in seconds.
+        **kwargs: Forwarded to ``requests.request`` (headers, data, stream, ...).
+
+    Returns:
+        The ``requests.Response`` from the first successful attempt.
+
+    Raises:
+        requests.RequestException: If every attempt fails (connection error or timeout).
+    """
+    last_exc: requests.RequestException | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return requests.request(method, url, timeout=timeout, **kwargs)
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                break
+            backoff_secs = 2 ** (attempt - 1)
+            LOGGER.warning(
+                "%s %s failed on attempt %s/%s: %s. Retrying in %ss.",
+                method.upper(),
+                url,
+                attempt,
+                max_attempts,
+                exc,
+                backoff_secs,
+            )
+            time.sleep(backoff_secs)
+
+    if last_exc is None:  # unreachable, satisfies type checking
+        msg = "request_with_retry exhausted attempts without an exception"
+        raise RuntimeError(msg)
+    raise last_exc
 
 
 def print_last_n_lines(file_path: str | pl.Path, n: int) -> None:

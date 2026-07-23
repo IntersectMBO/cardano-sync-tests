@@ -15,6 +15,45 @@ from sync_tests.utils.db_sync.perf_utils import enrich_perf_stats_with_era
 LOGGER = logging.getLogger(__name__)
 
 
+def generate_result_graphs(
+    workdir: pl.Path, results_files: list[pl.Path], mode: str = "auto"
+) -> pl.Path:
+    """Generate performance graphs from sync results JSON files into workdir/graphs.
+
+    Best-effort: a failure here must not fail CI artifact bundling, it only
+    means graphs are skipped for this run (same as if nobody had run
+    sync_static_graphs.py at all).
+
+    Args:
+        workdir: Session working directory; graphs are written to workdir/graphs.
+        results_files: Result JSON files to generate graphs from.
+        mode: "node", "dbsync", or "auto" (majority-vote detection). Pass an
+            explicit mode when results_files is known to be single-purpose,
+            e.g. to generate node graphs even when a db-sync results file is
+            also present in the same workdir.
+
+    Returns:
+        The graphs directory (may be empty if generation failed or produced nothing).
+    """
+    graphs_dir = workdir / "graphs"
+    try:
+        # Imported lazily so a missing/broken graphing dependency (matplotlib,
+        # numpy, seaborn) only skips graphs, caught below, instead of breaking
+        # every caller of this module at import time.
+        from sync_tests.scripts.sync_static_graphs import generate_static_graphs  # noqa: PLC0415
+
+        generate_static_graphs(
+            file_list=[str(f) for f in results_files],
+            output_dir=str(graphs_dir),
+            dpi=150,
+            fmt="png",
+            mode=mode,
+        )
+    except Exception:
+        LOGGER.exception("Failed to generate result graphs; continuing without them")
+    return graphs_dir
+
+
 def is_ci_environment() -> bool:
     """Check if we're running in a CI environment across supported providers."""
     return bool(

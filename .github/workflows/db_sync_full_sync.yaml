@@ -93,9 +93,15 @@ jobs:
           HB_PID=$!
           trap 'pkill -P "$HB_PID" 2>/dev/null || true; kill "$HB_PID" 2>/dev/null || true' EXIT
 
+          if [ "${{ inputs.run_only_sync_test }}" = "true" ]; then
+            test_marker="node_sync or db_sync"
+          else
+            test_marker="node_sync or db_sync or snapshot_creation or local_snapshot"
+          fi
+
           pytest_args=(
             sync_tests/tests/
-            -m "node_sync or db_sync"
+            -m "${test_marker}"
             --environment "${{ inputs.environment }}"
             --node-revision "${{ inputs.node_version }}"
             --db-sync-revision "${{ inputs.db_sync_version }}"
