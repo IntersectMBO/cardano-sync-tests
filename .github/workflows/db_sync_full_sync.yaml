@@ -119,6 +119,7 @@ jobs:
           } > test_workdir/ci_step.log 2>&1 || pytest_exit=$?
 
           bash sync_tests/scripts/print-ci-summary.sh test_workdir/ci_step.log "$pytest_exit"
+          python3 sync_tests/scripts/publish_result_summary.py --workdir test_workdir || true
           exit "$pytest_exit"
 
       - name: Recent log tails on failure
