@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import sys
 import time
-import typing as tp
 from datetime import timedelta
 
 import psutil
@@ -22,7 +21,6 @@ from sync_tests.utils import node
 from sync_tests.utils.db_sync import config as db_sync_config
 from sync_tests.utils.db_sync import data as db_sync_data
 from sync_tests.utils.db_sync import postgres
-from sync_tests.utils.db_sync import snapshots
 from sync_tests.utils.db_sync.config import DbSyncConfig
 from sync_tests.utils.db_sync.config import DbSyncTip
 from sync_tests.utils.db_sync.config import PerfStats
@@ -195,7 +193,7 @@ def get_db_sync_version(_config: DbSyncConfig) -> tuple[str, str]:
     db_sync_dir = get_db_sync_dir()
     # Use the nix-built binary directly; avoids depending on the _cardano-db-sync
     # convenience copy which may not exist when copy_db_sync_executables was skipped
-    # (e.g. snapshot restoration tests) or failed due to a PermissionError.
+    # or failed due to a PermissionError.
     db_sync_binary = db_sync_dir / "db-sync-node" / "bin" / "cardano-db-sync"
     try:
         cmd = [str(db_sync_binary), "--version"]
@@ -672,38 +670,6 @@ def upload_artifact(file: str, destination: str = "auto") -> None:
 def create_node_database_archive(config: DbSyncConfig) -> pl.Path:
     """Create an archive of the node database for the specified environment."""
     return artifacts.create_node_database_archive(config)
-
-
-def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
-    """Retrieve the latest snapshot URL for the specified environment."""
-    return snapshots.get_latest_snapshot_url(env, args)
-
-
-def download_db_sync_snapshot(snapshot_url: str) -> str:
-    """Download a db-sync snapshot from the specified URL."""
-    return snapshots.download_db_sync_snapshot(snapshot_url)
-
-
-def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
-    """Retrieve the expected sha256 checksum for the specified snapshot."""
-    return snapshots.get_snapshot_sha_256_sum(snapshot_url)
-
-
-def restore_db_sync_from_snapshot(
-    config: DbSyncConfig, snapshot_file: str | pl.Path, remove_ledger_dir: str = "yes"
-) -> float:
-    """Restore db-sync from a snapshot file."""
-    return snapshots.restore_db_sync_from_snapshot(config, snapshot_file, remove_ledger_dir)
-
-
-def create_db_sync_snapshot_stage_1(config: DbSyncConfig) -> str:
-    """Create a db-sync snapshot (stage 1) and return the snapshot file path."""
-    return snapshots.create_db_sync_snapshot_stage_1(config)
-
-
-def create_db_sync_snapshot_stage_2(config: DbSyncConfig, stage_2_cmd: str) -> str:
-    """Create a db-sync snapshot (stage 2) and return the snapshot file path."""
-    return snapshots.create_db_sync_snapshot_stage_2(config, stage_2_cmd)
 
 
 def start_monitor(workdir: pl.Path, env: str) -> None:

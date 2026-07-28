@@ -63,9 +63,6 @@ log_level = "INFO"
 markers = [
     "node_sync: marks tests that require a fully synced cardano-node",
     "db_sync: marks tests that require a fully synced cardano-db-sync",
-    "snapshot_creation: marks snapshot creation tests (run after full sync)",
-    "local_snapshot: marks local snapshot restoration tests",
-    "iohk_snapshot: marks IOHK official snapshot restoration tests",
     "mainnet_tx_count: marks mainnet transaction count tests",
 ]
 

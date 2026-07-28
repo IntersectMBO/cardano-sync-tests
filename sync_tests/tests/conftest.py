@@ -124,18 +124,6 @@ def pytest_addoption(parser: tp.Any) -> None:
         help="Working directory for logs and artifacts",
     )
     parser.addoption(
-        "--snapshot-url",
-        action="store",
-        default=None,
-        help="Snapshot download URL for IOHK snapshot restoration",
-    )
-    parser.addoption(
-        "--run-only-sync-test",
-        action="store_true",
-        default=False,
-        help="Skip snapshot creation/restoration steps",
-    )
-    parser.addoption(
         "--pg-port",
         action="store",
         default="5432",
