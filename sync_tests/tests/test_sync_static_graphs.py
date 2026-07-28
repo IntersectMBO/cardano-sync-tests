@@ -111,3 +111,47 @@ def test_generate_static_graphs_dbsync_mode_produces_pngs(tmp_path: pl.Path) -> 
     produced = {p.name for p in output_dir.glob("*.png")}
     assert produced, "expected at least one PNG to be generated"
     assert all(p.stat().st_size > 0 for p in output_dir.glob("*.png"))
+
+
+def test_generate_static_graphs_node_mode_produces_pngs(tmp_path: pl.Path) -> None:
+    results = {
+        "env": "preview",
+        "tag_no1": "11.0.1",
+        "log_values": {
+            "2026-01-01T10:00:00+00:00": {
+                "tip": 100,
+                "heap_ram": 1000.0,
+                "rss_ram": 2000.0,
+                "cpu": 10.0,
+            },
+            "2026-01-01T10:01:00+00:00": {
+                "tip": 200,
+                "heap_ram": 1100.0,
+                "rss_ram": 2100.0,
+                "cpu": 12.0,
+            },
+            "2026-01-01T10:02:00+00:00": {
+                "tip": 300,
+                "heap_ram": 1200.0,
+                "rss_ram": 2200.0,
+                "cpu": 11.0,
+            },
+        },
+        "sync_duration_per_epoch": {"0": 60, "1": 55},
+        "eras_in_test": ["shelley"],
+    }
+    results_file = tmp_path / "node_sync_preview_results.json"
+    results_file.write_text(json.dumps(results), encoding="utf-8")
+    output_dir = tmp_path / "graphs"
+
+    generate_static_graphs(
+        file_list=[str(results_file)],
+        output_dir=str(output_dir),
+        dpi=50,
+        fmt="png",
+        mode="node",
+    )
+
+    produced = {p.name for p in output_dir.glob("*.png")}
+    assert produced, "expected at least one PNG to be generated"
+    assert all(p.stat().st_size > 0 for p in output_dir.glob("*.png"))
