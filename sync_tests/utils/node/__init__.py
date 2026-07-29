@@ -14,9 +14,9 @@ import socket
 import subprocess
 import time
 import typing as tp
-import urllib.request
 
 import git
+import requests
 
 from sync_tests.utils import exceptions
 from sync_tests.utils import helpers
@@ -99,9 +99,24 @@ def normalize_peer_snapshot(file_path: pl.Path) -> None:
 
 
 def download_config_file(config_slug: str, save_as: pl.Path) -> None:
+    """Download a single environment config file, with a timeout and retries.
+
+    Args:
+        config_slug: Path segment appended to CONFIGS_BASE_URL, e.g. "preview/config.json".
+        save_as: Local path to write the downloaded file to.
+
+    Raises:
+        requests.HTTPError: The server responded, but with an error status (e.g. 404
+            because this file genuinely isn't published for this environment).
+        requests.RequestException: The request failed at the transport level (timeout,
+            connection error) even after retries.
+    """
     url = f"{CONFIGS_BASE_URL}/{config_slug}"
     LOGGER.info("Downloading '%s' and saving as '%s'", url, save_as)
-    urllib.request.urlretrieve(url, save_as)
+    with helpers.request_with_retry("get", url, stream=True) as response:
+        response.raise_for_status()
+        with open(save_as, "wb") as f:
+            f.writelines(response.iter_content(chunk_size=8192))
 
 
 def get_node_config_files(
@@ -153,8 +168,14 @@ def get_node_config_files(
         LOGGER.info("Downloaded peer snapshot for %s", env)
         # Normalize format: IOG uses 'domain', node expects 'address'
         normalize_peer_snapshot(peer_snapshot_path)
-    except Exception:
-        LOGGER.warning("peer-snapshot.json not available for %s", env)
+    except requests.HTTPError as exc:
+        # Only a 404 means genuinely not published for this environment; any
+        # other status (500, 503, ...) is a real failure and must not be
+        # treated the same as "safe to skip".
+        if exc.response is not None and exc.response.status_code == 404:
+            LOGGER.warning("peer-snapshot.json not available for %s", env)
+        else:
+            raise
 
     # Genesis mode is the default (configs from IOG have it enabled)
     # Only disable if explicitly requested
@@ -166,8 +187,15 @@ def get_node_config_files(
         download_config_file(
             config_slug=f"{env}/checkpoints.json", save_as=conf_dir / "checkpoints.json"
         )
-    except Exception:
-        LOGGER.warning("checkpoints.json file not available")
+    except requests.HTTPError as exc:
+        # Only a 404 means genuinely not published for this environment. Any
+        # other status (500, 503, ...), or a network failure after retries,
+        # must fail loudly instead of silently starting a node whose config
+        # still points at a checkpoints file that was never written.
+        if exc.response is not None and exc.response.status_code == 404:
+            LOGGER.warning("checkpoints.json file not available for %s", env)
+        else:
+            raise
 
 
 def delete_node_files(node_dir: pl.Path) -> None:
