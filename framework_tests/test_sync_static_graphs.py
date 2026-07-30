@@ -56,8 +56,8 @@ class TestNormalizeDbsyncData:
             }
         }
         result = normalize_dbsync_data(data)
-        # Epoch 3 has neither a positive duration nor a truthy-enough blocks_count
-        # (0 still counts as valid per has_valid_blocks, so it IS kept)
+        # Epoch 3 has duration_sec=0 (not a valid duration) but is kept anyway:
+        # has_valid_blocks treats any blocks_count >= 0, including 0, as valid.
         assert set(result["epoch_timings"].keys()) == {1, 2, 3}
         assert result["epoch_timings"][1]["duration_sec"] == 120
 
