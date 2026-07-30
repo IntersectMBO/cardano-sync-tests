@@ -50,13 +50,15 @@ repository = "https://github.com/IntersectMBO/cardano-sync-tests"
 [tool.setuptools]
 
 [tool.setuptools.packages.find]
+where = ["."]
+include = ["sync_tests*"]
 
 [tool.setuptools.package-data]
 
 [tool.setuptools_scm]
 
 [tool.pytest.ini_options]
-testpaths = ["sync_tests/tests", "sync_tests/framework_tests"]
+testpaths = ["sync_tests/tests", "framework_tests"]
 addopts = "-ra -vvv"
 log_cli = true
 log_level = "INFO"
@@ -80,7 +82,7 @@ ignore = ["ANN401", "B905", "D10", "D203", "D212", "D213", "D214", "D215", "D404
 
 [tool.ruff.lint.per-file-ignores]
 "sync_tests/tests/**.py" = ["ANN"]
-"sync_tests/framework_tests/**.py" = ["ANN"]
+"framework_tests/**.py" = ["ANN"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -101,7 +103,7 @@ warn_unused_configs = true
 warn_return_any = true
 
 [tool.pyrefly]
-project_includes = ["sync_tests"]
+project_includes = ["sync_tests", "framework_tests"]
 ignore_errors_in_generated_code = true
 use_untyped_imports = true
 ignore_missing_source = true
