@@ -100,6 +100,66 @@ def test_build_summary_lines_malformed_json_does_not_raise(tmp_path: pl.Path) ->
     assert prs.build_summary_lines(tmp_path) == []
 
 
+def test_missing_result_file_logs_no_warning(
+    tmp_path: pl.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A legitimately absent result file (e.g. a node-only run) is not a warning."""
+    with caplog.at_level("WARNING"):
+        assert prs.build_summary_lines(tmp_path) == []
+    assert not caplog.records
+
+
+def test_malformed_json_still_logs_a_warning(
+    tmp_path: pl.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Unlike a missing file, a file that fails to parse is worth a warning."""
+    (tmp_path / "node_sync_results.json").write_text("not valid json{{{", encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        prs.build_summary_lines(tmp_path)
+    assert any("Failed to read" in r.message for r in caplog.records)
+
+
+def test_dbsync_epoch_and_block_none_render_as_unknown(tmp_path: pl.Path) -> None:
+    _write_json(
+        tmp_path / "db_sync_results.json",
+        {"last_synced_epoch_no": None, "last_synced_block_no": None},
+    )
+
+    output = "\n".join(prs.build_summary_lines(tmp_path))
+    assert "epoch unknown, block unknown" in output
+
+
+def test_dbsync_epoch_and_block_zero_are_not_unknown(tmp_path: pl.Path) -> None:
+    """Epoch/block 0 is a real, valid value and must not collapse to "unknown"."""
+    _write_json(
+        tmp_path / "db_sync_results.json",
+        {"last_synced_epoch_no": 0, "last_synced_block_no": 0},
+    )
+
+    output = "\n".join(prs.build_summary_lines(tmp_path))
+    assert "epoch 0, block 0" in output
+
+
+def test_dbsync_empty_string_fields_render_as_unknown(tmp_path: pl.Path) -> None:
+    """db_sync_revision etc. can be "" rather than absent; both must show "unknown"."""
+    _write_json(
+        tmp_path / "db_sync_results.json",
+        {
+            "env": "",
+            "db_sync_revision": "",
+            "total_sync_time_in_h_m_s": "",
+            "total_database_size": None,
+        },
+    )
+
+    output = "\n".join(prs.build_summary_lines(tmp_path))
+    assert "| Environment | unknown |" in output
+    assert "| DB-sync revision | unknown |" in output
+    assert "| Sync time | unknown |" in output
+    assert "| Database size | unknown |" in output
+
+
 def test_format_bytes() -> None:
     assert prs._format_bytes(500) == "500.0 B"
     assert prs._format_bytes(2_500_000_000) == "2.3 GB"
@@ -139,3 +199,12 @@ def test_publish_empty_lines_does_nothing(
     prs.publish([])
 
     assert summary_file.read_text(encoding="utf-8") == ""
+
+
+def test_publish_does_not_raise_on_unwritable_summary_path(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """publish() is documented as never raising, even for direct callers."""
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(tmp_path / "no-such-dir" / "summary.md"))
+
+    prs.publish(["### Node sync"])

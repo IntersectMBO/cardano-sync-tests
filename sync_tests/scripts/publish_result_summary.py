@@ -51,9 +51,9 @@ def render_node_summary(data: dict[str, tp.Any]) -> list[str]:
         "",
         "| Metric | Value |",
         "|---|---|",
-        f"| Environment | {data.get('env', 'unknown')} |",
-        f"| Node revision | {data.get('tag_no1', 'unknown')} |",
-        f"| Sync time | {data.get('sync_time1', 'unknown')} |",
+        f"| Environment | {data.get('env') or 'unknown'} |",
+        f"| Node revision | {data.get('tag_no1') or 'unknown'} |",
+        f"| Sync time | {data.get('sync_time1') or 'unknown'} |",
         f"| Chain size | {_format_bytes(data.get('chain_size_bytes'))} |",
         f"| Eras reached | {', '.join(eras) if eras else 'unknown'} |",
         "",
@@ -62,17 +62,19 @@ def render_node_summary(data: dict[str, tp.Any]) -> list[str]:
 
 def render_dbsync_summary(data: dict[str, tp.Any]) -> list[str]:
     """Render key metrics from a db_sync_results.json payload as markdown lines."""
-    epoch = data.get("last_synced_epoch_no", "unknown")
-    block = data.get("last_synced_block_no", "unknown")
+    epoch = data.get("last_synced_epoch_no")
+    epoch = "unknown" if epoch is None else epoch
+    block = data.get("last_synced_block_no")
+    block = "unknown" if block is None else block
     return [
         "### DB-sync",
         "",
         "| Metric | Value |",
         "|---|---|",
-        f"| Environment | {data.get('env', 'unknown')} |",
-        f"| DB-sync revision | {data.get('db_sync_revision', 'unknown')} |",
-        f"| Sync time | {data.get('total_sync_time_in_h_m_s', 'unknown')} |",
-        f"| Database size | {data.get('total_database_size', 'unknown')} |",
+        f"| Environment | {data.get('env') or 'unknown'} |",
+        f"| DB-sync revision | {data.get('db_sync_revision') or 'unknown'} |",
+        f"| Sync time | {data.get('total_sync_time_in_h_m_s') or 'unknown'} |",
+        f"| Database size | {data.get('total_database_size') or 'unknown'} |",
         f"| Last synced | epoch {epoch}, block {block} |",
         f"| Rollbacks detected | {'Yes' if data.get('rollbacks') else 'No'} |",
         f"| Errors detected | {'Yes' if data.get('errors') else 'No'} |",
@@ -81,6 +83,8 @@ def render_dbsync_summary(data: dict[str, tp.Any]) -> list[str]:
 
 
 def _load_json(path: pl.Path) -> dict[str, tp.Any] | None:
+    if not path.exists():
+        return None
     try:
         with open(path, encoding="utf-8") as fh:
             return tp.cast("dict[str, tp.Any]", json.load(fh))
@@ -107,18 +111,25 @@ def build_summary_lines(workdir: pl.Path) -> list[str]:
 
 
 def publish(lines: list[str]) -> None:
-    """Write the summary to GITHUB_STEP_SUMMARY when set, else print it."""
+    """Write the summary to GITHUB_STEP_SUMMARY when set, else print it.
+
+    Never raises: this is purely informational and a reporting glitch
+    (e.g. an unwritable summary path) must not be mistaken for a test failure.
+    """
     if not lines:
         LOGGER.info("No sync result files found; nothing to publish.")
         return
 
     output = "\n".join(lines)
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary_path:
-        with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write(output + "\n")
-    else:
-        print(output)
+    try:
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as fh:
+                fh.write(output + "\n")
+        else:
+            print(output)
+    except Exception:
+        LOGGER.warning("Failed to publish sync result summary", exc_info=True)
 
 
 def main() -> int:
