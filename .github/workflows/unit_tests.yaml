@@ -29,6 +29,4 @@ jobs:
     - name: Run unit tests
       run: |
         source .venv/bin/activate
-        pytest sync_tests/tests/ \
-          -m "not (node_sync or db_sync or snapshot_creation or local_snapshot or iohk_snapshot or mainnet_tx_count)" \
-          -v
+        pytest framework_tests -v
