@@ -12,7 +12,7 @@ import pytest
 
 from sync_tests.utils import helpers
 
-_REPO_ROOT = pl.Path(__file__).resolve().parents[2]
+_REPO_ROOT = pl.Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
