@@ -2,7 +2,6 @@
 
 import dataclasses
 import datetime
-import fileinput
 import functools
 import json
 import logging
@@ -15,9 +14,9 @@ import socket
 import subprocess
 import time
 import typing as tp
-import urllib.request
 
 import git
+import requests
 
 from sync_tests.utils import exceptions
 from sync_tests.utils import helpers
@@ -36,18 +35,6 @@ TESTNET_ARGS = {
     "preview": ("--testnet-magic", "2"),
     "preprod": ("--testnet-magic", "1"),
 }
-
-
-@dataclasses.dataclass(frozen=True)
-class SyncRec:
-    secs_to_start: int
-    sync_time_sec: int
-    last_slot_no: int
-    latest_chunk_no: int
-    era_details: dict
-    epoch_details: dict
-    start_sync_time: str
-    end_sync_time: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -112,9 +99,24 @@ def normalize_peer_snapshot(file_path: pl.Path) -> None:
 
 
 def download_config_file(config_slug: str, save_as: pl.Path) -> None:
+    """Download a single environment config file, with a timeout and retries.
+
+    Args:
+        config_slug: Path segment appended to CONFIGS_BASE_URL, e.g. "preview/config.json".
+        save_as: Local path to write the downloaded file to.
+
+    Raises:
+        requests.HTTPError: The server responded, but with an error status (e.g. 404
+            because this file genuinely isn't published for this environment).
+        requests.RequestException: The request failed at the transport level (timeout,
+            connection error) even after retries.
+    """
     url = f"{CONFIGS_BASE_URL}/{config_slug}"
     LOGGER.info("Downloading '%s' and saving as '%s'", url, save_as)
-    urllib.request.urlretrieve(url, save_as)
+    with helpers.request_with_retry("get", url, stream=True) as response:
+        response.raise_for_status()
+        with open(save_as, "wb") as f:
+            f.writelines(response.iter_content(chunk_size=8192))
 
 
 def get_node_config_files(
@@ -166,8 +168,14 @@ def get_node_config_files(
         LOGGER.info("Downloaded peer snapshot for %s", env)
         # Normalize format: IOG uses 'domain', node expects 'address'
         normalize_peer_snapshot(peer_snapshot_path)
-    except Exception:
-        LOGGER.warning("peer-snapshot.json not available for %s", env)
+    except requests.HTTPError as exc:
+        # Only a 404 means genuinely not published for this environment; any
+        # other status (500, 503, ...) is a real failure and must not be
+        # treated the same as "safe to skip".
+        if exc.response is not None and exc.response.status_code == 404:
+            LOGGER.warning("peer-snapshot.json not available for %s", env)
+        else:
+            raise
 
     # Genesis mode is the default (configs from IOG have it enabled)
     # Only disable if explicitly requested
@@ -179,8 +187,15 @@ def get_node_config_files(
         download_config_file(
             config_slug=f"{env}/checkpoints.json", save_as=conf_dir / "checkpoints.json"
         )
-    except Exception:
-        LOGGER.warning("checkpoints.json file not available")
+    except requests.HTTPError as exc:
+        # Only a 404 means genuinely not published for this environment. Any
+        # other status (500, 503, ...), or a network failure after retries,
+        # must fail loudly instead of silently starting a node whose config
+        # still points at a checkpoints file that was never written.
+        if exc.response is not None and exc.response.status_code == 404:
+            LOGGER.warning("checkpoints.json file not available for %s", env)
+        else:
+            raise
 
 
 def delete_node_files(node_dir: pl.Path) -> None:
@@ -508,17 +523,23 @@ def start_node(
     socket_path_p.unlink(missing_ok=True)
 
     effective_conf_dir = conf_dir if conf_dir is not None else pl.Path.cwd()
-    start_args = " ".join(node_start_arguments)
-    cmd = (
-        "cardano-node run "
-        f"--topology {effective_conf_dir / 'topology.json'} "
-        f"--database-path {base_dir / 'db'} "
-        f"--socket-path {socket_path} "
-        f"--config {effective_conf_dir / 'config.json'} "
-        "--host-addr 0.0.0.0 "
-        "--port 3000 "
-        f"{start_args}"
-    ).strip()
+    cmd = [
+        "cardano-node",
+        "run",
+        "--topology",
+        str(effective_conf_dir / "topology.json"),
+        "--database-path",
+        str(base_dir / "db"),
+        "--socket-path",
+        str(socket_path),
+        "--config",
+        str(effective_conf_dir / "config.json"),
+        "--host-addr",
+        "0.0.0.0",
+        "--port",
+        "3000",
+        *node_start_arguments,
+    ]
 
     LOGGER.info("Starting node with cmd: %s", cmd)
     # Ensure logfile is cleared/truncated before starting node
@@ -529,7 +550,7 @@ def start_node(
     logfile = open(logfile_path, "w+")
     LOGGER.info("Node logfile opened: %s (will write node output here)", logfile_path)
 
-    proc = subprocess.Popen(cmd.split(" "), stdout=logfile, stderr=logfile)
+    proc = subprocess.Popen(cmd, stdout=logfile, stderr=logfile)
     return proc, logfile
 
 
@@ -919,58 +940,6 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
     )
 
 
-def get_cabal_build_files(repo_dir: pl.Path) -> list[pl.Path]:
-    build_dir = repo_dir / "dist-newstyle/build"
-
-    node_build_files: list[pl.Path] = []
-    if build_dir.exists():
-        node_build_files.extend(f.resolve() for f in build_dir.rglob("*") if f.is_file())
-
-    return node_build_files
-
-
-def get_node_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path:
-    for f in get_cabal_build_files(repo_dir=repo_dir):
-        if (
-            "x" in f.parts
-            and "cardano-node" in f.parts
-            and "build" in f.parts
-            and "cardano-node-tmp" not in f.name
-            and "autogen" not in f.name
-        ):
-            return f
-    err = "Could not find the cardano-node executable built with cabal"
-    raise exceptions.SyncError(err)
-
-
-def get_cli_executable_path_built_with_cabal(repo_dir: pl.Path) -> pl.Path:
-    for f in get_cabal_build_files(repo_dir=repo_dir):
-        if (
-            "x" in f.parts
-            and "cardano-cli" in f.parts
-            and "build" in f.parts
-            and "cardano-cli-tmp" not in f.name
-            and "autogen" not in f.name
-        ):
-            return f
-    err = "Could not find the cardano-cli executable built with cabal"
-    raise exceptions.SyncError(err)
-
-
-def copy_cabal_node_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
-    node_binary_location_tmp = get_node_executable_path_built_with_cabal(repo_dir=repo_dir)
-    node_binary_location = node_binary_location_tmp
-    shutil.copy2(node_binary_location, dst_dir / "cardano-node")
-    helpers.make_executable(path=dst_dir / "cardano-node")
-
-
-def copy_cabal_cli_exe(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
-    cli_binary_location_tmp = get_cli_executable_path_built_with_cabal(repo_dir=repo_dir)
-    cli_binary_location = cli_binary_location_tmp
-    shutil.copy2(cli_binary_location, dst_dir / "cardano-cli")
-    helpers.make_executable(path=dst_dir / "cardano-cli")
-
-
 def copy_nix_node_from_repo(repo_dir: pl.Path, dst_dir: pl.Path) -> None:
     """Copy nix-built binaries instead of symlinking to avoid nix GC breaking the store paths."""
     (dst_dir / "cardano-node").unlink(missing_ok=True)
@@ -1001,171 +970,24 @@ def get_node_repo(node_rev: str, base_dir: pl.Path) -> git.Repo:
     return repo
 
 
-def get_cli_repo(cli_rev: str, base_dir: pl.Path) -> git.Repo:
-    node_repo_name = "cardano-cli"
-    cli_repo_dir = base_dir / "cardano_cli_dir"
-
-    if cli_repo_dir.is_dir():
-        repo = git.Repo(path=cli_repo_dir)
-        gitpython.git_checkout(repo, cli_rev)
-    else:
-        repo = gitpython.git_clone_iohk_repo(node_repo_name, cli_repo_dir, cli_rev)
-
-    return repo
-
-
-def get_node_files(node_rev: str, base_dir: pl.Path, build_tool: str = "nix") -> git.Repo:
+def get_node_files(node_rev: str, base_dir: pl.Path) -> git.Repo:
     bin_directory = base_dir / "bin"
+    bin_directory.mkdir(parents=True, exist_ok=True)
 
     node_repo = get_node_repo(node_rev=node_rev, base_dir=base_dir)
     # Use working tree (repo root), not .git dir: nix build outputs live in the repo root.
     node_repo_dir = pl.Path(node_repo.working_tree_dir or node_repo.git_dir)
 
-    if build_tool == "nix":
-        (node_repo_dir / "cardano-node-bin").unlink(missing_ok=True)
-        (node_repo_dir / "cardano-cli-bin").unlink(missing_ok=True)
-        helpers.execute_command(
-            "nix build -v --accept-flake-config --print-build-logs .#cardano-node "
-            "-o cardano-node-bin",
-            cwd=node_repo_dir,
-        )
-        helpers.execute_command(
-            "nix build -v --accept-flake-config --print-build-logs .#cardano-cli "
-            "-o cardano-cli-bin",
-            cwd=node_repo_dir,
-        )
-        copy_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
-
-    elif build_tool == "cabal":
-        repo_root = pl.Path(__file__).parent.parent.parent.parent
-        cabal_local_file = repo_root / "sync_tests" / "cabal.project.local"
-        cli_repo = get_cli_repo(cli_rev="main", base_dir=base_dir)
-        cli_repo_dir = pl.Path(cli_repo.working_tree_dir or cli_repo.git_dir)
-
-        # Build cli
-        shutil.copy2(cabal_local_file, cli_repo_dir)
-        LOGGER.debug(" - listdir cli_repo_dir: %s", os.listdir(cli_repo_dir))
-        shutil.rmtree(cli_repo_dir / "dist-newstyle", ignore_errors=True)
-        for line in fileinput.input(str(cli_repo_dir / "cabal.project"), inplace=True):
-            LOGGER.debug(line.replace("tests: True", "tests: False"))
-        helpers.execute_command("cabal update", cwd=cli_repo_dir)
-        helpers.execute_command("cabal build cardano-cli", cwd=cli_repo_dir)
-        copy_cabal_cli_exe(repo_dir=cli_repo_dir, dst_dir=bin_directory)
-        gitpython.git_checkout(cli_repo, "cabal.project")
-
-        # Build node
-        shutil.copy2(cabal_local_file, node_repo_dir)
-        LOGGER.debug(" - listdir node_repo_dir: %s", os.listdir(node_repo_dir))
-        shutil.rmtree(node_repo_dir / "dist-newstyle", ignore_errors=True)
-        for line in fileinput.input(str(node_repo_dir / "cabal.project"), inplace=True):
-            LOGGER.debug(line.replace("tests: True", "tests: False"))
-        helpers.execute_command("cabal update", cwd=node_repo_dir)
-        helpers.execute_command("cabal build cardano-node", cwd=node_repo_dir)
-        copy_cabal_node_exe(repo_dir=node_repo_dir, dst_dir=bin_directory)
-        gitpython.git_checkout(node_repo, "cabal.project")
+    (node_repo_dir / "cardano-node-bin").unlink(missing_ok=True)
+    (node_repo_dir / "cardano-cli-bin").unlink(missing_ok=True)
+    helpers.execute_command(
+        "nix build -v --accept-flake-config --print-build-logs .#cardano-node -o cardano-node-bin",
+        cwd=node_repo_dir,
+    )
+    helpers.execute_command(
+        "nix build -v --accept-flake-config --print-build-logs .#cardano-cli -o cardano-cli-bin",
+        cwd=node_repo_dir,
+    )
+    copy_nix_node_from_repo(repo_dir=node_repo_dir, dst_dir=bin_directory)
 
     return node_repo
-
-
-def config_sync(
-    env: str,
-    base_dir: pl.Path,
-    node_rev: str,
-    node_topology_type: str,
-    disable_genesis_mode: bool = False,
-) -> None:
-    """Configure the node for syncing.
-
-    Args:
-        env: Environment name (preview, preprod, mainnet).
-        base_dir: Base directory for node files.
-        node_rev: Node revision/tag to use.
-        node_topology_type: Topology type.
-        disable_genesis_mode: If True, disable Genesis mode and use Praos mode.
-    """
-    LOGGER.info("Get the cardano-node and cardano-cli files")
-    start_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-
-    bin_dir = base_dir / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    add_to_path(path=bin_dir)
-
-    platform_system = platform.system().lower()
-    if "windows" in platform_system:
-        get_node_files(node_rev=node_rev, base_dir=base_dir, build_tool="cabal")
-    else:
-        get_node_files(node_rev=node_rev, base_dir=base_dir)
-
-    end_build_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
-    LOGGER.info("  - start_build_time: %s", start_build_time)
-    LOGGER.info("  - end_build_time: %s", end_build_time)
-
-    rm_node_config_files(conf_dir=base_dir)
-    get_node_config_files(
-        env=env,
-        node_topology_type=node_topology_type,
-        conf_dir=base_dir,
-        disable_genesis_mode_flag=disable_genesis_mode,
-    )
-
-    configure_node(config_file=base_dir / "config.json")
-    if env == "mainnet" and node_topology_type == "legacy":
-        disable_p2p_node_config(config_file=base_dir / "config.json")
-
-
-def get_node_exit_code(proc: subprocess.Popen) -> int:
-    """Get the exit code of a node process if it has finished."""
-    if proc.poll() is None:  # None means the process is still running
-        return -1
-
-    # Get and report the exit code
-    exit_code = proc.returncode
-    return exit_code
-
-
-def run_sync(node_start_arguments: tp.Iterable[str], base_dir: pl.Path, env: str) -> SyncRec | None:
-    start_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%YT%H:%M:%S")
-
-    node_proc = None
-    logfile = None
-    try:
-        node_proc, logfile = start_node(
-            base_dir=base_dir,
-            node_start_arguments=node_start_arguments,
-        )
-        secs_to_start = wait_node_start(env=env, base_dir=base_dir, timeout_minutes=10)
-        (
-            sync_time_seconds,
-            last_slot_no,
-            latest_chunk_no,
-            era_details_dict,
-            epoch_details_dict,
-        ) = wait_for_node_to_sync(env=env, base_dir=base_dir)
-    except Exception:
-        LOGGER.exception("Could not finish sync.")
-        return None
-    finally:
-        end_sync_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-            "%d/%m/%Y %H:%M:%S"
-        )
-        if node_proc:
-            node_status = get_node_exit_code(proc=node_proc)
-            if node_status != -1:
-                LOGGER.error("Node exited unexpectedly with code: %s", node_status)
-            else:
-                exit_code = stop_node(proc=node_proc)
-                LOGGER.warning("Node stopped with exit code: %s", exit_code)
-        if logfile:
-            logfile.flush()
-            logfile.close()
-
-    return SyncRec(
-        secs_to_start=secs_to_start,
-        sync_time_sec=sync_time_seconds,
-        last_slot_no=last_slot_no,
-        latest_chunk_no=latest_chunk_no,
-        era_details=era_details_dict,
-        epoch_details=epoch_details_dict,
-        start_sync_time=start_sync_time,
-        end_sync_time=end_sync_time,
-    )

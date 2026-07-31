@@ -6,8 +6,6 @@ import logging
 import os
 import pathlib as pl
 import shutil
-import subprocess
-import typing as tp
 
 from sync_tests.utils import helpers
 from sync_tests.utils.db_sync.config import DbSyncConfig
@@ -17,18 +15,43 @@ from sync_tests.utils.db_sync.perf_utils import enrich_perf_stats_with_era
 LOGGER = logging.getLogger(__name__)
 
 
-def is_buildkite_available() -> bool:
-    """Check if Buildkite agent is available."""
+def generate_result_graphs(
+    workdir: pl.Path, results_files: list[pl.Path], mode: str = "auto"
+) -> pl.Path:
+    """Generate performance graphs from sync results JSON files into workdir/graphs.
+
+    Best-effort: a failure here must not fail CI artifact bundling, it only
+    means graphs are skipped for this run (same as if nobody had run
+    sync_static_graphs.py at all).
+
+    Args:
+        workdir: Session working directory; graphs are written to workdir/graphs.
+        results_files: Result JSON files to generate graphs from.
+        mode: "node", "dbsync", or "auto" (majority-vote detection). Pass an
+            explicit mode when results_files is known to be single-purpose,
+            e.g. to generate node graphs even when a db-sync results file is
+            also present in the same workdir.
+
+    Returns:
+        The graphs directory (may be empty if generation failed or produced nothing).
+    """
+    graphs_dir = workdir / "graphs"
     try:
-        subprocess.run(
-            ["buildkite-agent", "--version"],
-            capture_output=True,
-            check=True,
-            timeout=5,
+        # Imported lazily so a missing/broken graphing dependency (matplotlib,
+        # numpy, seaborn) only skips graphs, caught below, instead of breaking
+        # every caller of this module at import time.
+        from sync_tests.scripts.sync_static_graphs import generate_static_graphs  # noqa: PLC0415
+
+        generate_static_graphs(
+            file_list=[str(f) for f in results_files],
+            output_dir=str(graphs_dir),
+            dpi=150,
+            fmt="png",
+            mode=mode,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    return True
+    except Exception:
+        LOGGER.exception("Failed to generate result graphs; continuing without them")
+    return graphs_dir
 
 
 def is_ci_environment() -> bool:
@@ -36,55 +59,32 @@ def is_ci_environment() -> bool:
     return bool(
         os.getenv("CI")
         or os.getenv("GITHUB_ACTIONS")
-        or os.getenv("BUILDKITE")
         or os.getenv("GITLAB_CI")
         or os.getenv("CIRCLECI")
     )
 
 
 def upload_artifact(file: str, destination: str = "auto", local_dir: pl.Path | None = None) -> None:
-    """Upload an artifact to Buildkite if available, otherwise save locally.
+    """Keep an artifact available for local inspection or CI bundle collection.
 
     Args:
-        file: Path to the file to upload.
-        destination: Upload destination ("buildkite", "auto"). Defaults to "auto".
-        local_dir: Optional directory to save file locally if Buildkite is not available.
+        file: Path to the artifact file.
+        destination: Retained for call-site compatibility; direct CI uploads are
+            handled by workflow artifact steps.
+        local_dir: Optional directory to copy the file to for local collection.
     """
-    if destination in ("buildkite", "auto"):
-        try:
-            cmd = ["buildkite-agent", "artifact", "upload", f"{file}"]
-            subprocess.run(cmd, check=True, timeout=120)
-        except FileNotFoundError:
-            LOGGER.warning("Buildkite agent not available.")
-        except subprocess.TimeoutExpired:
-            LOGGER.warning("Timed out uploading artifact to Buildkite: %s", file)
-        except subprocess.CalledProcessError as exc:
-            LOGGER.warning(
-                "Buildkite artifact upload failed (exit %s) for %s",
-                exc.returncode,
-                file,
-            )
-        else:
-            LOGGER.info("Uploaded %s to Buildkite.", file)
-            return
-
-    # If Buildkite not available and local_dir is provided, save locally
+    _ = destination
     if local_dir:
         local_path = pl.Path(local_dir) / pl.Path(file).name
         # Only copy if the file is not already in the target location
         if pl.Path(file).resolve() != local_path.resolve():
             local_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(file, local_path)
-            LOGGER.info("Saved artifact locally to %s (no Buildkite available).", local_path)
+            LOGGER.info("Saved artifact locally to %s.", local_path)
         else:
-            LOGGER.info(
-                "Artifact already in target location: %s (no Buildkite available).", local_path
-            )
+            LOGGER.info("Artifact already in target location: %s.", local_path)
     else:
-        LOGGER.warning(
-            "Skipping artifact upload (no Buildkite agent available). "
-            "Logs remain in test_workdir/ for local inspection."
-        )
+        LOGGER.info("Artifact ready for collection: %s", file)
 
 
 def create_node_database_archive(config: DbSyncConfig) -> pl.Path:
@@ -112,24 +112,6 @@ def create_node_database_archive(config: DbSyncConfig) -> pl.Path:
     return node_db_archive
 
 
-def set_buildkite_meta_data(key: str, value: tp.Any) -> None:
-    """Set metadata in Buildkite for the specified key and value."""
-    cmd = ["buildkite-agent", "meta-data", "set", f"{key}", f"{value}"]
-    subprocess.run(cmd, check=True, timeout=15)
-
-
-def get_buildkite_meta_data(key: str) -> str:
-    """Retrieve metadata from Buildkite for the specified key."""
-    result = subprocess.run(
-        ["buildkite-agent", "meta-data", "get", f"{key}"],
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=True,
-    )
-    return result.stdout.strip()
-
-
 def emergency_upload_artifacts(
     config: DbSyncConfig, perf_stats: list[dict], era_activation: list[dict] | None = None
 ) -> None:
@@ -137,9 +119,8 @@ def emergency_upload_artifacts(
 
     Writes enriched perf stats and epoch sync times to disk. The JSON files are
     picked up by test_upload_ci_artifacts and included in sync_results.zip. No
-    zips are created here, no Buildkite uploads are performed, and no processes
-    are terminated — artifact collection is via artifact_paths only; teardown
-    owns process lifecycle.
+    zips are created here, no CI uploads are performed, and no processes are
+    terminated; teardown owns process lifecycle.
 
     Args:
         config: A DbSyncConfig instance with paths and settings.

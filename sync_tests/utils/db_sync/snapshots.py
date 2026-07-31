@@ -63,7 +63,9 @@ def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
         raise ValueError(msg)
 
     headers = {"Content-type": "application/json"}
-    res_with_latest_db_sync_version = requests.get(general_snapshot_url, headers=headers)
+    res_with_latest_db_sync_version = helpers.request_with_retry(
+        "get", general_snapshot_url, headers=headers
+    )
     dict_with_latest_db_sync_version = xmltodict.parse(res_with_latest_db_sync_version.content)
     db_sync_latest_version_prefix = dict_with_latest_db_sync_version["ListBucketResult"][
         "CommonPrefixes"
@@ -75,7 +77,9 @@ def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
         msg = "Snapshot are currently available only for mainnet environment"
         raise ValueError(msg)
 
-    res_snapshots_list = requests.get(latest_snapshots_list_url, headers=headers)
+    res_snapshots_list = helpers.request_with_retry(
+        "get", latest_snapshots_list_url, headers=headers
+    )
     dict_snapshots_list = xmltodict.parse(res_snapshots_list.content)
     latest_snapshot = dict_snapshots_list["ListBucketResult"]["Contents"][-2]["Key"]
 
@@ -109,7 +113,8 @@ def download_db_sync_snapshot(snapshot_url: str) -> str:
 def get_snapshot_sha_256_sum(snapshot_url: str) -> str | None:
     """Calculate the SHA-256 checksum of the downloaded snapshot."""
     snapshot_sha_256_sum_url = snapshot_url + ".sha256sum"
-    for line in requests.get(snapshot_sha_256_sum_url):
+    response = helpers.request_with_retry("get", snapshot_sha_256_sum_url)
+    for line in response:
         return line.decode("utf-8").split(" ")[0]
     return None
 

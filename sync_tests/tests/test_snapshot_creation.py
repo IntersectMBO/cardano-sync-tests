@@ -49,12 +49,11 @@ def snapshot_created(
     end_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
     snapshot_file = stage_2_result
-    db_sync.set_buildkite_meta_data("snapshot_file", snapshot_file)
 
     creation_secs = int((end_time - start_time).total_seconds())
     LOGGER.info("Snapshot creation time: %d seconds", creation_secs)
 
-    return {
+    snapshot_data = {
         "snapshot_file": snapshot_file,
         "stage_2_cmd": stage_2_cmd,
         "stage_2_result": stage_2_result,
@@ -62,6 +61,8 @@ def snapshot_created(
         "start_time": start_time.strftime("%d/%m/%Y %H:%M:%S"),
         "end_time": end_time.strftime("%d/%m/%Y %H:%M:%S"),
     }
+    helpers.write_json_to_file(sync_context.workdir / "sync_session_state.json", snapshot_data)
+    return snapshot_data
 
 
 class TestSnapshotCreation:

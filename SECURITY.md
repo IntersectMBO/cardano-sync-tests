@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Cardano open source project (xxx) is committed to ensuring the security of
+The cardano-sync-tests project is committed to ensuring the security of
 its software and the privacy of its users. We value the contributions
 of the security community in helping us identify and address
 vulnerabilities in our code. This Security Vulnerability Disclosure
@@ -13,17 +13,17 @@ how we will respond to and remediate such reports.
 
 ### Reporting a Vulnerability
 
-If you discover a security vulnerability in xxxx, we encourage you to
-responsibly disclose it to us. To report a vulnerability, please use
+If you discover a security vulnerability in cardano-sync-tests, we encourage
+you to responsibly disclose it to us. To report a vulnerability, please use
 the [private reporting form on
-GitHub](https://github.com/input-output-hk/mithril/security/advisories/new)
+GitHub](https://github.com/IntersectMBO/cardano-sync-tests/security/advisories/new)
 to draft a new _Security advisory_.
 
 Please include as much details as needed to clearly qualify the issue:
 
 - A description of the vulnerability and its potential impact.
 - Steps to reproduce the vulnerability.
-- The version of `xxxx` package where the vulnerability exists.
+- The version of the `cardano-sync-tests` package where the vulnerability exists.
 - Any relevant proof-of-concept or exploit code (if applicable).
 
 ### Processing Vulnerability
@@ -100,7 +100,7 @@ on the [cardano-sync-tests repository](https://github.com/IntersectMBO/cardano-s
 
 ## Conclusion
 
-The xxxx project greatly appreciates the assistance of the security
+The cardano-sync-tests project greatly appreciates the assistance of the security
 community in helping us maintain the security of our software while
 upholding the highest standards of privacy. Together, we can work to
 identify and address vulnerabilities, ensuring a safer and more secure

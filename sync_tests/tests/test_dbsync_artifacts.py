@@ -163,8 +163,14 @@ class TestDbSyncArtifacts:
             (config.workdir / "cardano-db-sync").glob("*.json")
         )
 
-        # Include graphs if they exist
-        graphs_dir = config.workdir / "graphs"
+        # Generate db-sync graphs, and node graphs too if this is a combined run,
+        # then include them
+        graphs_dir = artifacts.generate_result_graphs(
+            config.workdir, [test_results_file], mode="dbsync"
+        )
+        node_results_file = config.workdir / "node_sync_results.json"
+        if node_results_file.exists():
+            artifacts.generate_result_graphs(config.workdir, [node_results_file], mode="node")
         graph_files = sorted(graphs_dir.glob("*.png")) if graphs_dir.exists() else []
 
         assert log_files, f"No log files found for CI bundling in {config.workdir}"

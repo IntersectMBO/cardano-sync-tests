@@ -337,8 +337,8 @@ class TestNodeSyncArtifacts:
         results_files = sorted(workdir.glob("*.json"))
         results_file = workdir / "node_sync_results.json"
 
-        # Include graphs if they exist
-        graphs_dir = workdir / "graphs"
+        # Generate graphs from the results we just wrote, then include them
+        graphs_dir = artifacts.generate_result_graphs(workdir, [results_file], mode="node")
         graph_files = sorted(graphs_dir.glob("*.png")) if graphs_dir.exists() else []
 
         assert log_files, f"No log files found for CI bundling in {workdir}"

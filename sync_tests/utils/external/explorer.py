@@ -8,6 +8,8 @@ import time
 
 import requests
 
+from sync_tests.utils import helpers
+
 LOGGER = logging.getLogger(__name__)
 
 MAINNET_EXPLORER_URL = "https://explorer.cardano.org/graphql"
@@ -74,7 +76,7 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
     try:
         if env in ("preview", "preprod"):
             url = f"{url}{epoch_no}"
-            response = requests.get(url=url, headers=headers)
+            response = helpers.request_with_retry("get", url, headers=headers)
 
             if response.status_code != 200:
                 LOGGER.error("Failed to fetch data from %s: %s", url, response.text)
@@ -86,7 +88,7 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
             else:
                 result = response.json()[0]["start_time"]
         else:
-            response = requests.post(url, data=payload, headers=headers)
+            response = helpers.request_with_retry("post", url, data=payload, headers=headers)
             status_code = response.status_code
 
             if status_code != 200:
@@ -101,7 +103,9 @@ def get_epoch_start_datetime_from_explorer(env: str, epoch_no: int) -> str | Non
                 while "data" in response.json() and response.json().get("data") is None:
                     LOGGER.info("Attempt %s: Response is None. Retrying...", count)
                     time.sleep(30)
-                    response = requests.post(url, data=payload, headers=headers)
+                    response = helpers.request_with_retry(
+                        "post", url, data=payload, headers=headers
+                    )
                     count += 1
 
                     if count > 10:

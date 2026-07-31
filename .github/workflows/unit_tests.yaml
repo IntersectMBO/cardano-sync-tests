@@ -1,0 +1,32 @@
+name: unit_tests
+
+on:
+  pull_request:
+    branches:
+    - main
+
+permissions:
+  contents: read
+
+env:
+  PY_COLORS: "1"
+
+jobs:
+  unit_tests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v7
+    - name: Set up python
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.11'
+    - name: Install package
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        python3 -m pip install --require-virtualenv -e .
+    - name: Run unit tests
+      run: |
+        source .venv/bin/activate
+        pytest framework_tests -v

@@ -375,7 +375,7 @@ def wait_for_db_to_sync(
     if db_sync_progress is None:
         LOGGER.info("db-sync hasn't started syncing yet, waiting for initial progress...")
         db_sync_progress = 0.0
-    buildkite_timeout_in_sec = 1828000
+    max_sync_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
 
@@ -389,7 +389,7 @@ def wait_for_db_to_sync(
     _emergency_uploaded = False
     while db_sync_progress < sync_percentage:
         sync_time_in_sec = time.perf_counter() - start_sync
-        if sync_time_in_sec + 5 * ONE_MINUTE > buildkite_timeout_in_sec:
+        if sync_time_in_sec + 5 * ONE_MINUTE > max_sync_timeout_in_sec:
             era_activation = postgres.get_era_activation_data(config)
             artifacts.emergency_upload_artifacts(config, perf_stats, era_activation)
             _emergency_uploaded = True
@@ -672,16 +672,6 @@ def upload_artifact(file: str, destination: str = "auto") -> None:
 def create_node_database_archive(config: DbSyncConfig) -> pl.Path:
     """Create an archive of the node database for the specified environment."""
     return artifacts.create_node_database_archive(config)
-
-
-def set_buildkite_meta_data(key: str, value: tp.Any) -> None:
-    """Set Buildkite metadata for the specified key and value."""
-    artifacts.set_buildkite_meta_data(key, value)
-
-
-def get_buildkite_meta_data(key: str) -> str:
-    """Retrieve Buildkite metadata for the specified key."""
-    return artifacts.get_buildkite_meta_data(key)
 
 
 def get_latest_snapshot_url(env: str, args: tp.Any) -> str:
