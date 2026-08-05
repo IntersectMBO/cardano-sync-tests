@@ -14,7 +14,6 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 
 from sync_tests.tests.conftest import SyncContext
-from sync_tests.tests.test_snapshot_creation import snapshot_created  # noqa: F401
 from sync_tests.utils import db_sync
 from sync_tests.utils import helpers
 from sync_tests.utils import sync_entries
@@ -31,7 +30,7 @@ POST_SYNC_WAIT_MINUTES = 20
 def local_restoration_result(
     request: FixtureRequest,
     sync_context: SyncContext,
-    snapshot_created: dict[str, tp.Any],  # noqa: F811
+    snapshot_created: dict[str, tp.Any],
 ) -> tp.Generator[dict[str, tp.Any], None, None]:
     """Restore db-sync from a local snapshot, sync, and yield result data.
 
