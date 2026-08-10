@@ -66,6 +66,7 @@ def local_restoration_result(
         env=env,
         workdir=sync_context.workdir,
         pg_port=pg_port,
+        perf_stats_filename="db_sync_performance_stats_restoration.json",
     )
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
