@@ -125,8 +125,9 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         with open(log_file, encoding="utf-8") as infile:
             _process_log_file(infile=infile)
 
+    # Both sources report the same counter in centiseconds of CPU time: the legacy
+    # tracing renders it as "CentiCpu", the new tracing as "Cpu Ticks".
     cpu_source = centi_cpu_dict or cpu_ticks_dict
-    cpu_multiplier = 1.0 if centi_cpu_dict else 100.0
     for prev_timestamp, curr_timestamp in itertools.pairwise(cpu_source):
         prev_value = cpu_source[prev_timestamp]
         curr_value = cpu_source[curr_timestamp]
@@ -134,8 +135,9 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         if elapsed <= 0:
             continue
 
-        # Compute CPU load percentage over elapsed time (no per-core split; matches CentiCpu scale).
-        cpu_load_percent = ((curr_value - prev_value) * cpu_multiplier) / elapsed
+        # Compute CPU load percentage over elapsed time (no per-core split;
+        # centiseconds per second is already a percentage).
+        cpu_load_percent = (curr_value - prev_value) / elapsed
         cpu_details_dict[curr_timestamp] = cpu_load_percent
 
     # Collect all unique timestamps from different dictionaries

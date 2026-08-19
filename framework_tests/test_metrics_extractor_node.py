@@ -45,7 +45,7 @@ def test_get_data_from_logs_json_style_resources(tmp_path: pl.Path) -> None:
     assert at_10["tip"] == 100
     assert at_10["heap_ram"] == 1100.0
     assert at_10["rss_ram"] == 2100.0
-    # (600 - 500) CentiCpu over 10s, multiplier 1.0 for CentiCpu source.
+    # (600 - 500) centiseconds of CPU time over 10s = 10% load.
     assert at_10["cpu"] == 10.0
 
     at_15 = result["2026-01-01 10:00:15+00:00"]
@@ -58,7 +58,7 @@ def test_get_data_from_logs_json_style_resources(tmp_path: pl.Path) -> None:
 
 
 def test_get_data_from_logs_human_readable_resources(tmp_path: pl.Path) -> None:
-    """Cpu Ticks-style (human tracer) resource lines use a x100 multiplier."""
+    """Cpu Ticks-style (human tracer) resource lines use the same scale as CentiCpu."""
     log_file = tmp_path / "node.log"
     log_file.write_text(
         "[2026-01-01 10:00:00.00 UTC] node Resources: Cpu Ticks 1000, "
@@ -76,5 +76,5 @@ def test_get_data_from_logs_human_readable_resources(tmp_path: pl.Path) -> None:
     assert entry["tip"] == 50
     assert entry["heap_ram"] == 5100.0
     assert entry["rss_ram"] == 6100.0
-    # (1050 - 1000) ticks over 10s, x100 multiplier for the ticks source.
-    assert entry["cpu"] == 500.0
+    # (1050 - 1000) centiseconds of CPU time over 10s = 5% load.
+    assert entry["cpu"] == 5.0

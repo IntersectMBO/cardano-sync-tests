@@ -52,13 +52,6 @@ def add_to_path(path: pl.Path) -> None:
     os.environ["PATH"] = str(path.absolute()) + os.pathsep + os.environ["PATH"]
 
 
-def disable_p2p_node_config(config_file: pl.Path) -> None:
-    """Disable P2P settings in the node configuration file."""
-    helpers.update_json_file(
-        file_path=config_file, updates={"EnableP2P": False, "PeerSharing": False}
-    )
-
-
 def disable_genesis_mode(config_file: pl.Path, topology_file: pl.Path) -> None:
     """Disable Genesis mode and switch to Praos mode with bootstrap peers.
 
@@ -129,7 +122,7 @@ def get_node_config_files(
 
     Args:
         env: Environment name (preview, preprod, mainnet).
-        node_topology_type: Topology type (non-bootstrap-peers, legacy, or default).
+        node_topology_type: Topology type (non-bootstrap-peers or default).
         conf_dir: Directory to save configuration files.
         disable_genesis_mode_flag: If True, disable Genesis mode and use Praos mode.
     """
@@ -156,8 +149,6 @@ def get_node_config_files(
             config_slug=f"{env}/topology-non-bootstrap-peers.json",
             save_as=topology_file_path,
         )
-    elif env == "mainnet" and node_topology_type == "legacy":
-        download_config_file(config_slug=f"{env}/topology-legacy.json", save_as=topology_file_path)
     else:
         download_config_file(config_slug=f"{env}/topology.json", save_as=topology_file_path)
 
@@ -323,6 +314,38 @@ def _parse_node_major_minor(cli_version: str | None) -> tuple[int, int] | None:
 # Peer snapshot v2 (DNS-based relays) is supported from node 10.5 onward
 _MIN_PEER_SNAPSHOT_V2: tp.Final = (10, 5)
 
+# Backend that writes the human-readable lines the log parser in
+# `sync_tests.utils.logs.metrics_extractor` matches. It is the only backend we want:
+# the others forward to a separate `cardano-tracer` process or open a metrics port
+# that nothing here scrapes.
+_STDOUT_BACKEND: tp.Final = "Stdout HumanFormatUncoloured"
+
+
+def _configure_new_tracing(trace_opts: dict) -> None:
+    """Patch new-tracing (trace-dispatcher) options for resource monitoring.
+
+    The IOG-distributed configs silence the ``Resources`` tracer, so resource
+    stats are only exposed as EKG/Prometheus metrics and never reach the node
+    log. This is the new-tracing counterpart of the legacy
+    ``mapBackends: {"cardano.node.resources": ["KatipBK"]}`` setting.
+
+    Args:
+        trace_opts: The ``TraceOptions`` object from the node config, patched
+            in place.
+    """
+    # The root ("") entry sets the defaults inherited by all namespaces
+    root_opts = trace_opts.setdefault("", {})
+
+    # Resource stats are rendered as human-readable text, so a machine-format
+    # backend (JSON) would not be understood by the log parser. The coloured
+    # variant adds ANSI escape codes around the timestamp and namespace.
+    root_opts["backends"] = [_STDOUT_BACKEND]
+
+    # Un-silence the resource tracer; it inherits the backends from root. Its own
+    # severity wins over the root one, so the root severity is left untouched.
+    resources_opts = trace_opts.setdefault("Resources", {})
+    resources_opts["severity"] = "Info"
+
 
 def configure_node(
     config_file: pl.Path,
@@ -331,10 +354,11 @@ def configure_node(
     """Patch the downloaded node config and topology for sync testing.
 
     Backward-compatible fixes applied to the IOG-distributed configuration:
-    1. Ensures ``EnableP2P`` is set when missing (topology files are P2P format).
-    2. Downgrades the peer snapshot to version 1 only for nodes older than 10.5
+    1. Downgrades the peer snapshot to version 1 only for nodes older than 10.5
        that cannot parse v2 DNS-based relays.
-    3. Enables resource metrics for the active tracing system.
+    2. Enables resource metrics: un-silences the ``Resources`` tracer and forces an
+       uncoloured human-readable stdout backend. The new-tracing options are always
+       written; the legacy ones are added on top when the config selects legacy.
 
     Args:
         config_file: Path to the node ``config.json``.
@@ -349,19 +373,33 @@ def configure_node(
     with open(config_file) as fh:
         node_config_json = json.load(fh)
 
-    if "EnableP2P" not in node_config_json:
-        node_config_json["EnableP2P"] = True
-        LOGGER.info("Set EnableP2P = true (P2P topology format)")
-
-    uses_new_tracing = node_config_json.get("UseTraceDispatcher", False)
+    # The node selects the tracing system with `UseTraceDispatcher`. Its default
+    # was legacy up to node 10.1, new tracing from 10.2 on, and node 11.1 dropped
+    # the key together with legacy tracing. The new-tracing options are therefore
+    # always written - they are what every node in use reads - and the legacy ones
+    # are added on top when the config asks for legacy explicitly or predates it.
+    # A legacy node ignores the `TraceOptions` block it doesn't know, so writing both
+    # is harmless.
+    tracing_switch = node_config_json.get("UseTraceDispatcher")
+    if tracing_switch is not None and not isinstance(tracing_switch, bool):
+        # Guessing what e.g. "false" means would be worse than ignoring it; the value
+        # is unusable and gets replaced with the detected one below.
+        LOGGER.warning(
+            "Ignoring non-boolean UseTraceDispatcher %r, detecting instead", tracing_switch
+        )
+        tracing_switch = None
+    uses_new_tracing = (
+        "TraceOptions" in node_config_json if tracing_switch is None else tracing_switch
+    )
+    trace_opts = node_config_json.setdefault("TraceOptions", {})
+    _configure_new_tracing(trace_opts=trace_opts)
 
     if uses_new_tracing:
-        trace_opts = node_config_json.setdefault("TraceOptions", {})
-        trace_opts["Resources"] = {"severity": "Info"}
-        node_config_json["minSeverity"] = "Info"
+        # Written explicitly so nodes defaulting to legacy read the options above.
+        node_config_json["UseTraceDispatcher"] = True
         LOGGER.info("Configured new trace-dispatcher for resource monitoring")
     else:
-        node_config_json["TraceOptions"] = {}
+        # Written explicitly so a re-run detects legacy again.
         node_config_json["UseTraceDispatcher"] = False
         node_config_json["minSeverity"] = "Info"
         options = node_config_json.setdefault("options", {})
