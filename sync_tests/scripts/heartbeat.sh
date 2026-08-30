@@ -17,6 +17,34 @@ INTERVAL="${SYNC_TESTS_HEARTBEAT_INTERVAL_SEC:-600}"
 TAIL_LINES="${SYNC_TESTS_HEARTBEAT_TAIL_LINES:-30}"
 HALF_TAIL=$(( TAIL_LINES / 2 ))
 
+_newest_file() {
+  local newest=""
+  local f
+  for f in "$@"; do
+    if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then
+      newest="$f"
+    fi
+  done
+  echo "$newest"
+}
+
+_progress_line() {
+  local label="$1"
+  local file="$2"
+  if [ ! -s "$file" ] || ! command -v jq >/dev/null 2>&1; then
+    return
+  fi
+  local era epoch slot pct updated
+  pct="$(jq -r --arg k "$label" '.[$k].sync_progress // empty' "$file" 2>/dev/null)"
+  [ -z "$pct" ] && return
+  era="$(jq -r --arg k "$label" '.[$k].era // "?"' "$file" 2>/dev/null)"
+  epoch="$(jq -r --arg k "$label" '.[$k].epoch // "?"' "$file" 2>/dev/null)"
+  slot="$(jq -r --arg k "$label" '.[$k].slot // "?"' "$file" 2>/dev/null)"
+  updated="$(jq -r --arg k "$label" '.[$k].updated_at // "?"' "$file" 2>/dev/null)"
+  printf 'progress[%s]: %s%% synced - era=%s epoch=%s slot=%s (as of %s)\n' \
+    "$label" "$pct" "$era" "$epoch" "$slot" "$updated"
+}
+
 _tail_group() {
   local label="$1"
   local file="$2"
@@ -68,6 +96,7 @@ _heartbeat_tick() {
 
   shopt -s nullglob
   local markers_files=( "$WORKDIR"/sync_markers_*.json )
+  local progress_files=( "$WORKDIR"/sync_progress_*.json )
   shopt -u nullglob
   if [ "${#markers_files[@]}" -gt 0 ]; then
     grep -q SYNC_MARKER_NODE_DONE   "${markers_files[@]}" 2>/dev/null && node_done=1
@@ -112,6 +141,12 @@ _heartbeat_tick() {
 
   echo "::group::Heartbeat [${phase}] $(date -u +%FT%TZ)"
   echo "status: ${status}"
+  if [ "${#progress_files[@]}" -gt 0 ]; then
+    local progress_file
+    progress_file="$(_newest_file "${progress_files[@]}")"
+    _progress_line "node" "$progress_file"
+    _progress_line "dbsync" "$progress_file"
+  fi
   df -h "${GITHUB_WORKSPACE:-.}" 2>/dev/null || df -h . 2>/dev/null || echo "[df unavailable]"
 
   if [ "$MODE" = "node-only" ]; then

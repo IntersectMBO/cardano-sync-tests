@@ -362,6 +362,28 @@ def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
         json.dump(data, f, indent=2)
 
 
+def upsert_json_key(file_path: str | pl.Path, key: str, value: dict) -> None:
+    """Update a single top-level key in a shared JSON status file.
+
+    Reads the existing file (if any), sets ``data[key] = value``, and writes
+    the whole file back, so unrelated keys written by other callers are
+    preserved. Same read-merge-write pattern as ``conftest.py``'s
+    ``update_marker_status``, for status files with more than one writer.
+
+    Args:
+        file_path: Path to the shared JSON status file.
+        key: Top-level key to upsert.
+        value: Value to store under ``key``.
+    """
+    file_path = pl.Path(file_path)
+    data: dict = {}
+    if file_path.exists():
+        with open(file_path) as fh:
+            data = json.load(fh)
+    data[key] = value
+    write_json_to_file(file_path, data)
+
+
 def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
     """Manage a directory by creating or removing it based on the action specified.
 
