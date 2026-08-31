@@ -34,15 +34,22 @@ _progress_line() {
   if [ ! -s "$file" ] || ! command -v jq >/dev/null 2>&1; then
     return
   fi
+  local present
+  present="$(jq -r --arg k "$label" 'has($k)' "$file" 2>/dev/null)"
+  [ "$present" != "true" ] && return
   local era epoch slot pct updated
-  pct="$(jq -r --arg k "$label" '.[$k].sync_progress // empty' "$file" 2>/dev/null)"
-  [ -z "$pct" ] && return
-  era="$(jq -r --arg k "$label" '.[$k].era // "?"' "$file" 2>/dev/null)"
+  era="$(jq -r --arg k "$label" '(.[$k].era // "") | if . == "" then "?" else . end' "$file" 2>/dev/null)"
   epoch="$(jq -r --arg k "$label" '.[$k].epoch // "?"' "$file" 2>/dev/null)"
   slot="$(jq -r --arg k "$label" '.[$k].slot // "?"' "$file" 2>/dev/null)"
   updated="$(jq -r --arg k "$label" '.[$k].updated_at // "?"' "$file" 2>/dev/null)"
-  printf 'progress[%s]: %s%% synced - era=%s epoch=%s slot=%s (as of %s)\n' \
-    "$label" "$pct" "$era" "$epoch" "$slot" "$updated"
+  pct="$(jq -r --arg k "$label" '.[$k].sync_progress // empty' "$file" 2>/dev/null)"
+  if [ -n "$pct" ]; then
+    printf 'progress[%s]: %s%% synced - era=%s epoch=%s slot=%s (as of %s)\n' \
+      "$label" "$pct" "$era" "$epoch" "$slot" "$updated"
+  else
+    printf 'progress[%s]: syncProgress unavailable - era=%s epoch=%s slot=%s (as of %s)\n' \
+      "$label" "$era" "$epoch" "$slot" "$updated"
+  fi
 }
 
 _tail_group() {

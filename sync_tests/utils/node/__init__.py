@@ -451,22 +451,29 @@ def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
 
     Never raises: this is observability only, and must not abort a
     multi-hour sync run over a disk-full or permission error.
+
+    Args:
+        workdir: Directory to write the CI heartbeat progress file to. When
+            ``None``, progress-file writing is skipped.
+        env: Environment name (preview, preprod, mainnet).
+        tip: Current node tip, as returned by ``get_current_tip``.
     """
     if workdir is None:
         return
     try:
-        helpers.upsert_json_key(
+        helpers.update_json_file(
             workdir / f"sync_progress_{env}.json",
-            "node",
             {
-                "era": tip.era,
-                "epoch": tip.epoch,
-                "block": tip.block,
-                "slot": tip.slot,
-                "sync_progress": tip.sync_progress,
-                "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                "node": {
+                    "era": tip.era,
+                    "epoch": tip.epoch,
+                    "block": tip.block,
+                    "slot": tip.slot,
+                    "sync_progress": tip.sync_progress,
+                    "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                }
             },
         )
     except OSError:

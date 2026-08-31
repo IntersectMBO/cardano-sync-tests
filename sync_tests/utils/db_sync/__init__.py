@@ -317,18 +317,19 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         db_sync_tip.slot_no,
     )
     try:
-        helpers.upsert_json_key(
+        helpers.update_json_file(
             config.workdir / f"sync_progress_{env}.json",
-            "dbsync",
             {
-                "epoch": db_sync_tip.epoch_no,
-                "block": db_sync_tip.block_no,
-                "slot": db_sync_tip.slot_no,
-                "sync_progress": db_sync_progress,
-                "sync_time_h_m_s": sync_time_h_m_s,
-                "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                "dbsync": {
+                    "epoch": db_sync_tip.epoch_no,
+                    "block": db_sync_tip.block_no,
+                    "slot": db_sync_tip.slot_no,
+                    "sync_progress": db_sync_progress,
+                    "sync_time_h_m_s": sync_time_h_m_s,
+                    "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                }
             },
         )
     except OSError:

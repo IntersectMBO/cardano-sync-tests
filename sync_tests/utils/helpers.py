@@ -257,15 +257,29 @@ def execute_command(
         raise
 
 
-def update_json_file(file_path: pl.Path, updates: dict) -> None:
-    """Read a JSON file, updates it with the provided dictionary, and writes it back."""
-    with open(file_path) as json_file:
-        data = json.load(json_file)
+def update_json_file(file_path: str | pl.Path, updates: dict) -> None:
+    """Read a JSON file, merge it with ``updates``, and write it back.
 
+    A missing, unreadable, or invalid existing file is treated as empty
+    rather than raised, so this is safe to use for status files with more
+    than one writer, that must never abort a caller just because a previous
+    write was interrupted. The write itself goes through
+    ``write_json_to_file``, so it is atomic (temp file + rename).
+    """
+    file_path = pl.Path(file_path)
+    data: dict = {}
+    if file_path.exists():
+        try:
+            with open(file_path) as json_file:
+                loaded = json.load(json_file)
+            if isinstance(loaded, dict):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            LOGGER.warning(
+                "Ignoring unreadable status file %s, starting fresh", file_path, exc_info=True
+            )
     data.update(updates)
-
-    with open(file_path, "w") as json_file:
-        json.dump(data, json_file, indent=2)
+    write_json_to_file(file_path, data)
 
 
 def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
@@ -366,39 +380,6 @@ def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
     os.replace(tmp_path, file_path)
-
-
-def upsert_json_key(file_path: str | pl.Path, key: str, value: dict) -> None:
-    """Update a single top-level key in a shared JSON status file.
-
-    Reads the existing file (if any), sets ``data[key] = value``, and writes
-    the whole file back, so unrelated keys written by other callers are
-    preserved. Same read-merge-write pattern as ``conftest.py``'s
-    ``_write_marker_to_status``, for status files with more than one writer.
-
-    An existing file that is missing, unreadable, or not valid JSON is
-    treated as empty rather than raised, since this is used for
-    observability status files that must never abort the caller.
-
-    Args:
-        file_path: Path to the shared JSON status file.
-        key: Top-level key to upsert.
-        value: Value to store under ``key``.
-    """
-    file_path = pl.Path(file_path)
-    data: dict = {}
-    if file_path.exists():
-        try:
-            with open(file_path) as fh:
-                loaded = json.load(fh)
-            if isinstance(loaded, dict):
-                data = loaded
-        except (json.JSONDecodeError, OSError):
-            LOGGER.warning(
-                "Ignoring unreadable status file %s, starting fresh", file_path, exc_info=True
-            )
-    data[key] = value
-    write_json_to_file(file_path, data)
 
 
 def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:
