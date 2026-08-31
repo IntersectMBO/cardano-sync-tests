@@ -316,20 +316,23 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         db_sync_tip.block_no,
         db_sync_tip.slot_no,
     )
-    helpers.upsert_json_key(
-        config.workdir / f"sync_progress_{env}.json",
-        "dbsync",
-        {
-            "epoch": db_sync_tip.epoch_no,
-            "block": db_sync_tip.block_no,
-            "slot": db_sync_tip.slot_no,
-            "sync_progress": db_sync_progress,
-            "sync_time_h_m_s": sync_time_h_m_s,
-            "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-        },
-    )
+    try:
+        helpers.upsert_json_key(
+            config.workdir / f"sync_progress_{env}.json",
+            "dbsync",
+            {
+                "epoch": db_sync_tip.epoch_no,
+                "block": db_sync_tip.block_no,
+                "slot": db_sync_tip.slot_no,
+                "sync_progress": db_sync_progress,
+                "sync_time_h_m_s": sync_time_h_m_s,
+                "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            },
+        )
+    except OSError:
+        LOGGER.warning("Failed to write db-sync progress file for CI heartbeat", exc_info=True)
     helpers.print_last_n_lines(config.db_sync_log_file, 5)
     return db_sync_progress
 

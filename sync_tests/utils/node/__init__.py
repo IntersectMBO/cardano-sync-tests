@@ -448,23 +448,29 @@ def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
     file (same file the db-sync side writes its "dbsync" key to), independent
     of pytest's own logging (level, capture) so CI verbosity settings can
     never silently hide sync progress from the heartbeat again.
+
+    Never raises: this is observability only, and must not abort a
+    multi-hour sync run over a disk-full or permission error.
     """
     if workdir is None:
         return
-    helpers.upsert_json_key(
-        workdir / f"sync_progress_{env}.json",
-        "node",
-        {
-            "era": tip.era,
-            "epoch": tip.epoch,
-            "block": tip.block,
-            "slot": tip.slot,
-            "sync_progress": tip.sync_progress,
-            "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-        },
-    )
+    try:
+        helpers.upsert_json_key(
+            workdir / f"sync_progress_{env}.json",
+            "node",
+            {
+                "era": tip.era,
+                "epoch": tip.epoch,
+                "block": tip.block,
+                "slot": tip.slot,
+                "sync_progress": tip.sync_progress,
+                "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            },
+        )
+    except OSError:
+        LOGGER.warning("Failed to write node sync progress file for CI heartbeat", exc_info=True)
 
 
 def get_current_tip(env: str) -> Tip:
@@ -856,6 +862,7 @@ def wait_for_shelley_era(
                 f"Node reached {tip.era} era at epoch {tip.epoch}, block {tip.block}. "
                 f"Proceeding to start db-sync (min_era={min_era})."
             )
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             return
 
         # Check timeout
@@ -921,10 +928,12 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
         # Check termination condition:
         # For nodes reporting sync progress, we wait until progress reaches 100.
         if tip.sync_progress is not None and tip.sync_progress >= 100:
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             break
         # Otherwise (for nodes without sync progress) wait until the slot number passes
         # the calculated value.
         if tip.sync_progress is None and tip.slot > last_slot_no:
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             break
 
         time.sleep(5)

@@ -352,14 +352,20 @@ def make_tarfile(output_filename: str, source_dir: str) -> None:
 def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
     """Write data to a file in JSON format.
 
+    Writes to a temp file in the same directory first, then renames it into
+    place. A concurrent reader (e.g. the CI heartbeat script) or a process
+    killed mid-write can then never observe a truncated file.
+
     Args:
         file_path: Path to the output JSON file.
         data: Dictionary or list to serialize as JSON.
     """
     file_path = pl.Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w") as f:
+    tmp_path = file_path.with_name(f"{file_path.name}.tmp")
+    with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp_path, file_path)
 
 
 def upsert_json_key(file_path: str | pl.Path, key: str, value: dict) -> None:
@@ -368,7 +374,11 @@ def upsert_json_key(file_path: str | pl.Path, key: str, value: dict) -> None:
     Reads the existing file (if any), sets ``data[key] = value``, and writes
     the whole file back, so unrelated keys written by other callers are
     preserved. Same read-merge-write pattern as ``conftest.py``'s
-    ``update_marker_status``, for status files with more than one writer.
+    ``_write_marker_to_status``, for status files with more than one writer.
+
+    An existing file that is missing, unreadable, or not valid JSON is
+    treated as empty rather than raised, since this is used for
+    observability status files that must never abort the caller.
 
     Args:
         file_path: Path to the shared JSON status file.
@@ -378,8 +388,15 @@ def upsert_json_key(file_path: str | pl.Path, key: str, value: dict) -> None:
     file_path = pl.Path(file_path)
     data: dict = {}
     if file_path.exists():
-        with open(file_path) as fh:
-            data = json.load(fh)
+        try:
+            with open(file_path) as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            LOGGER.warning(
+                "Ignoring unreadable status file %s, starting fresh", file_path, exc_info=True
+            )
     data[key] = value
     write_json_to_file(file_path, data)
 
