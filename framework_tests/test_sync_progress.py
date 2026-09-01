@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib as pl
+import shutil
 import subprocess
 
 import pytest
@@ -50,6 +52,30 @@ def test_write_json_to_file_leaves_no_temp_file_behind(tmp_path: pl.Path) -> Non
     helpers.write_json_to_file(target, {"a": 1})
 
     assert sorted(p.name for p in tmp_path.iterdir()) == ["data.json"]
+
+
+def test_write_json_to_file_does_not_touch_original_on_write_failure(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Proves the write is atomic, not just that no .tmp file is left behind.
+
+    A non-atomic ``open(file_path, "w")`` truncates the real file before
+    ``json.dump`` ever runs, so a failure mid-dump destroys the original.
+    The temp-file-plus-rename implementation must leave it untouched.
+    """
+    target = tmp_path / "data.json"
+    target.write_text('{"original": true}')
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        msg = "simulated failure partway through the write"
+        raise OSError(msg)
+
+    monkeypatch.setattr(json, "dump", _boom)
+
+    with pytest.raises(OSError, match="simulated failure"):
+        helpers.write_json_to_file(target, {"new": True})
+
+    assert json.loads(target.read_text()) == {"original": True}
 
 
 def test_write_json_to_file_creates_parent_dirs(tmp_path: pl.Path) -> None:
@@ -109,21 +135,27 @@ def test_update_json_file_ignores_non_dict_existing_content(tmp_path: pl.Path) -
     assert json.loads(target.read_text()) == {"node": {"epoch": 1}}
 
 
-def test_update_json_file_raises_on_unwritable_target(tmp_path: pl.Path) -> None:
+def test_update_json_file_raises_on_unwritable_target(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """update_json_file itself only guards a corrupt/missing existing file.
 
     A write-side failure (e.g. disk full, permission denied) still
     propagates - it's the caller's job to decide whether that should abort,
-    same as write_progress_file below does by catching it.
+    same as write_progress_file above does by catching it.
+
+    Uses a monkeypatched failure, not chmod: running as root bypasses a
+    permission-based simulation entirely (uid-independent either way).
     """
-    bad_dir = tmp_path / "nowrite"
-    bad_dir.mkdir()
-    os.chmod(bad_dir, 0o500)
-    try:
-        with pytest.raises(PermissionError):
-            helpers.update_json_file(bad_dir / "status.json", {"node": {"epoch": 1}})
-    finally:
-        os.chmod(bad_dir, 0o700)
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        msg = "simulated permission error"
+        raise PermissionError(msg)
+
+    monkeypatch.setattr(helpers, "write_json_to_file", _boom)
+
+    with pytest.raises(PermissionError):
+        helpers.update_json_file(tmp_path / "status.json", {"node": {"epoch": 1}})
 
 
 # --- node.write_progress_file --------------------------------------------------
@@ -150,15 +182,29 @@ def test_write_progress_file_none_workdir_is_a_noop(tmp_path: pl.Path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
-def test_write_progress_file_swallows_write_errors(tmp_path: pl.Path) -> None:
-    bad_dir = tmp_path / "nowrite"
-    bad_dir.mkdir()
-    os.chmod(bad_dir, 0o500)
-    try:
+def test_write_progress_file_swallows_write_errors(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Uses a monkeypatched failure, not chmod.
+
+    Running as root (a real possibility on a self-hosted CI runner) bypasses
+    a permission-based simulation entirely, which would make this pass for
+    the wrong reason - no exception ever raised, the except branch never
+    entered - regardless of whether write_progress_file actually catches
+    anything.
+    """
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        msg = "simulated disk error"
+        raise OSError(msg)
+
+    monkeypatch.setattr(helpers, "write_json_to_file", _boom)
+
+    with caplog.at_level(logging.WARNING):
         # Must not raise: progress display must never abort a sync run.
-        node.write_progress_file(workdir=bad_dir, env="preview", tip=_make_tip())
-    finally:
-        os.chmod(bad_dir, 0o700)
+        node.write_progress_file(workdir=tmp_path, env="preview", tip=_make_tip())
+
+    assert "Failed to write node sync progress file" in caplog.text
 
 
 def test_write_progress_file_preserves_dbsync_key(tmp_path: pl.Path) -> None:
@@ -195,7 +241,16 @@ def _patch_tip_sources(
 def test_log_sync_progress_writes_independent_dbsync_key(
     tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Node and dbsync must come from separate sources, never mirror each other."""
+    """Node and dbsync must come from separate sources, never mirror each other.
+
+    This proves independence at the code level only: that the two keys are
+    populated from two distinct function calls and neither leaks into the
+    other. It does not, and cannot, prove anything about whether the two
+    real underlying formulas (cardano-cli's syncProgress vs a Postgres
+    wall-clock ratio over db-sync's own block table) converge on similar
+    numbers on a real chain - that was checked separately, against two real
+    data sources on a live run, not here.
+    """
     config = db_sync.create_db_sync_config(env="preview", workdir=tmp_path, pg_user="test")
     _patch_tip_sources(
         monkeypatch,
@@ -207,12 +262,22 @@ def test_log_sync_progress_writes_independent_dbsync_key(
     db_sync._log_sync_progress(config=config, env="preview", start_sync=0.0)
 
     data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
-    assert data["node"]["epoch"] == 500
-    assert data["node"]["slot"] == 99_000_000
-    assert data["node"]["sync_progress"] == 80.0
-    assert data["dbsync"]["epoch"] == 10
-    assert data["dbsync"]["slot"] == 3000
-    assert data["dbsync"]["sync_progress"] == 5.0
+    assert data["node"] == {
+        "era": "conway",
+        "epoch": 500,
+        "block": 100,
+        "slot": 99_000_000,
+        "sync_progress": 80.0,
+        "updated_at": data["node"]["updated_at"],
+    }
+    assert data["dbsync"] == {
+        "epoch": 10,
+        "block": 200,
+        "slot": 3000,
+        "sync_progress": 5.0,
+        "sync_time_h_m_s": data["dbsync"]["sync_time_h_m_s"],
+        "updated_at": data["dbsync"]["updated_at"],
+    }
 
 
 def test_log_sync_progress_skips_dbsync_key_before_db_sync_starts(
@@ -223,9 +288,12 @@ def test_log_sync_progress_skips_dbsync_key_before_db_sync_starts(
 
     db_sync._log_sync_progress(config=config, env="preview", start_sync=0.0)
 
-    progress_file = tmp_path / "sync_progress_preview.json"
-    if progress_file.exists():
-        assert "dbsync" not in json.loads(progress_file.read_text())
+    # The node write always happens; assert it actually ran before checking
+    # what it left out, or a regression that writes nothing at all would
+    # pass this test with no assertion ever executed.
+    data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
+    assert data["node"]["epoch"] == 5
+    assert "dbsync" not in data
 
 
 def test_log_sync_progress_survives_node_tip_failure(
@@ -274,12 +342,19 @@ def _write_progress(workdir: pl.Path, env: str, payload: dict) -> None:
     helpers.write_json_to_file(workdir / f"sync_progress_{env}.json", payload)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _require_jq() -> None:
-    if subprocess.run(["which", "jq"], capture_output=True, check=False).returncode != 0:
+    """Scoped to the heartbeat tests only.
+
+    Must not gate the 18 pure-Python tests above, or a missing jq silently
+    skips the whole file with a green exit code and no signal that the
+    sync-progress helpers were never run.
+    """
+    if shutil.which("jq") is None:
         pytest.skip("jq not available")
 
 
+@pytest.mark.usefixtures("_require_jq")
 def test_heartbeat_prints_percent_when_available(tmp_path: pl.Path) -> None:
     (tmp_path / "node_sync.log").touch()
     _write_progress(
@@ -298,9 +373,12 @@ def test_heartbeat_prints_percent_when_available(tmp_path: pl.Path) -> None:
 
     output = _run_heartbeat_tick(tmp_path)
 
-    assert "progress[node]: 9.44% synced - era=babbage epoch=5 slot=12345" in output
+    assert (
+        "progress[node]: 9.44% synced - era=babbage epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+    ) in output
 
 
+@pytest.mark.usefixtures("_require_jq")
 def test_heartbeat_shows_era_epoch_slot_when_percent_missing(tmp_path: pl.Path) -> None:
     (tmp_path / "node_sync.log").touch()
     _write_progress(
@@ -319,10 +397,14 @@ def test_heartbeat_shows_era_epoch_slot_when_percent_missing(tmp_path: pl.Path) 
 
     output = _run_heartbeat_tick(tmp_path)
 
-    assert "progress[node]: syncProgress unavailable - era=byron epoch=1 slot=100" in output
+    assert (
+        "progress[node]: syncProgress unavailable - era=byron epoch=1 slot=100 "
+        "(as of 2026-08-31T00:00:00Z)"
+    ) in output
     assert "%" not in output.split("progress[node]:")[1].split("\n")[0]
 
 
+@pytest.mark.usefixtures("_require_jq")
 def test_heartbeat_shows_placeholder_for_empty_era(tmp_path: pl.Path) -> None:
     (tmp_path / "node_sync.log").touch()
     _write_progress(
@@ -341,9 +423,12 @@ def test_heartbeat_shows_placeholder_for_empty_era(tmp_path: pl.Path) -> None:
 
     output = _run_heartbeat_tick(tmp_path)
 
-    assert "era=?" in output
+    assert (
+        "progress[node]: 12.5% synced - era=? epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+    ) in output
 
 
+@pytest.mark.usefixtures("_require_jq")
 def test_heartbeat_prints_nothing_for_key_not_yet_present(tmp_path: pl.Path) -> None:
     (tmp_path / "node_sync.log").touch()
     (tmp_path / "db_sync.log").touch()
@@ -363,10 +448,13 @@ def test_heartbeat_prints_nothing_for_key_not_yet_present(tmp_path: pl.Path) -> 
 
     output = _run_heartbeat_tick(tmp_path, mode="combined")
 
-    assert "progress[node]:" in output
+    assert (
+        "progress[node]: 50.0% synced - era=conway epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+    ) in output
     assert "progress[dbsync]:" not in output
 
 
+@pytest.mark.usefixtures("_require_jq")
 def test_heartbeat_prints_both_keys_independently(tmp_path: pl.Path) -> None:
     (tmp_path / "node_sync.log").touch()
     (tmp_path / "db_sync.log").touch()
@@ -392,7 +480,57 @@ def test_heartbeat_prints_both_keys_independently(tmp_path: pl.Path) -> None:
 
     output = _run_heartbeat_tick(tmp_path, mode="combined")
 
-    assert "progress[node]: 80.0% synced" in output
-    assert "epoch=500" in output
-    assert "progress[dbsync]: 5.0% synced" in output
-    assert "epoch=10" in output
+    assert (
+        "progress[node]: 80.0% synced - era=conway epoch=500 slot=99000000 "
+        "(as of 2026-08-31T00:00:00Z)"
+    ) in output
+    assert (
+        "progress[dbsync]: 5.0% synced - era=? epoch=10 slot=3000 (as of 2026-08-31T00:00:00Z)"
+    ) in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_picks_the_newest_progress_file(tmp_path: pl.Path) -> None:
+    """A stale file must lose to the current run's file.
+
+    This can happen when a previous run's workdir is reused, or the
+    heartbeat reports old progress.
+    """
+    (tmp_path / "node_sync.log").touch()
+
+    stale = tmp_path / "sync_progress_mainnet.json"
+    _write_progress(
+        tmp_path,
+        "mainnet",
+        {
+            "node": {
+                "era": "conway",
+                "epoch": 9999,
+                "slot": 999999999,
+                "sync_progress": 100.0,
+                "updated_at": "2020-01-01T00:00:00Z",
+            }
+        },
+    )
+    os.utime(stale, (1_000_000_000, 1_000_000_000))
+
+    current = tmp_path / "sync_progress_preview.json"
+    _write_progress(
+        tmp_path,
+        "preview",
+        {
+            "node": {
+                "era": "babbage",
+                "epoch": 5,
+                "slot": 12345,
+                "sync_progress": 9.44,
+                "updated_at": "2026-08-31T00:00:00Z",
+            }
+        },
+    )
+    os.utime(current, (2_000_000_000, 2_000_000_000))
+
+    output = _run_heartbeat_tick(tmp_path)
+
+    assert "epoch=5" in output
+    assert "epoch=9999" not in output
