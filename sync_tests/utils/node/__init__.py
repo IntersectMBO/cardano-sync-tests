@@ -444,13 +444,8 @@ def get_testnet_args(env: str) -> tp.Iterable[str]:
 def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
     """Record the node's current sync position for CI heartbeats.
 
-    Upserts the "node" key of the shared ``sync_progress_{env}.json`` status
-    file (same file the db-sync side writes its "dbsync" key to), independent
-    of pytest's own logging (level, capture) so CI verbosity settings can
-    never silently hide sync progress from the heartbeat again.
-
-    Never raises: this is observability only, and must not abort a
-    multi-hour sync run over a disk-full or permission error.
+    Thin ``Tip`` adapter over ``helpers.write_sync_progress``; see there for the
+    file format and the never-raises guarantee.
 
     Args:
         workdir: Directory to write the CI heartbeat progress file to. When
@@ -458,26 +453,18 @@ def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
         env: Environment name (preview, preprod, mainnet).
         tip: Current node tip, as returned by ``get_current_tip``.
     """
-    if workdir is None:
-        return
-    try:
-        helpers.update_json_file(
-            workdir / f"sync_progress_{env}.json",
-            {
-                "node": {
-                    "era": tip.era,
-                    "epoch": tip.epoch,
-                    "block": tip.block,
-                    "slot": tip.slot,
-                    "sync_progress": tip.sync_progress,
-                    "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    ),
-                }
-            },
-        )
-    except OSError:
-        LOGGER.warning("Failed to write node sync progress file for CI heartbeat", exc_info=True)
+    helpers.write_sync_progress(
+        workdir=workdir,
+        env=env,
+        key="node",
+        payload={
+            "era": tip.era,
+            "epoch": tip.epoch,
+            "block": tip.block,
+            "slot": tip.slot,
+            "sync_progress": tip.sync_progress,
+        },
+    )
 
 
 def get_current_tip(env: str) -> Tip:

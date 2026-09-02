@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import logging
 import os
 import pathlib as pl
@@ -316,24 +315,18 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         db_sync_tip.block_no,
         db_sync_tip.slot_no,
     )
-    try:
-        helpers.update_json_file(
-            config.workdir / f"sync_progress_{env}.json",
-            {
-                "dbsync": {
-                    "epoch": db_sync_tip.epoch_no,
-                    "block": db_sync_tip.block_no,
-                    "slot": db_sync_tip.slot_no,
-                    "sync_progress": db_sync_progress,
-                    "sync_time_h_m_s": sync_time_h_m_s,
-                    "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    ),
-                }
-            },
-        )
-    except OSError:
-        LOGGER.warning("Failed to write db-sync progress file for CI heartbeat", exc_info=True)
+    helpers.write_sync_progress(
+        workdir=config.workdir,
+        env=env,
+        key="dbsync",
+        payload={
+            "epoch": db_sync_tip.epoch_no,
+            "block": db_sync_tip.block_no,
+            "slot": db_sync_tip.slot_no,
+            "sync_progress": db_sync_progress,
+            "sync_time_h_m_s": sync_time_h_m_s,
+        },
+    )
     helpers.print_last_n_lines(config.db_sync_log_file, 5)
     return db_sync_progress
 

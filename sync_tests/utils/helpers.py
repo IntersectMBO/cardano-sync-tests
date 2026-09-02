@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import datetime
 import hashlib
 import json
 import logging
@@ -285,6 +286,40 @@ def update_json_file(file_path: str | pl.Path, updates: dict) -> None:
             )
     data.update(updates)
     write_json_to_file(file_path, data)
+
+
+def write_sync_progress(workdir: pl.Path | None, env: str, key: str, payload: dict) -> None:
+    """Upsert one top-level key of the shared ``sync_progress_{env}.json`` status file.
+
+    The file is read by the CI heartbeat script and is independent of pytest's
+    own logging (level, capture), so CI verbosity settings can never silently
+    hide sync progress from the heartbeat. The node side writes the ``"node"``
+    key, the db-sync side the ``"dbsync"`` key.
+
+    An ``updated_at`` UTC timestamp is added unless the payload already has one,
+    so a stale entry is always recognizable as stale.
+
+    Never raises: this is observability only, and must not abort a multi-hour
+    sync run over a disk-full, permission, or serialization error.
+
+    Args:
+        workdir: Directory holding the progress file. When ``None``, writing is
+            skipped.
+        env: Environment name (preview, preprod, mainnet).
+        key: Top-level key to upsert ("node" or "dbsync").
+        payload: Values to store under ``key``.
+    """
+    if workdir is None:
+        return
+    entry = dict(payload)
+    entry.setdefault(
+        "updated_at",
+        datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    try:
+        update_json_file(pl.Path(workdir) / f"sync_progress_{env}.json", {key: entry})
+    except Exception:
+        LOGGER.warning("Failed to write %s sync progress file for CI heartbeat", key, exc_info=True)
 
 
 def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
