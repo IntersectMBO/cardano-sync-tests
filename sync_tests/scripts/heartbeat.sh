@@ -34,15 +34,18 @@ _progress_line() {
   if [ ! -s "$file" ] || ! command -v jq >/dev/null 2>&1; then
     return
   fi
-  local present
-  present="$(jq -r --arg k "$label" 'has($k)' "$file" 2>/dev/null)"
-  [ "$present" != "true" ] && return
-  local era epoch slot pct updated
-  era="$(jq -r --arg k "$label" '(.[$k].era // "") | if . == "" then "?" else . end' "$file" 2>/dev/null)"
-  epoch="$(jq -r --arg k "$label" '.[$k].epoch // "?"' "$file" 2>/dev/null)"
-  slot="$(jq -r --arg k "$label" '.[$k].slot // "?"' "$file" 2>/dev/null)"
-  updated="$(jq -r --arg k "$label" '.[$k].updated_at // "?"' "$file" 2>/dev/null)"
-  pct="$(jq -r --arg k "$label" '.[$k].sync_progress // empty' "$file" 2>/dev/null)"
+  # One jq call per label: era, epoch, slot, updated_at, sync_progress as TSV.
+  # Empty output means the label is absent (or the file is unparsable).
+  local row
+  row="$(jq -r --arg k "$label" '
+    def dflt: if (. // "") == "" then "?" else . end;
+    if has($k) then
+      [ (.[$k].era | dflt), (.[$k].epoch | dflt), (.[$k].slot | dflt),
+        (.[$k].updated_at | dflt), (.[$k].sync_progress // "") ] | @tsv
+    else empty end' "$file" 2>/dev/null)"
+  [ -z "$row" ] && return
+  local era epoch slot updated pct
+  IFS=$'\t' read -r era epoch slot updated pct <<< "$row"
   if [ -n "$pct" ]; then
     printf 'progress[%s]: %s%% synced - era=%s epoch=%s slot=%s (as of %s)\n' \
       "$label" "$pct" "$era" "$epoch" "$slot" "$updated"
