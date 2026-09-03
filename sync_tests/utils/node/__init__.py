@@ -441,6 +441,32 @@ def get_testnet_args(env: str) -> tp.Iterable[str]:
         raise exceptions.SyncError(msg) from e
 
 
+def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
+    """Record the node's current sync position for CI heartbeats.
+
+    Thin ``Tip`` adapter over ``helpers.write_sync_progress``; see there for the
+    file format and the never-raises guarantee.
+
+    Args:
+        workdir: Directory to write the CI heartbeat progress file to. When
+            ``None``, progress-file writing is skipped.
+        env: Environment name (preview, preprod, mainnet).
+        tip: Current node tip, as returned by ``get_current_tip``.
+    """
+    helpers.write_sync_progress(
+        workdir=workdir,
+        env=env,
+        key="node",
+        payload={
+            "era": tip.era,
+            "epoch": tip.epoch,
+            "block": tip.block,
+            "slot": tip.slot,
+            "sync_progress": tip.sync_progress,
+        },
+    )
+
+
 def get_current_tip(env: str) -> Tip:
     """Retrieve the current tip of the Cardano node."""
     cardano_cli_path = os.environ.get("CARDANO_CLI_PATH") or "cardano-cli"
@@ -766,6 +792,7 @@ def wait_for_shelley_era(
     timeout_minutes: int = 60,
     min_era: str = "shelley",
     logfile_path: pl.Path | None = None,
+    workdir: pl.Path | None = None,
 ) -> None:
     """Wait for the node to reach at least a target era before starting db-sync.
 
@@ -780,6 +807,8 @@ def wait_for_shelley_era(
         logfile_path: Node stdout/stderr log file (same as ``start_node``). When
             ``None``, defaults to ``base_dir / NODE_LOG_FILE_NAME`` for backward
             compatibility.
+        workdir: Directory to write the CI heartbeat progress file to. When
+            ``None``, progress-file writing is skipped.
 
     Raises:
         exceptions.SyncError: If the target era is not reached within timeout.
@@ -818,6 +847,7 @@ def wait_for_shelley_era(
                 f"elapsed: {elapsed_minutes} minutes, "
                 f"node logfile: {logfile_size} bytes"
             )
+            write_progress_file(workdir=workdir, env=env, tip=tip)
 
         # Check if we've reached the target era or later
         current_idx = era_order.get(str(tip.era).lower())
@@ -826,6 +856,7 @@ def wait_for_shelley_era(
                 f"Node reached {tip.era} era at epoch {tip.epoch}, block {tip.block}. "
                 f"Proceeding to start db-sync (min_era={min_era})."
             )
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             return
 
         # Check timeout
@@ -840,7 +871,7 @@ def wait_for_shelley_era(
         count += 1
 
 
-def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
+def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None = None) -> tuple:
     """Wait for the Cardano node to start."""
     LOGGER.info("Waiting for the node to sync")
     era_details_dict = {}
@@ -863,6 +894,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
                 f" - actual_slot : {tip.slot} "
                 f" - syncProgress: {tip.sync_progress}",
             )
+            write_progress_file(workdir=workdir, env=env, tip=tip)
 
         # Use the same current time for both era and epoch updates.
         current_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
@@ -890,10 +922,12 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path) -> tuple:
         # Check termination condition:
         # For nodes reporting sync progress, we wait until progress reaches 100.
         if tip.sync_progress is not None and tip.sync_progress >= 100:
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             break
         # Otherwise (for nodes without sync progress) wait until the slot number passes
         # the calculated value.
         if tip.sync_progress is None and tip.slot > last_slot_no:
+            write_progress_file(workdir=workdir, env=env, tip=tip)
             break
 
         time.sleep(5)

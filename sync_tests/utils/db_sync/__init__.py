@@ -291,6 +291,7 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
             tip.slot,
             tip.era,
         )
+        node.write_progress_file(workdir=config.workdir, env=env, tip=tip)
     try:
         db_sync_tip = postgres.get_db_sync_tip(config)
     except Exception:
@@ -313,6 +314,18 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         db_sync_tip.epoch_no,
         db_sync_tip.block_no,
         db_sync_tip.slot_no,
+    )
+    helpers.write_sync_progress(
+        workdir=config.workdir,
+        env=env,
+        key="dbsync",
+        payload={
+            "epoch": db_sync_tip.epoch_no,
+            "block": db_sync_tip.block_no,
+            "slot": db_sync_tip.slot_no,
+            "sync_progress": db_sync_progress,
+            "sync_time_h_m_s": sync_time_h_m_s,
+        },
     )
     helpers.print_last_n_lines(config.db_sync_log_file, 5)
     return db_sync_progress

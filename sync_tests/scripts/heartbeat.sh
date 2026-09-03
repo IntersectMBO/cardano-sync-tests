@@ -17,6 +17,44 @@ INTERVAL="${SYNC_TESTS_HEARTBEAT_INTERVAL_SEC:-600}"
 TAIL_LINES="${SYNC_TESTS_HEARTBEAT_TAIL_LINES:-30}"
 HALF_TAIL=$(( TAIL_LINES / 2 ))
 
+_newest_file() {
+  local newest=""
+  local f
+  for f in "$@"; do
+    if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then
+      newest="$f"
+    fi
+  done
+  echo "$newest"
+}
+
+_progress_line() {
+  local label="$1"
+  local file="$2"
+  if [ ! -s "$file" ] || ! command -v jq >/dev/null 2>&1; then
+    return
+  fi
+  # One jq call per label: era, epoch, slot, updated_at, sync_progress as TSV.
+  # Empty output means the label is absent (or the file is unparsable).
+  local row
+  row="$(jq -r --arg k "$label" '
+    def dflt: if (. // "") == "" then "?" else . end;
+    if has($k) then
+      [ (.[$k].era | dflt), (.[$k].epoch | dflt), (.[$k].slot | dflt),
+        (.[$k].updated_at | dflt), (.[$k].sync_progress // "") ] | @tsv
+    else empty end' "$file" 2>/dev/null)"
+  [ -z "$row" ] && return
+  local era epoch slot updated pct
+  IFS=$'\t' read -r era epoch slot updated pct <<< "$row"
+  if [ -n "$pct" ]; then
+    printf 'progress[%s]: %s%% synced - era=%s epoch=%s slot=%s (as of %s)\n' \
+      "$label" "$pct" "$era" "$epoch" "$slot" "$updated"
+  else
+    printf 'progress[%s]: syncProgress unavailable - era=%s epoch=%s slot=%s (as of %s)\n' \
+      "$label" "$era" "$epoch" "$slot" "$updated"
+  fi
+}
+
 _tail_group() {
   local label="$1"
   local file="$2"
@@ -68,6 +106,7 @@ _heartbeat_tick() {
 
   shopt -s nullglob
   local markers_files=( "$WORKDIR"/sync_markers_*.json )
+  local progress_files=( "$WORKDIR"/sync_progress_*.json )
   shopt -u nullglob
   if [ "${#markers_files[@]}" -gt 0 ]; then
     grep -q SYNC_MARKER_NODE_DONE   "${markers_files[@]}" 2>/dev/null && node_done=1
@@ -112,6 +151,12 @@ _heartbeat_tick() {
 
   echo "::group::Heartbeat [${phase}] $(date -u +%FT%TZ)"
   echo "status: ${status}"
+  if [ "${#progress_files[@]}" -gt 0 ]; then
+    local progress_file
+    progress_file="$(_newest_file "${progress_files[@]}")"
+    _progress_line "node" "$progress_file"
+    _progress_line "dbsync" "$progress_file"
+  fi
   df -h "${GITHUB_WORKSPACE:-.}" 2>/dev/null || df -h . 2>/dev/null || echo "[df unavailable]"
 
   if [ "$MODE" = "node-only" ]; then

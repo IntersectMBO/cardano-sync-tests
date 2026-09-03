@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import datetime
 import hashlib
 import json
 import logging
@@ -14,6 +15,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import tempfile
 import time
 import typing as tp
 import zipfile
@@ -257,15 +259,67 @@ def execute_command(
         raise
 
 
-def update_json_file(file_path: pl.Path, updates: dict) -> None:
-    """Read a JSON file, updates it with the provided dictionary, and writes it back."""
-    with open(file_path) as json_file:
-        data = json.load(json_file)
+def update_json_file(file_path: str | pl.Path, updates: dict) -> None:
+    """Read a JSON file, merge it with ``updates``, and write it back.
 
+    A missing, unreadable, or invalid existing file is treated as empty
+    rather than raised, so status files must never abort a caller just
+    because a previous write was interrupted. The write itself goes through
+    ``write_json_to_file``, so it is atomic and safe against a concurrent
+    *reader* (e.g. the CI heartbeat script). The read-modify-write as a whole
+    is not atomic, so two *writers* racing on the same file can still lose an
+    update; all current callers write from a single process.
+    """
+    file_path = pl.Path(file_path)
+    data: dict = {}
+    if file_path.exists():
+        try:
+            with open(file_path) as json_file:
+                loaded = json.load(json_file)
+            if isinstance(loaded, dict):
+                data = loaded
+        # ValueError covers both JSONDecodeError and UnicodeDecodeError, i.e. a
+        # truncated or binary-garbage file, which must not abort the caller.
+        except (ValueError, OSError):
+            LOGGER.warning(
+                "Ignoring unreadable status file %s, starting fresh", file_path, exc_info=True
+            )
     data.update(updates)
+    write_json_to_file(file_path, data)
 
-    with open(file_path, "w") as json_file:
-        json.dump(data, json_file, indent=2)
+
+def write_sync_progress(workdir: pl.Path | None, env: str, key: str, payload: dict) -> None:
+    """Upsert one top-level key of the shared ``sync_progress_{env}.json`` status file.
+
+    The file is read by the CI heartbeat script and is independent of pytest's
+    own logging (level, capture), so CI verbosity settings can never silently
+    hide sync progress from the heartbeat. The node side writes the ``"node"``
+    key, the db-sync side the ``"dbsync"`` key.
+
+    An ``updated_at`` UTC timestamp is added unless the payload already has one,
+    so a stale entry is always recognizable as stale.
+
+    Never raises: this is observability only, and must not abort a multi-hour
+    sync run over a disk-full, permission, or serialization error.
+
+    Args:
+        workdir: Directory holding the progress file. When ``None``, writing is
+            skipped.
+        env: Environment name (preview, preprod, mainnet).
+        key: Top-level key to upsert ("node" or "dbsync").
+        payload: Values to store under ``key``.
+    """
+    if workdir is None:
+        return
+    entry = dict(payload)
+    entry.setdefault(
+        "updated_at",
+        datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    try:
+        update_json_file(pl.Path(workdir) / f"sync_progress_{env}.json", {key: entry})
+    except Exception:
+        LOGGER.warning("Failed to write %s sync progress file for CI heartbeat", key, exc_info=True)
 
 
 def remove_json_keys(file_path: pl.Path, keys: list[str]) -> None:
@@ -352,14 +406,33 @@ def make_tarfile(output_filename: str, source_dir: str) -> None:
 def write_json_to_file(file_path: str | pl.Path, data: dict | list) -> None:
     """Write data to a file in JSON format.
 
+    Writes to a uniquely named temp file in the same directory first, flushes
+    it to disk, then renames it into place. A concurrent reader (e.g. the CI
+    heartbeat script) or a process killed mid-write can then never observe a
+    truncated or empty file, and two writers of the same path cannot interleave
+    into a shared temp file.
+
     Args:
         file_path: Path to the output JSON file.
         data: Dictionary or list to serialize as JSON.
     """
     file_path = pl.Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w") as f:
-        json.dump(data, f, indent=2)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=file_path.parent, prefix=f"{file_path.name}.", suffix=".tmp"
+    )
+    tmp_path = pl.Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        # mkstemp creates 0600; keep the readable perms a plain open() would give.
+        tmp_path.chmod(0o644)
+        os.replace(tmp_path, file_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def manage_directory(dir_name: str, action: str, root: str = ".") -> str | None:

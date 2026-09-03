@@ -146,7 +146,7 @@ def run_node_sync(
             latest_chunk_no,
             era_details,
             epoch_details,
-        ) = node.wait_for_node_to_sync(env=env, base_dir=base_dir)
+        ) = node.wait_for_node_to_sync(env=env, base_dir=base_dir, workdir=node_logfile_path.parent)
         LOGGER.info(
             "--- Full sync complete: sync_time_sec=%s last_slot_no=%s latest_chunk_no=%s eras=%s",
             sync_time_sec,
@@ -168,6 +168,7 @@ def run_node_sync(
             timeout_minutes=shelley_timeout_minutes,
             min_era=start_era,
             logfile_path=node_logfile_path,
+            workdir=node_logfile_path.parent,
         )
         phase_end = time.perf_counter()
         sync_time_sec = int(phase_end - phase_start)
