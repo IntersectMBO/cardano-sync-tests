@@ -11,16 +11,15 @@ authors = [
 ]
 description = "Sync tests for cardano-node and db-sync"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 keywords = ["cardano", "cardano-node", "cardano-cli", "cardano-db-sync"]
 license = "Apache-2.0"
 classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
 ]
 dynamic = ["version"]
@@ -87,12 +86,7 @@ ignore = ["ANN401", "B905", "D10", "D203", "D212", "D213", "D214", "D215", "D404
 [tool.ruff.lint.isort]
 force-single-line = true
 
-[tool.pytype]
-python_version = "3.11"
-disable = ["import-error"]
-
 [tool.mypy]
-python_version = "3.11"
 show_error_context = true
 verbosity = 0
 ignore_missing_imports = true

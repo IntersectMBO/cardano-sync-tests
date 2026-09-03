@@ -2,7 +2,7 @@
   description = "Sync tests for cardano-node and db-sync";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
@@ -13,8 +13,8 @@
       (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          py3Pkgs = pkgs.python311Packages;
-          py3Full = pkgs.python311Full;
+          py3Pkgs = pkgs.python313Packages;
+          py3 = pkgs.python313;
         in
         {
           devShells = rec {
@@ -25,7 +25,7 @@
             python = pkgs.mkShell {
               nativeBuildInputs = with pkgs; [
                 git
-                py3Full
+                py3
                 py3Pkgs.virtualenv
                 py3Pkgs.pip
                 postgresql
@@ -44,9 +44,9 @@
                 source .nix_venv/bin/activate
                 export PYTHONPATH=$(echo "$VIRTUAL_ENV"/lib/python3*/site-packages):"$PYTHONPATH"
                 if [ -n "''${GITHUB_ACTIONS:-}" ]; then
-                  python3 -m pip install --require-virtualenv --quiet --upgrade -e . >/dev/null
+                  python3 -m pip install --require-virtualenv --quiet --upgrade -e . >/dev/null || exit 1
                 else
-                  python3 -m pip install --require-virtualenv --upgrade -e .
+                  python3 -m pip install --require-virtualenv --upgrade -e . || exit 1
                 fi
                 echo "Environment ready."
               '';

@@ -501,7 +501,7 @@ def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
             str_err = str(e)
             if "Invalid argument" in str_err:
                 raise
-            now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+            now = datetime.datetime.now(tz=datetime.UTC).strftime("%d/%m/%Y %H:%M:%S")
             LOGGER.info("%s - Waiting 60s before retrying to get the tip again - %s", now, i)
         time.sleep(60)
     else:
@@ -708,31 +708,31 @@ def get_start_slot_no_d_zero(env: str) -> int | None:
 
 
 def get_calculated_slot_no(env: str) -> int:
-    current_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    current_time = datetime.datetime.now(tz=datetime.UTC)
     shelley_start_time = byron_start_time = current_time
 
     if env == "mainnet":
         byron_start_time = datetime.datetime.strptime(
             "2017-09-23 21:44:51", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
         shelley_start_time = datetime.datetime.strptime(
             "2020-07-29 21:44:51", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
     elif env == "preprod":
         byron_start_time = datetime.datetime.strptime(
             "2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
         shelley_start_time = datetime.datetime.strptime(
             "2022-06-21 00:00:00", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
     elif env == "preview":
         # this env was started directly in Alonzo
         byron_start_time = datetime.datetime.strptime(
             "2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
         shelley_start_time = datetime.datetime.strptime(
             "2022-08-09 00:00:00", "%Y-%m-%d %H:%M:%S"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
 
     last_slot_no = int(
         (shelley_start_time - byron_start_time).total_seconds() / 20
@@ -886,7 +886,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
     while True:
         # Log status every 60 iterations.
         if count % 60 == 0:
-            now_log = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+            now_log = datetime.datetime.now(tz=datetime.UTC).strftime("%d/%m/%Y %H:%M:%S")
             LOGGER.info(
                 f"{now_log} - actual_era  : {tip.era} "
                 f" - actual_epoch: {tip.epoch} "
@@ -897,9 +897,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
             write_progress_file(workdir=workdir, env=env, tip=tip)
 
         # Use the same current time for both era and epoch updates.
-        current_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        current_time_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # If we see a new era, record its starting details.
         if tip.era not in era_details_dict:
@@ -934,7 +932,7 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
         count += 1
         tip = get_current_tip(env=env)
 
-    done_time_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    done_time_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     end_sync = time.perf_counter()
     sync_time_seconds = int(end_sync - start_sync)
@@ -970,9 +968,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
 
         start_dt = datetime.datetime.strptime(
             era_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
         end_dt = datetime.datetime.strptime(end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=datetime.timezone.utc
+            tzinfo=datetime.UTC
         )
         sync_duration_secs = int((end_dt - start_dt).total_seconds())
         era_dict["sync_duration_secs"] = sync_duration_secs
@@ -996,9 +994,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
 
         start_dt = datetime.datetime.strptime(
             epoch_dict["start_sync_time"], "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
         end_dt = datetime.datetime.strptime(epoch_end_sync_time, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=datetime.timezone.utc
+            tzinfo=datetime.UTC
         )
         sync_duration_secs = int((end_dt - start_dt).total_seconds())
         epoch_dict["sync_duration_secs"] = sync_duration_secs

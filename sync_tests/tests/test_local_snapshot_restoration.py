@@ -69,7 +69,7 @@ def local_restoration_result(
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
     start_test_time = datetime.datetime.now(
-        tz=datetime.timezone.utc,
+        tz=datetime.UTC,
     ).strftime("%d/%m/%Y %H:%M:%S")
 
     # database setup
@@ -140,7 +140,7 @@ def local_restoration_result(
     )
 
     end_test_time = datetime.datetime.now(
-        tz=datetime.timezone.utc,
+        tz=datetime.UTC,
     ).strftime("%d/%m/%Y %H:%M:%S")
 
     LOGGER.info(
