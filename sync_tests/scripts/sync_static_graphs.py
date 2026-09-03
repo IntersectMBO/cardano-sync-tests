@@ -11,9 +11,16 @@ import pathlib as pl
 import sys
 import typing as tp
 
-import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import seaborn as sns
+
+# Force a non-interactive backend; this is a batch CLI that only writes image
+# files, and importing pyplot would otherwise fail on hosts where DISPLAY is
+# set but unusable.
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 from matplotlib import ticker
 
 sns.set_theme(style="whitegrid")
