@@ -9,7 +9,6 @@ import typing as tp
 from collections import OrderedDict
 
 import pytest
-from _pytest.fixtures import FixtureRequest
 
 from sync_tests.tests.conftest import DbSyncResult
 from sync_tests.tests.conftest import SyncContext
@@ -19,50 +18,6 @@ from sync_tests.utils import helpers
 LOGGER = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.snapshot_creation
-
-
-@pytest.fixture(scope="session")
-def snapshot_created(
-    request: FixtureRequest,
-    sync_context: SyncContext,
-    db_sync_synced: DbSyncResult,  # noqa: ARG001
-) -> dict[str, tp.Any]:
-    """Create a db-sync snapshot and return creation metadata."""
-    if request.config.getoption("--run-only-sync-test"):
-        pytest.skip("--run-only-sync-test: skipping snapshot creation")
-
-    env = sync_context.env
-    config = db_sync.create_db_sync_config(
-        env=env,
-        workdir=sync_context.workdir,
-    )
-
-    LOGGER.info("Starting snapshot creation")
-    start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    stage_2_cmd = db_sync.create_db_sync_snapshot_stage_1(config)
-    LOGGER.info("Stage 2 command: %s", stage_2_cmd)
-    stage_2_result = db_sync.create_db_sync_snapshot_stage_2(
-        config,
-        stage_2_cmd,
-    )
-    LOGGER.info("Stage 2 result: %s", stage_2_result)
-    end_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
-    snapshot_file = stage_2_result
-
-    creation_secs = int((end_time - start_time).total_seconds())
-    LOGGER.info("Snapshot creation time: %d seconds", creation_secs)
-
-    snapshot_data = {
-        "snapshot_file": snapshot_file,
-        "stage_2_cmd": stage_2_cmd,
-        "stage_2_result": stage_2_result,
-        "creation_time_secs": creation_secs,
-        "start_time": start_time.strftime("%d/%m/%Y %H:%M:%S"),
-        "end_time": end_time.strftime("%d/%m/%Y %H:%M:%S"),
-    }
-    helpers.write_json_to_file(sync_context.workdir / "sync_session_state.json", snapshot_data)
-    return snapshot_data
 
 
 class TestSnapshotCreation:

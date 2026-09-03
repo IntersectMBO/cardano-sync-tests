@@ -522,3 +522,53 @@ def db_sync_synced(
     db_sync.stop_monitor(sync_context.workdir)
     db_sync.stop_postgres(config)
     db_sync.finalize_session_disk_cleanup(config)
+
+
+@pytest.fixture(scope="session")
+def snapshot_created(
+    request: FixtureRequest,
+    sync_context: SyncContext,
+    db_sync_synced: DbSyncResult,  # noqa: ARG001
+) -> dict[str, tp.Any]:
+    """Create a db-sync snapshot and return creation metadata.
+
+    Defined here rather than in a test module so it stays a single shared
+    fixture instance regardless of which test file requests it first;
+    pytest does not share a cached fixture across modules that each import
+    it directly.
+    """
+    if request.config.getoption("--run-only-sync-test"):
+        pytest.skip("--run-only-sync-test: skipping snapshot creation")
+
+    env = sync_context.env
+    config = db_sync.create_db_sync_config(
+        env=env,
+        workdir=sync_context.workdir,
+    )
+
+    LOGGER.info("Starting snapshot creation")
+    start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    stage_2_cmd = db_sync.create_db_sync_snapshot_stage_1(config)
+    LOGGER.info("Stage 2 command: %s", stage_2_cmd)
+    stage_2_result = db_sync.create_db_sync_snapshot_stage_2(
+        config,
+        stage_2_cmd,
+    )
+    LOGGER.info("Stage 2 result: %s", stage_2_result)
+    end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    snapshot_file = stage_2_result
+
+    creation_secs = int((end_time - start_time).total_seconds())
+    LOGGER.info("Snapshot creation time: %d seconds", creation_secs)
+
+    snapshot_data = {
+        "snapshot_file": snapshot_file,
+        "stage_2_cmd": stage_2_cmd,
+        "stage_2_result": stage_2_result,
+        "creation_time_secs": creation_secs,
+        "start_time": start_time.strftime("%d/%m/%Y %H:%M:%S"),
+        "end_time": end_time.strftime("%d/%m/%Y %H:%M:%S"),
+    }
+    helpers.write_json_to_file(sync_context.workdir / "sync_session_state.json", snapshot_data)
+    return snapshot_data

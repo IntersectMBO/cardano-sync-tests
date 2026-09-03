@@ -977,7 +977,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
         sync_duration_secs = int((end_dt - start_dt).total_seconds())
         era_dict["sync_duration_secs"] = sync_duration_secs
 
-        era_dict["sync_speed_sps"] = int(era_dict["slots_in_era"] / sync_duration_secs)
+        era_dict["sync_speed_sps"] = (
+            int(era_dict["slots_in_era"] / sync_duration_secs) if sync_duration_secs > 0 else 0
+        )
 
     # Calculate and add "end_sync_time" and "sync_duration_secs" for each epoch
     epoch_list = list(epoch_details_dict.keys())
