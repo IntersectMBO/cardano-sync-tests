@@ -24,21 +24,21 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "GitPython",
-    "assertpy",
-    "blockfrost-python",
-    "colorama",
-    "matplotlib",
-    "numpy",
-    "pandas",
-    "psutil",
-    "psycopg2-binary",
-    "pymysql",
-    "pytest",
-    "requests",
-    "seaborn",
-    "setuptools < 80.9",
-    "xmltodict",
+    "GitPython >= 3.1.44",
+    "assertpy >= 1.1",
+    "blockfrost-python >= 0.7.0",
+    "colorama >= 0.4.6",
+    "matplotlib >= 3.10",
+    "numpy >= 2.3",
+    "pandas >= 2.3, < 3",
+    "psutil >= 7.0",
+    "psycopg2-binary >= 2.9.12",
+    "pymysql >= 1.1",
+    "pytest >= 8.3",
+    "requests >= 2.32",
+    "seaborn >= 0.13.2",
+    "setuptools >= 77.0.3, < 80.9",
+    "xmltodict >= 0.14",
 ]
 
 [project.urls]
