@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 PIP_INSTALL_ARGS ?=
-VENV := .venv
+VENV ?= .venv
 PY := $(VENV)/bin/python3
 PIP := $(PY) -m pip
 PYTEST_ARGS ?=
