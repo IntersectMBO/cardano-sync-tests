@@ -1,7 +1,7 @@
 exclude: ^(cardano-db-sync/|cardano_node_dir/)
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
+  rev: v6.0.0
   hooks:
   - id: trailing-whitespace
     language_version: python3
@@ -13,22 +13,22 @@ repos:
     language_version: python3
   - id: debug-statements
     language_version: python3
-- repo: https://github.com/charliermarsh/ruff-pre-commit
-  rev: v0.12.4
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.16.6
   hooks:
-    - id: ruff
+    - id: ruff-check
       args: [ --fix ]
     - id: ruff-format
 - repo: https://github.com/shellcheck-py/shellcheck-py
-  rev: v0.10.0.1
+  rev: v0.11.0.1-1
   hooks:
   - id: shellcheck
 - repo: https://github.com/igorshubovych/markdownlint-cli
-  rev: v0.45.0
+  rev: v0.49.1
   hooks:
   - id: markdownlint
 - repo: https://github.com/rstcheck/rstcheck
-  rev: v6.2.5
+  rev: v6.3.0
   hooks:
   - id: rstcheck
     additional_dependencies: [sphinx, toml]

@@ -37,8 +37,10 @@ def export_epoch_sync_times_from_db(
                 "-c",
                 rf"\o {output_file}",
                 "-c",
-                "SELECT array_to_json(array_agg(epoch_sync_time), FALSE) FROM "
-                f"epoch_sync_time where no >= {snapshot_epoch_no};",
+                (
+                    "SELECT array_to_json(array_agg(epoch_sync_time), FALSE) FROM "
+                    f"epoch_sync_time where no >= {snapshot_epoch_no};"
+                ),
             ],
             cwd=str(db_sync_dir),
             stdout=subprocess.PIPE,
