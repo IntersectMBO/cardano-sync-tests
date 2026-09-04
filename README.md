@@ -10,7 +10,7 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-# or: pip install -r requirements-dev.txt
+# or, with dev tools (mypy, pre-commit): pip install -e . --group dev
 ```
 
 CI often uses `nix develop --accept-flake-config .#python --command pytest ...` instead.

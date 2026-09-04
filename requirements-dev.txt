@@ -1,7 +1,0 @@
--e .
-
-# linting
-mypy
-pre-commit
-types-requests
-types-PyMySQL
