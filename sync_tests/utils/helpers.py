@@ -314,7 +314,7 @@ def write_sync_progress(workdir: pl.Path | None, env: str, key: str, payload: di
     entry = dict(payload)
     entry.setdefault(
         "updated_at",
-        datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
     try:
         update_json_file(pl.Path(workdir) / f"sync_progress_{env}.json", {key: entry})

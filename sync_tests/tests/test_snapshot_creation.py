@@ -38,7 +38,7 @@ def snapshot_created(
     )
 
     LOGGER.info("Starting snapshot creation")
-    start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    start_time = datetime.datetime.now(tz=datetime.UTC)
     stage_2_cmd = db_sync.create_db_sync_snapshot_stage_1(config)
     LOGGER.info("Stage 2 command: %s", stage_2_cmd)
     stage_2_result = db_sync.create_db_sync_snapshot_stage_2(
@@ -46,7 +46,7 @@ def snapshot_created(
         stage_2_cmd,
     )
     LOGGER.info("Stage 2 result: %s", stage_2_result)
-    end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    end_time = datetime.datetime.now(tz=datetime.UTC)
 
     snapshot_file = stage_2_result
 

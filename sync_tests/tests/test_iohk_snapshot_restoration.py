@@ -64,7 +64,7 @@ def iohk_restoration_result(
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
     start_test_time = datetime.datetime.now(
-        tz=datetime.timezone.utc,
+        tz=datetime.UTC,
     ).strftime("%d/%m/%Y %H:%M:%S")
 
     snapshot_url = snapshot_url_opt or db_sync.get_latest_snapshot_url(env, None)
@@ -143,7 +143,7 @@ def iohk_restoration_result(
     )
 
     end_test_time = datetime.datetime.now(
-        tz=datetime.timezone.utc,
+        tz=datetime.UTC,
     ).strftime("%d/%m/%Y %H:%M:%S")
 
     LOGGER.info(

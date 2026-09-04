@@ -6,6 +6,7 @@ on:
     paths:
       - 'flake.lock'
       - '**.nix'
+      - 'pyproject.toml'
       - '.github/workflows/nix_smoke.yaml'
   workflow_dispatch:
 

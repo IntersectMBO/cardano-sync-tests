@@ -67,9 +67,9 @@ def get_epoch_start_datetime(epoch_no: int) -> str | None:
     if is_blockfrost_healthy(api):
         try:
             epoch_data = api.epoch(number=epoch_no)
-            return datetime.datetime.fromtimestamp(
-                epoch_data.start_time, tz=datetime.timezone.utc
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return datetime.datetime.fromtimestamp(epoch_data.start_time, tz=datetime.UTC).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
         except Exception:
             LOGGER.exception("Error fetching start datetime for epoch %s", epoch_no)
             return None

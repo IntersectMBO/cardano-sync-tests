@@ -51,7 +51,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         ):
             timestamp = datetime.datetime.strptime(
                 timestamp_match.group(0), "%Y-%m-%d %H:%M:%S"
-            ).replace(tzinfo=datetime.timezone.utc)
+            ).replace(tzinfo=datetime.UTC)
             heap_ram_details_dict[timestamp] = float(heap_match.group(1))
             rss_ram_details_dict[timestamp] = float(rss_match.group(1))
             centi_cpu_dict[timestamp] = float(centi_cpu_match.group(1))
@@ -62,7 +62,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         ):
             timestamp = datetime.datetime.strptime(
                 timestamp_match.group(0), "%Y-%m-%d %H:%M:%S"
-            ).replace(tzinfo=datetime.timezone.utc)
+            ).replace(tzinfo=datetime.UTC)
             cpu_ticks_dict[timestamp] = float(resources_match.group(1))
             heap_ram_details_dict[timestamp] = float(resources_match.group(2))
             rss_ram_details_dict[timestamp] = float(resources_match.group(3))
@@ -75,7 +75,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
         ):
             timestamp = datetime.datetime.strptime(
                 timestamp_match.group(0), "%Y-%m-%d %H:%M:%S"
-            ).replace(tzinfo=datetime.timezone.utc)
+            ).replace(tzinfo=datetime.UTC)
             tip_details_dict[timestamp] = int(line.split(" at slot ", 1)[1])
 
     def _process_log_file(infile: tp.IO) -> None:

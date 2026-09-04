@@ -91,14 +91,14 @@ def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
             try:
                 timestamp = datetime.datetime.strptime(
                     timestamp_match.group(1), "%Y-%m-%d %H:%M:%S.%f"
-                ).replace(tzinfo=datetime.timezone.utc)
+                ).replace(tzinfo=datetime.UTC)
                 last_timestamp = timestamp  # Update last seen timestamp
             except ValueError:
                 # Try without microseconds
                 try:
                     timestamp = datetime.datetime.strptime(
                         timestamp_match.group(1), "%Y-%m-%d %H:%M:%S"
-                    ).replace(tzinfo=datetime.timezone.utc)
+                    ).replace(tzinfo=datetime.UTC)
                     last_timestamp = timestamp  # Update last seen timestamp
                 except ValueError:
                     pass

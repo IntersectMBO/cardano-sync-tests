@@ -145,7 +145,7 @@ def pytest_addoption(parser: tp.Any) -> None:
 
 def _utc_now() -> str:
     """Return the current UTC time as an ISO-8601 string."""
-    return datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(tz=datetime.UTC).isoformat()
 
 
 def _validate_configs_base_url(env: str) -> None:
