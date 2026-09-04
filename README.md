@@ -7,13 +7,30 @@ Sync tests for `cardano-node` and `cardano-db-sync`.
 From the repository root:
 
 ```bash
+make install
+source .venv/bin/activate
+```
+
+That creates `.venv` and installs the package with its dev dependencies. Equivalent by hand:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 # or, with dev tools (mypy, pre-commit): pip install -e . --group dev
 ```
 
+Other useful targets - `make help` lists them all:
+
+```bash
+make lint       # run all pre-commit linters
+make test       # run framework unit tests (no synced node needed)
+make clean      # remove caches and build artifacts
+```
+
 CI often uses `nix develop --accept-flake-config .#python --command pytest ...` instead.
+Inside that shell the `make` targets operate on `.nix_venv` (the shell exports `VENV`),
+so `make lint` and `make test` work there too.
 
 Example tags below use **10.6.2** for `cardano-node` and **13.6.0.5** for db-sync; substitute current releases as needed.
 

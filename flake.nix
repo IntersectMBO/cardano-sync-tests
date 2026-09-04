@@ -40,13 +40,15 @@
               ];
               shellHook = ''
                 echo "Setting up Python environment..."
+                # Make targets operate on this venv, not on the plain-pip ".venv".
+                export VENV=.nix_venv
                 [ -e .nix_venv ] || python3 -m venv .nix_venv
                 source .nix_venv/bin/activate
                 export PYTHONPATH=$(echo "$VIRTUAL_ENV"/lib/python3*/site-packages):"$PYTHONPATH"
                 if [ -n "''${GITHUB_ACTIONS:-}" ]; then
-                  python3 -m pip install --require-virtualenv --quiet --upgrade -e . >/dev/null || exit 1
+                  python3 -m pip install --require-virtualenv --quiet --upgrade -e . --group dev >/dev/null || exit 1
                 else
-                  python3 -m pip install --require-virtualenv --upgrade -e . || exit 1
+                  python3 -m pip install --require-virtualenv --upgrade -e . --group dev || exit 1
                 fi
                 echo "Environment ready."
               '';
