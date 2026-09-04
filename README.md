@@ -98,7 +98,7 @@ pytest sync_tests/tests/ \
 ## CLI options
 
 | Option | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `--environment` | `preview` | `preview` \| `preprod` \| `mainnet` |
 | `--node-revision` | `None` | Node tag/branch to build; omit to skip node sync |
 | `--db-sync-revision` | `None` | DB-sync tag/branch; omit to skip db-sync |
@@ -193,7 +193,7 @@ and generates appropriate graphs.
 ### Graph options
 
 | Option | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `-i, --json-files` | Required | One or more JSON result files |
 | `-o, --output-dir` | `.` | Output directory for graphs |
 | `--mode` | `auto` | `node`, `dbsync`, or `auto` (detect from JSON) |
