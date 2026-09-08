@@ -14,6 +14,7 @@ import typing as tp
 import matplotlib
 import numpy as np
 import seaborn as sns
+from PIL import Image
 
 # Force a non-interactive backend; this is a batch CLI that only writes image
 # files, and importing pyplot would otherwise fail on hosts where DISPLAY is
@@ -25,6 +26,35 @@ from matplotlib import ticker
 
 sns.set_theme(style="whitegrid")
 LOGGER = logging.getLogger(__name__)
+
+# Palette size for PNG output. These graphs are a few solid lines on a plain
+# background, so a 64-colour palette is visually indistinguishable from
+# truecolour at roughly a third of the file size. Worth it because one set of
+# images is committed per release to the docs repo, where they accumulate.
+PNG_PALETTE_COLORS = 64
+
+# Slot width of the bands the CPU load graph averages over, and the minimum number
+# of samples a band needs before it is plotted. Per-sample CPU load swings by
+# hundreds of percent between consecutive samples, so the raw series of several
+# releases overlap into a single illegible band; averaging over slot ranges is what
+# makes the releases separable. The sample floor drops the partial bands at the
+# start and end of a run, whose means are noise.
+CPU_BAND_SLOTS = 1_000_000
+CPU_BAND_MIN_SAMPLES = 20
+
+
+def _savefig(path: pl.Path, dpi: int, fmt: str) -> None:
+    """Save the current figure, palette-quantizing PNG output to keep it small."""
+    plt.savefig(path, dpi=dpi, format=fmt)
+
+    if fmt.lower() != "png":
+        return
+
+    # `convert` reads the pixels, so the file is fully loaded before it is reopened
+    # for writing below.
+    with Image.open(path) as img:
+        quantized = img.convert("RGB").quantize(colors=PNG_PALETTE_COLORS)
+    quantized.save(path, format="png", optimize=True)
 
 
 def get_args() -> argparse.Namespace:
@@ -41,6 +71,26 @@ def get_args() -> argparse.Namespace:
         "-o", "--output-dir", required=False, help="Output directory, assume cwd if not provided"
     )
     parser.add_argument("--dpi", type=int, default=150, help="DPI for output images (default: 150)")
+    parser.add_argument(
+        "--labels",
+        type=str,
+        nargs="+",
+        help=(
+            "Legend label for each input file, in the same order as --json-files. "
+            "Overrides the name derived from the result file, which is not always the "
+            "release under test: a run parameterized by git revision records that "
+            "revision as its tag. One label per file."
+        ),
+    )
+    parser.add_argument(
+        "--cpu-band-slots",
+        type=int,
+        default=CPU_BAND_SLOTS,
+        help=(
+            "Slot width of the bands the node-sync CPU load graph averages over "
+            f"(default: {CPU_BAND_SLOTS})"
+        ),
+    )
     parser.add_argument("--format", type=str, default="png", help="Image format (png, pdf, svg...)")
     parser.add_argument(
         "--mode",
@@ -184,8 +234,35 @@ def generate_static_graphs(
     mode: str = "auto",
     throughput_mode: str = "both",
     throughput_window: int = 5,
+    cpu_band_slots: int = CPU_BAND_SLOTS,
+    labels: list[str] | None = None,
 ) -> None:
     LOGGER.info("Starting the sync report generation.")
+
+    if labels:
+        if len(labels) != len(file_list):
+            LOGGER.error(
+                "Got %d label(s) for %d input file(s); pass one label per file",
+                len(labels),
+                len(file_list),
+            )
+            return
+        labels = [label.strip() for label in labels]
+        # An empty label is falsey, so it would be skipped in favour of the name derived
+        # from the result file - silently giving back the name the caller passed labels
+        # to replace. Reject it instead of ignoring it.
+        blank = [pos for pos, label in enumerate(labels, start=1) if not label]
+        if blank:
+            LOGGER.error(
+                "Labels must not be empty or whitespace only; check label(s) at position %s",
+                ", ".join(str(pos) for pos in blank),
+            )
+            return
+        # Checked after stripping, because datasets are keyed by label and two labels that
+        # differ only in surrounding whitespace would collide and silently drop data.
+        if len(set(labels)) != len(labels):
+            LOGGER.error("Labels must be unique, got: %s", labels)
+            return
 
     output_path = pl.Path(output_dir or ".")
     output_path.mkdir(parents=True, exist_ok=True)
@@ -218,10 +295,10 @@ def generate_static_graphs(
 
     # Route to appropriate graph generator
     if mode == "node":
-        _generate_node_graphs(file_list, output_path, dpi, fmt)
+        _generate_node_graphs(file_list, output_path, dpi, fmt, cpu_band_slots, labels)
     elif mode == "dbsync":
         _generate_dbsync_graphs(
-            file_list, output_path, dpi, fmt, throughput_mode, throughput_window
+            file_list, output_path, dpi, fmt, throughput_mode, throughput_window, labels
         )
     else:
         LOGGER.error("Unknown mode: %s", mode)
@@ -232,6 +309,8 @@ def _generate_node_graphs(
     output_path: pl.Path,
     dpi: int,
     fmt: str,
+    cpu_band_slots: int = CPU_BAND_SLOTS,
+    labels: list[str] | None = None,
 ) -> None:
     """Generate node-sync graphs from node results JSON files."""
     LOGGER.info("Generating node-sync graphs.")
@@ -240,7 +319,7 @@ def _generate_node_graphs(
     sync_duration_data = {}
     sync_time_data = {}
 
-    for file_path_str in file_list:
+    for idx, file_path_str in enumerate(file_list):
         file_path = pl.Path(file_path_str)
         if not file_path.exists():
             LOGGER.error("File not found: %s", file_path)
@@ -252,7 +331,8 @@ def _generate_node_graphs(
             with file_path.open(encoding="utf-8") as file:
                 sync_results = json.load(file)
                 dataset_name = (
-                    sync_results.get("tag_no1")
+                    (labels[idx] if labels else None)
+                    or sync_results.get("tag_no1")
                     or file_path.name.replace("cardano-node-", "")
                     .replace("sync_results-", "")
                     .replace(".json", "")
@@ -286,6 +366,9 @@ def _generate_node_graphs(
 
     LOGGER.info("Generating node-sync results graphs.")
     generate_resource_consumption_graphs(log_data, output_path, dpi=dpi, fmt=fmt)
+    generate_cpu_load_binned_graph(
+        log_data, output_path, dpi=dpi, fmt=fmt, band_slots=cpu_band_slots
+    )
     generate_duration_per_epoch_graphs(sync_duration_data, output_path, dpi=dpi, fmt=fmt)
     generate_sync_time_per_era_graphs(sync_time_data, eras, output_path, dpi=dpi, fmt=fmt)
 
@@ -297,6 +380,7 @@ def _generate_dbsync_graphs(
     fmt: str,
     throughput_mode: str = "both",
     throughput_window: int = 5,
+    labels: list[str] | None = None,
 ) -> None:
     """Generate db-sync graphs from db-sync results JSON files.
 
@@ -307,11 +391,12 @@ def _generate_dbsync_graphs(
         fmt: Image format.
         throughput_mode: Throughput rendering mode (raw/rolling/both).
         throughput_window: Rolling average window size in minutes.
+        labels: Legend label per input file, overriding the derived name.
     """
     LOGGER.info("Generating db-sync graphs.")
     datasets: dict[str, dict[str, tp.Any]] = {}
 
-    for file_path_str in file_list:
+    for idx, file_path_str in enumerate(file_list):
         file_path = pl.Path(file_path_str)
         if not file_path.exists():
             LOGGER.error("File not found: %s", file_path)
@@ -322,7 +407,7 @@ def _generate_dbsync_graphs(
         try:
             with file_path.open(encoding="utf-8") as file:
                 json_data = json.load(file)
-                dataset_name = file_path.name
+                dataset_name = (labels[idx] if labels else None) or file_path.name
 
                 # Normalize data
                 normalized = normalize_dbsync_data(json_data)
@@ -373,18 +458,26 @@ def generate_resource_consumption_graphs(
     palette = sns.color_palette("tab10")
 
     def _plot(
-        data_type: str, unit_conversion: float, title: str, ylabel: str, basename: str
+        data_type: str,
+        unit_conversion: float,
+        title: str,
+        ylabel: str,
+        basename: str,
+        zero_means_no_sample: bool,
     ) -> None:
         plt.figure(figsize=(8, 6))
         for idx, (dataset_name, data) in enumerate(datasets.items()):
             x = []
             y = []
             for value in data.values():
-                if value.get("tip") and value.get(data_type):
-                    raw = float(value[data_type])
-                    if raw > 0.0:
-                        x.append(int(value["tip"]))
-                        y.append(raw / unit_conversion)
+                tip = value.get("tip")
+                raw = value.get(data_type)
+                if tip is None or raw is None:
+                    continue
+                if zero_means_no_sample and float(raw) == 0.0:
+                    continue
+                x.append(int(tip))
+                y.append(float(raw) / unit_conversion)
             plt.plot(x, y, label=dataset_name, color=palette[idx % len(palette)])
 
         plt.title(title)
@@ -392,13 +485,98 @@ def generate_resource_consumption_graphs(
         plt.ylabel(ylabel)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(output_dir / f"{basename}.{fmt}", dpi=dpi, format=fmt)
+        _savefig(output_dir / f"{basename}.{fmt}", dpi=dpi, fmt=fmt)
         plt.close()
 
-    _plot("rss_ram", 1024**3, "RSS Consumption", "RSS consumed [GB]", "nodesync_rss_consumption")
-    _plot("heap_ram", 1024**3, "RAM Consumption", "RAM consumed [GB]", "nodesync_ram_consumption")
-    _plot("cpu", 1, "CPU Load", "CPU consumed [%]", "nodesync_cpu_consumption")
+    # The extractor defaults the RAM fields to 0.0 on timestamps that carry only a tip
+    # update, so a zero there means "no sample" and would draw the line down to the axis.
+    # CPU is different: the extractor drops entries without a CPU reading, so every stored
+    # 0.0 is a real measurement of an idle node and has to be kept.
+    _plot(
+        "rss_ram",
+        1024**3,
+        "RSS Consumption",
+        "RSS consumed [GB]",
+        "nodesync_rss_consumption",
+        zero_means_no_sample=True,
+    )
+    _plot(
+        "heap_ram",
+        1024**3,
+        "RAM Consumption",
+        "RAM consumed [GB]",
+        "nodesync_ram_consumption",
+        zero_means_no_sample=True,
+    )
+    _plot(
+        "cpu",
+        1,
+        "CPU Load",
+        "CPU consumed [%]",
+        "nodesync_cpu_consumption",
+        zero_means_no_sample=False,
+    )
     LOGGER.info("Successfully generated node-sync resource consumption graphs.")
+
+
+def generate_cpu_load_binned_graph(
+    datasets: dict[str, dict],
+    output_dir: pl.Path,
+    dpi: int,
+    fmt: str,
+    band_slots: int = CPU_BAND_SLOTS,
+) -> None:
+    """Plot CPU load averaged over fixed-width slot bands.
+
+    The companion to `nodesync_cpu_consumption`, which plots every sample and is
+    unreadable when several releases are compared. See `CPU_BAND_SLOTS`.
+    """
+    if band_slots <= 0:
+        LOGGER.error("CPU band width must be positive, got %d", band_slots)
+        return
+
+    plt.figure(figsize=(8, 6))
+    palette = sns.color_palette("tab10")
+
+    for idx, (dataset_name, data) in enumerate(datasets.items()):
+        bands: dict[int, list[float]] = {}
+        for value in data.values():
+            tip = value.get("tip")
+            cpu = value.get("cpu")
+            # A CPU reading of 0.0 is an idle node, not a missing sample: dropping those
+            # would bias every band mean upward.
+            if tip is None or cpu is None:
+                continue
+            bands.setdefault(int(tip) // band_slots, []).append(float(cpu))
+
+        points = sorted(
+            (band * band_slots, float(np.mean(samples)))
+            for band, samples in bands.items()
+            if len(samples) >= CPU_BAND_MIN_SAMPLES
+        )
+        if not points:
+            LOGGER.warning(
+                "No CPU band reached %d samples for %s", CPU_BAND_MIN_SAMPLES, dataset_name
+            )
+            continue
+
+        plt.plot(
+            [slot for slot, __ in points],
+            [load for __, load in points],
+            label=dataset_name,
+            color=palette[idx % len(palette)],
+        )
+
+    band_label = f"{band_slots // 1_000_000}M" if band_slots >= 1_000_000 else f"{band_slots:,}"
+    plt.title(f"CPU Load, mean per {band_label}-slot band")
+    plt.xlabel("Slot Number")
+    plt.ylabel("CPU consumed [%]")
+    plt.ylim(bottom=0)
+    plt.legend()
+    plt.tight_layout()
+    _savefig(output_dir / f"nodesync_cpu_consumption_smoothed.{fmt}", dpi=dpi, fmt=fmt)
+    plt.close()
+    LOGGER.info("Successfully generated node-sync binned CPU load graph.")
 
 
 def generate_duration_per_epoch_graphs(
@@ -424,7 +602,7 @@ def generate_duration_per_epoch_graphs(
     ax.xaxis.set_major_locator(ticker.MultipleLocator(50))  # Set x-ticks every 50
 
     plt.tight_layout()
-    plt.savefig(output_dir / f"nodesync_duration_per_epoch.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"nodesync_duration_per_epoch.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Successfully generated node-sync duration per epoch graph.")
 
@@ -458,7 +636,7 @@ def generate_sync_time_per_era_graphs(
     plt.ylabel("Sync duration [seconds]")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f"nodesync_time_per_era.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"nodesync_time_per_era.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Successfully generated node-sync time per era graph.")
 
@@ -493,7 +671,7 @@ def generate_dbsync_cpu_graph(
     plt.ylabel("CPU Usage [%]")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_cpu_over_time.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_cpu_over_time.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync CPU graph.")
 
@@ -528,7 +706,7 @@ def generate_dbsync_rss_graph(
     plt.ylabel("RSS Memory [GB]")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_rss_over_time.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_rss_over_time.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync RSS graph.")
 
@@ -606,7 +784,7 @@ def generate_dbsync_combined_resources_graph(
 
     plt.title("DB-Sync CPU and Memory Usage Over Time")
     fig.tight_layout()
-    plt.savefig(output_dir / f"dbsync_combined_resources.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_combined_resources.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync combined resources graph.")
 
@@ -663,7 +841,7 @@ def generate_dbsync_epoch_duration_graph(
     ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
 
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_epoch_duration.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_epoch_duration.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync epoch duration graph.")
 
@@ -739,7 +917,7 @@ def generate_dbsync_blocks_per_epoch_graph(
     ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
 
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_blocks_per_epoch.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_blocks_per_epoch.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync blocks per epoch graph.")
 
@@ -871,7 +1049,7 @@ def generate_dbsync_block_throughput_graph(
     plt.ylabel("Block Insertion Rate [blocks/minute]")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_block_throughput.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_block_throughput.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info(
         "Generated db-sync block throughput graph (mode=%s, window=%d min).",
@@ -989,7 +1167,7 @@ def generate_dbsync_era_breakdown_graph(
     plt.ylabel("Sync Duration [seconds]")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f"dbsync_era_breakdown.{fmt}", dpi=dpi, format=fmt)
+    _savefig(output_dir / f"dbsync_era_breakdown.{fmt}", dpi=dpi, fmt=fmt)
     plt.close()
     LOGGER.info("Generated db-sync era breakdown graph.")
 
@@ -1005,6 +1183,8 @@ def main() -> int:
         mode=args.mode,
         throughput_mode=args.throughput_mode,
         throughput_window=args.throughput_window,
+        cpu_band_slots=args.cpu_band_slots,
+        labels=args.labels,
     )
     return 0
 

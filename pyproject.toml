@@ -31,6 +31,7 @@ dependencies = [
     "matplotlib >= 3.10",
     "numpy >= 2.3",
     "pandas >= 2.3, < 3",
+    "pillow >= 11.0",
     "psutil >= 7.0",
     "psycopg2-binary >= 2.9.12",
     "pymysql >= 1.1",
