@@ -19,6 +19,10 @@ on:
           pytest --node-revision: tag/branch, or "latest" for newest IntersectMBO/cardano-node release.
         type: string
         default: "latest"
+      configs_base_url:
+        description: "Base URL for Cardano environment configs"
+        required: false
+        default: "https://book.world.dev.cardano.org/environments"
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       BLOCKFROST_API_KEY: ${{ inputs.environment == 'mainnet' && secrets.BLOCKFROST_API_KEY || '' }}
+      CONFIGS_BASE_URL: ${{ inputs.configs_base_url }}
       SYNC_TESTS_HEARTBEAT_INTERVAL_SEC: "600"
       SYNC_TESTS_HEARTBEAT_TAIL_LINES: "30"
       SYNC_TESTS_FAILURE_TAIL_LINES: "300"
