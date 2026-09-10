@@ -26,6 +26,7 @@ def _make_tip(
     block: int = 100,
     slot: int = 12345,
     sync_progress: float | None = 42.5,
+    protocol_version: int | None = None,
 ) -> node.Tip:
     return node.Tip(
         epoch=epoch,
@@ -34,6 +35,7 @@ def _make_tip(
         slot=slot,
         era=era,
         sync_progress=sync_progress,
+        protocol_version=protocol_version,
     )
 
 
@@ -171,9 +173,17 @@ def test_write_progress_file_writes_node_key(tmp_path: pl.Path) -> None:
         "block": 100,
         "slot": 12345,
         "sync_progress": 42.5,
+        "protocol_version": None,
         "updated_at": data["node"]["updated_at"],
     }
     assert data["node"]["updated_at"].endswith("Z")
+
+
+def test_write_progress_file_carries_protocol_version(tmp_path: pl.Path) -> None:
+    node.write_progress_file(workdir=tmp_path, env="preview", tip=_make_tip(protocol_version=11))
+
+    data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
+    assert data["node"]["protocol_version"] == 11
 
 
 def test_write_progress_file_none_workdir_is_a_noop(tmp_path: pl.Path) -> None:
@@ -217,6 +227,86 @@ def test_write_progress_file_preserves_dbsync_key(tmp_path: pl.Path) -> None:
     assert data["node"]["epoch"] == 5
 
 
+# --- node.refresh_protocol_version ---------------------------------------------
+
+
+def test_refresh_protocol_version_queries_on_first_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(node, "get_current_protocol_version", lambda env: 11)  # noqa: ARG005
+
+    tip, cache = node.refresh_protocol_version(env="preview", tip=_make_tip(epoch=5), cached=None)
+
+    assert tip.protocol_version == 11
+    assert cache == (5, 11)
+
+
+def test_refresh_protocol_version_skips_query_within_the_same_epoch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def fake_get_current_protocol_version(env: str) -> int:
+        calls.append(env)
+        return 11
+
+    monkeypatch.setattr(node, "get_current_protocol_version", fake_get_current_protocol_version)
+
+    tip, cache = node.refresh_protocol_version(
+        env="preview", tip=_make_tip(epoch=5), cached=(5, 11)
+    )
+
+    assert tip.protocol_version == 11
+    assert cache == (5, 11)
+    assert calls == []  # no query - the cached epoch already matches
+
+
+def test_refresh_protocol_version_requeries_on_epoch_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(node, "get_current_protocol_version", lambda env: 12)  # noqa: ARG005
+
+    tip, cache = node.refresh_protocol_version(
+        env="preview", tip=_make_tip(epoch=6), cached=(5, 11)
+    )
+
+    assert tip.protocol_version == 12
+    assert cache == (6, 12)
+
+
+def test_refresh_protocol_version_falls_back_to_cached_value_on_query_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def _boom(env: str) -> int:  # noqa: ARG001
+        msg = "cardano-cli unavailable"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(node, "get_current_protocol_version", _boom)
+
+    with caplog.at_level(logging.WARNING):
+        # Must not raise: this is observability only, like write_progress_file.
+        tip, cache = node.refresh_protocol_version(
+            env="preview", tip=_make_tip(epoch=6), cached=(5, 11)
+        )
+
+    assert tip.protocol_version == 11  # last known value, not the new (failed) epoch
+    assert cache == (5, 11)  # cache unchanged - nothing new was actually learned
+    assert "Protocol version unavailable" in caplog.text
+
+
+def test_refresh_protocol_version_query_failure_with_no_prior_cache_leaves_it_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(env: str) -> int:  # noqa: ARG001
+        msg = "cardano-cli unavailable"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(node, "get_current_protocol_version", _boom)
+
+    tip, cache = node.refresh_protocol_version(env="preview", tip=_make_tip(epoch=5), cached=None)
+
+    assert tip.protocol_version is None
+    assert cache is None
+
+
 # --- db_sync's dbsync-key write (via _log_sync_progress) ----------------------
 
 
@@ -226,6 +316,7 @@ def _patch_tip_sources(
     node_tip: node.Tip | None,
     db_sync_tip: DbSyncTip | None,
     db_sync_progress: float | None,
+    protocol_version: int = 11,
 ) -> None:
     def fake_get_current_tip(env: str) -> node.Tip:  # noqa: ARG001
         if node_tip is None:
@@ -234,6 +325,11 @@ def _patch_tip_sources(
         return node_tip
 
     monkeypatch.setattr(db_sync.node, "get_current_tip", fake_get_current_tip)
+    # Also stub the protocol-version query: otherwise it shells out to a
+    # real cardano-cli, which isn't available in this test environment, and
+    # every test would pay for a failed subprocess call plus a logged
+    # warning it doesn't actually care about.
+    monkeypatch.setattr(db_sync.node, "get_current_protocol_version", lambda env: protocol_version)  # noqa: ARG005
     monkeypatch.setattr(db_sync.postgres, "get_db_sync_tip", lambda _config: db_sync_tip)
     monkeypatch.setattr(db_sync.postgres, "get_db_sync_progress", lambda _config: db_sync_progress)
 
@@ -259,7 +355,9 @@ def test_log_sync_progress_writes_independent_dbsync_key(
         db_sync_progress=5.0,
     )
 
-    db_sync._log_sync_progress(config=config, env="preview", start_sync=0.0)
+    db_sync._log_sync_progress(
+        config=config, env="preview", start_sync=0.0, protocol_version_cache=None
+    )
 
     data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
     assert data["node"] == {
@@ -268,6 +366,7 @@ def test_log_sync_progress_writes_independent_dbsync_key(
         "block": 100,
         "slot": 99_000_000,
         "sync_progress": 80.0,
+        "protocol_version": 11,
         "updated_at": data["node"]["updated_at"],
     }
     assert data["dbsync"] == {
@@ -280,13 +379,44 @@ def test_log_sync_progress_writes_independent_dbsync_key(
     }
 
 
+def test_log_sync_progress_only_requeries_protocol_version_on_epoch_change(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole point of the epoch gate: don't pay for a CLI call per tick."""
+    config = db_sync.create_db_sync_config(env="preview", workdir=tmp_path, pg_user="test")
+    calls: list[str] = []
+
+    def fake_get_current_protocol_version(env: str) -> int:
+        calls.append(env)
+        return 11
+
+    tips = [_make_tip(epoch=5), _make_tip(epoch=5), _make_tip(epoch=6)]
+    monkeypatch.setattr(db_sync.node, "get_current_tip", lambda env: tips.pop(0))  # noqa: ARG005
+    monkeypatch.setattr(
+        db_sync.node, "get_current_protocol_version", fake_get_current_protocol_version
+    )
+    monkeypatch.setattr(db_sync.postgres, "get_db_sync_tip", lambda _config: None)
+    monkeypatch.setattr(db_sync.postgres, "get_db_sync_progress", lambda _config: None)
+
+    cache = None
+    for _ in range(3):
+        _, cache = db_sync._log_sync_progress(
+            config=config, env="preview", start_sync=0.0, protocol_version_cache=cache
+        )
+
+    # Two distinct epochs seen (5, 5, 6) - one query per epoch, not one per call.
+    assert calls == ["preview", "preview"]
+
+
 def test_log_sync_progress_skips_dbsync_key_before_db_sync_starts(
     tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = db_sync.create_db_sync_config(env="preview", workdir=tmp_path, pg_user="test")
     _patch_tip_sources(monkeypatch, node_tip=_make_tip(), db_sync_tip=None, db_sync_progress=None)
 
-    db_sync._log_sync_progress(config=config, env="preview", start_sync=0.0)
+    db_sync._log_sync_progress(
+        config=config, env="preview", start_sync=0.0, protocol_version_cache=None
+    )
 
     # The node write always happens; assert it actually ran before checking
     # what it left out, or a regression that writes nothing at all would
@@ -307,7 +437,9 @@ def test_log_sync_progress_survives_node_tip_failure(
         db_sync_progress=5.0,
     )
 
-    db_sync._log_sync_progress(config=config, env="preview", start_sync=0.0)
+    db_sync._log_sync_progress(
+        config=config, env="preview", start_sync=0.0, protocol_version_cache=None
+    )
 
     data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
     assert "node" not in data
@@ -374,7 +506,33 @@ def test_heartbeat_prints_percent_when_available(tmp_path: pl.Path) -> None:
     output = _run_heartbeat_tick(tmp_path)
 
     assert (
-        "progress[node]: 9.44% synced - era=babbage epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+        "progress[node]: 9.44% synced - era=babbage epoch=5 slot=12345 protocolVersion=? "
+        "(as of 2026-08-31T00:00:00Z)"
+    ) in output
+
+
+def test_heartbeat_prints_a_real_protocol_version_when_present(tmp_path: pl.Path) -> None:
+    (tmp_path / "node_sync.log").touch()
+    _write_progress(
+        tmp_path,
+        "preview",
+        {
+            "node": {
+                "era": "conway",
+                "epoch": 651,
+                "slot": 196039765,
+                "sync_progress": 99.64,
+                "protocol_version": 11,
+                "updated_at": "2026-09-05T19:26:49Z",
+            }
+        },
+    )
+
+    output = _run_heartbeat_tick(tmp_path)
+
+    assert (
+        "progress[node]: 99.64% synced - era=conway epoch=651 slot=196039765 protocolVersion=11 "
+        "(as of 2026-09-05T19:26:49Z)"
     ) in output
 
 
@@ -399,7 +557,7 @@ def test_heartbeat_shows_era_epoch_slot_when_percent_missing(tmp_path: pl.Path) 
 
     assert (
         "progress[node]: syncProgress unavailable - era=byron epoch=1 slot=100 "
-        "(as of 2026-08-31T00:00:00Z)"
+        "protocolVersion=? (as of 2026-08-31T00:00:00Z)"
     ) in output
     assert "%" not in output.split("progress[node]:")[1].split("\n")[0]
 
@@ -424,7 +582,8 @@ def test_heartbeat_shows_placeholder_for_empty_era(tmp_path: pl.Path) -> None:
     output = _run_heartbeat_tick(tmp_path)
 
     assert (
-        "progress[node]: 12.5% synced - era=? epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+        "progress[node]: 12.5% synced - era=? epoch=5 slot=12345 protocolVersion=? "
+        "(as of 2026-08-31T00:00:00Z)"
     ) in output
 
 
@@ -449,7 +608,8 @@ def test_heartbeat_prints_nothing_for_key_not_yet_present(tmp_path: pl.Path) -> 
     output = _run_heartbeat_tick(tmp_path, mode="combined")
 
     assert (
-        "progress[node]: 50.0% synced - era=conway epoch=5 slot=12345 (as of 2026-08-31T00:00:00Z)"
+        "progress[node]: 50.0% synced - era=conway epoch=5 slot=12345 protocolVersion=? "
+        "(as of 2026-08-31T00:00:00Z)"
     ) in output
     assert "progress[dbsync]:" not in output
 
@@ -481,11 +641,12 @@ def test_heartbeat_prints_both_keys_independently(tmp_path: pl.Path) -> None:
     output = _run_heartbeat_tick(tmp_path, mode="combined")
 
     assert (
-        "progress[node]: 80.0% synced - era=conway epoch=500 slot=99000000 "
+        "progress[node]: 80.0% synced - era=conway epoch=500 slot=99000000 protocolVersion=? "
         "(as of 2026-08-31T00:00:00Z)"
     ) in output
     assert (
-        "progress[dbsync]: 5.0% synced - era=? epoch=10 slot=3000 (as of 2026-08-31T00:00:00Z)"
+        "progress[dbsync]: 5.0% synced - era=? epoch=10 slot=3000 protocolVersion=? "
+        "(as of 2026-08-31T00:00:00Z)"
     ) in output
 
 

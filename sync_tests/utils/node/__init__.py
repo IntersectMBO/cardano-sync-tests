@@ -45,6 +45,10 @@ class Tip:
     slot: int
     era: str
     sync_progress: float | None
+    # Not populated by `get_current_tip` itself - `query tip` carries no
+    # protocol version, only `query protocol-parameters` does. Callers that
+    # want it fill it in separately, see `get_current_protocol_version`.
+    protocol_version: int | None = None
 
 
 def add_to_path(path: pl.Path) -> None:
@@ -451,7 +455,8 @@ def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
         workdir: Directory to write the CI heartbeat progress file to. When
             ``None``, progress-file writing is skipped.
         env: Environment name (preview, preprod, mainnet).
-        tip: Current node tip, as returned by ``get_current_tip``.
+        tip: Current node tip, as returned by ``get_current_tip``. `protocol_version`
+            is filled in separately, see ``refresh_protocol_version``.
     """
     helpers.write_sync_progress(
         workdir=workdir,
@@ -463,6 +468,7 @@ def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
             "block": tip.block,
             "slot": tip.slot,
             "sync_progress": tip.sync_progress,
+            "protocol_version": tip.protocol_version,
         },
     )
 
@@ -484,6 +490,59 @@ def get_current_tip(env: str) -> Tip:
         if "syncProgress" in output_json
         else None,
     )
+
+
+def get_current_protocol_version(env: str) -> int:
+    """Retrieve the node's current protocol major version.
+
+    A separate call from `get_current_tip`: `query tip` carries no protocol
+    version, only `query protocol-parameters` does.
+    """
+    cardano_cli_path = os.environ.get("CARDANO_CLI_PATH") or "cardano-cli"
+    cmd = [
+        cardano_cli_path,
+        "latest",
+        "query",
+        "protocol-parameters",
+        *get_testnet_args(env=env),
+    ]
+    output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
+    output_json = json.loads(output)
+    return int(output_json.get("protocolVersion", {}).get("major", 0))
+
+
+def refresh_protocol_version(
+    env: str, tip: Tip, cached: tuple[int, int] | None
+) -> tuple[Tip, tuple[int, int] | None]:
+    """Attach a protocol version to `tip`, querying only on an epoch change.
+
+    A hard fork's protocol version bump only ever takes effect at an epoch
+    boundary, so re-querying on every tip poll (every few seconds, for the
+    whole sync run) would just add CLI overhead for information that cannot
+    have changed since the last poll. `cached` is the `(epoch,
+    protocol_version)` pair from the last query; pass `None` on the first
+    call for a given run.
+
+    This is observability only, like the rest of the progress-file writing -
+    a failed query (a `cardano-cli` hiccup) must not abort a multi-hour sync
+    run, so it's logged and swallowed, falling back to the last known
+    version (or leaving it unknown, if there's no cache yet).
+
+    Returns the tip with `protocol_version` filled in, plus the (possibly
+    updated) cache to pass into the next call.
+    """
+    if cached is not None and cached[0] == tip.epoch:
+        return dataclasses.replace(tip, protocol_version=cached[1]), cached
+
+    try:
+        protocol_version = get_current_protocol_version(env=env)
+    except Exception:
+        LOGGER.warning("Protocol version unavailable while updating sync progress", exc_info=True)
+        fallback = cached[1] if cached is not None else None
+        return dataclasses.replace(tip, protocol_version=fallback), cached
+
+    new_cached = (tip.epoch, protocol_version)
+    return dataclasses.replace(tip, protocol_version=protocol_version), new_cached
 
 
 def wait_query_tip_available(env: str, timeout_minutes: int = 20) -> int:
@@ -831,9 +890,13 @@ def wait_for_shelley_era(
     target_idx = era_order.get(min_era.lower())
 
     effective_log = logfile_path if logfile_path is not None else base_dir / NODE_LOG_FILE_NAME
+    protocol_version_cache: tuple[int, int] | None = None
 
     while True:
         tip = get_current_tip(env=env)
+        tip, protocol_version_cache = refresh_protocol_version(
+            env=env, tip=tip, cached=protocol_version_cache
+        )
         elapsed_minutes = int((time.perf_counter() - start_time) / 60)
 
         # Log status every 12 iterations (1 minute at 5-second intervals)
@@ -879,6 +942,10 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
 
     # Get the initial tip data and calculated slot
     tip = get_current_tip(env=env)
+    protocol_version_cache: tuple[int, int] | None = None
+    tip, protocol_version_cache = refresh_protocol_version(
+        env=env, tip=tip, cached=protocol_version_cache
+    )
     last_slot_no = get_calculated_slot_no(env=env) if tip.sync_progress is None else -1
     start_sync = time.perf_counter()
     count = 0
@@ -931,6 +998,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
         time.sleep(5)
         count += 1
         tip = get_current_tip(env=env)
+        tip, protocol_version_cache = refresh_protocol_version(
+            env=env, tip=tip, cached=protocol_version_cache
+        )
 
     done_time_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
