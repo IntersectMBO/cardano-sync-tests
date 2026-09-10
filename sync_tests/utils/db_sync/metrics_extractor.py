@@ -7,11 +7,15 @@ from db-sync log files, similar to how metrics_extractor.py extracts node metric
 from __future__ import annotations
 
 import datetime
+import logging
 import pathlib as pl
 import re
 import typing as tp
 
-from sync_tests.utils.logs.filtering import open_filtered_log_fd
+from sync_tests.utils.logs.filtering import MarkerReachedError
+from sync_tests.utils.logs.filtering import process_filtered_log
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _parse_time_duration(time_str: str) -> float:
@@ -38,7 +42,9 @@ def _parse_time_duration(time_str: str) -> float:
     return total_seconds
 
 
-def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
+def get_db_sync_data_from_logs(
+    log_file: pl.Path, stop_marker: str | None = None
+) -> dict[str, tp.Any]:
     """Extract epoch timing and block insertion metrics from db-sync log file.
 
     This function extracts:
@@ -48,6 +54,9 @@ def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
 
     Args:
         log_file: Path to the db-sync log file.
+        stop_marker: Optional marker string; parsing stops at the first line that
+            contains it, so data logged after the marker is ignored. When unset,
+            the whole log file is parsed.
 
     Returns:
         Dictionary with keys:
@@ -61,6 +70,7 @@ def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
     epoch_timings: dict[int, dict[str, tp.Any]] = {}
     block_insertions: list[dict[str, tp.Any]] = []
     epoch_details: dict[int, dict[str, tp.Any]] = {}
+    marker_hit = False
 
     # Track current epoch being processed
     current_epoch: int | None = None
@@ -82,6 +92,10 @@ def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
     def _process_log_line(line: str) -> None:
         """Extract relevant data from a log line and update dictionaries."""
         nonlocal current_epoch, current_epoch_start_time, current_epoch_blocks, last_timestamp
+
+        # Stop at the marker; anything logged after it is out of the measured window
+        if stop_marker and stop_marker in line:
+            raise MarkerReachedError
 
         # Extract timestamp if present
         timestamp_match = timestamp_pattern.search(line)
@@ -223,41 +237,53 @@ def get_db_sync_data_from_logs(log_file: pl.Path) -> dict[str, tp.Any]:
 
     def _process_log_file(infile: tp.IO) -> None:
         """Process the log file in chunks to handle large logs efficiently."""
+        nonlocal marker_hit
         incomplete_line = ""
-        while chunk := infile.read(chunk_size):
+        try:
+            while chunk := infile.read(chunk_size):
+                if incomplete_line:
+                    chunk = incomplete_line + chunk  # Prepend leftover from previous chunk
+
+                lines = chunk.splitlines(keepends=False)
+
+                # Handle incomplete lines at the end of the chunk
+                incomplete_line = lines.pop() if chunk[-1] not in "\n\r" else ""
+
+                # Process each complete log line
+                for line in lines:
+                    _process_log_line(line)
+
+            # Process any remaining incomplete line
             if incomplete_line:
-                chunk = incomplete_line + chunk  # Prepend leftover from previous chunk
-
-            lines = chunk.splitlines(keepends=False)
-
-            # Handle incomplete lines at the end of the chunk
-            incomplete_line = lines.pop() if chunk[-1] not in "\n\r" else ""
-
-            # Process each complete log line
-            for line in lines:
-                _process_log_line(line)
-
-        # Process any remaining incomplete line
-        if incomplete_line:
-            _process_log_line(incomplete_line)
+                _process_log_line(incomplete_line)
+        except MarkerReachedError:
+            marker_hit = True
 
     filter_pattern = (
         r"Insert.*Block.*epoch|Starting epoch|Statistics for Epoch|"
         r"This epoch took|Inserted epoch.*from updateEpochWhenSyncing"
     )
+    if stop_marker:
+        filter_pattern = f"{filter_pattern}|{re.escape(stop_marker)}"
 
-    process = open_filtered_log_fd(
+    filtered = process_filtered_log(
         log_file=log_file,
         pattern=filter_pattern,
+        handler=_process_log_file,
         tool="auto",
     )
-    if process:
-        with process:
-            if process.stdout:
-                _process_log_file(infile=process.stdout)
-    else:
+    # If neither 'rg' nor 'grep' is available, read the log file directly without filtering
+    if not filtered:
         with open(log_file, encoding="utf-8") as infile:
             _process_log_file(infile=infile)
+
+    if marker_hit and not block_insertions and not epoch_timings:
+        LOGGER.warning(
+            "No db-sync metrics found before stop marker %r in %s; the marker may predate "
+            "the measured data (e.g. left over from an earlier run)",
+            stop_marker,
+            log_file,
+        )
 
     # Finalize epoch details with timing information
     for epoch_no, timing_info in epoch_timings.items():

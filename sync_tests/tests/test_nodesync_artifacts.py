@@ -11,6 +11,7 @@ import typing as tp
 
 import pytest
 
+from sync_tests.tests.conftest import NODE_MARKER_TEXT
 from sync_tests.tests.conftest import NodeSyncResult
 from sync_tests.tests.conftest import SyncContext
 from sync_tests.utils import artifacts
@@ -177,6 +178,7 @@ class TestNodeSyncArtifacts:
         try:
             log_values = node_metrics.get_data_from_logs(
                 sync_context.node_log_path,
+                stop_marker=NODE_MARKER_TEXT,
             )
         except Exception:
             LOGGER.warning(
