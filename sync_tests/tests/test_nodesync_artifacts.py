@@ -292,7 +292,7 @@ class TestNodeSyncArtifacts:
             if len(data.get("log_values") or {}) < 10:
                 LOGGER.warning(
                     "Combined CI run produced sparse node log_values (%s); "
-                    "node graphs may be empty.",
+                    "node resource metrics are incomplete.",
                     len(data.get("log_values") or {}),
                 )
             assert int(data.get("sync_time_seconds1") or 0) > 0, (
@@ -301,7 +301,7 @@ class TestNodeSyncArtifacts:
             if len(data.get("sync_duration_per_epoch") or {}) == 0:
                 LOGGER.warning(
                     "Combined CI run produced empty sync_duration_per_epoch; "
-                    "epoch-duration graph will be skipped.",
+                    "no per-epoch sync durations were recorded.",
                 )
 
     def test_prepare_ci_artifacts(
@@ -337,10 +337,6 @@ class TestNodeSyncArtifacts:
         results_files = sorted(workdir.glob("*.json"))
         results_file = workdir / "node_sync_results.json"
 
-        # Generate graphs from the results we just wrote, then include them
-        graphs_dir = artifacts.generate_result_graphs(workdir, [results_file], mode="node")
-        graph_files = sorted(graphs_dir.glob("*.png")) if graphs_dir.exists() else []
-
         assert log_files, f"No log files found for CI bundling in {workdir}"
         assert results_files, f"No JSON files found for CI bundling in {workdir}"
         assert results_file.exists(), f"Missing node-sync results JSON: {results_file}"
@@ -349,7 +345,7 @@ class TestNodeSyncArtifacts:
         results_bundle = root_dir / "sync_results.zip"
         monitor_bundle = root_dir / "monitor.zip"
         helpers.create_zip_bundle(logs_bundle, log_files, base_dir=workdir)
-        helpers.create_zip_bundle(results_bundle, results_files + graph_files, base_dir=workdir)
+        helpers.create_zip_bundle(results_bundle, results_files, base_dir=workdir)
         helpers.zip_files(
             str(monitor_bundle),
             [
