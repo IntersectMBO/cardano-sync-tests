@@ -267,19 +267,31 @@ def _check_for_rollback(
     return rollback_counter, last_rollback_time
 
 
-def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> float:
+def _log_sync_progress(
+    config: DbSyncConfig,
+    env: str,
+    start_sync: float,
+    protocol_version_cache: tuple[int, int] | None,
+) -> tuple[float, tuple[int, int] | None]:
     """Log node and db sync progress information.
 
     Args:
         config: A DbSyncConfig instance with paths.
         env: Environment name.
         start_sync: Sync start timestamp.
+        protocol_version_cache: The `(epoch, protocol_version)` pair from the
+            last query, as returned by this same function on a previous call.
+            Pass `None` on the first call. See `node.refresh_protocol_version`.
 
     Returns:
-        float: Current db sync progress percentage.
+        The current db sync progress percentage, and the (possibly updated)
+        protocol_version_cache to pass into the next call.
     """
     try:
         tip = node.get_current_tip(env)
+        tip, protocol_version_cache = node.refresh_protocol_version(
+            env=env, tip=tip, cached=protocol_version_cache
+        )
     except Exception:
         LOGGER.warning("Node tip unavailable while logging db-sync progress", exc_info=True)
     else:
@@ -296,16 +308,16 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         db_sync_tip = postgres.get_db_sync_tip(config)
     except Exception:
         LOGGER.warning("db-sync tip unavailable during progress log", exc_info=True)
-        return 0.0
+        return 0.0, protocol_version_cache
     # Handle case where db-sync hasn't started syncing yet
     if db_sync_tip is None:
         LOGGER.info("db-sync tip not available yet - db-sync may not have started syncing")
-        return 0.0
+        return 0.0, protocol_version_cache
     db_sync_progress = postgres.get_db_sync_progress(config)
     # Handle case where progress is None (db-sync hasn't started yet)
     if db_sync_progress is None:
         LOGGER.info("db-sync progress not available yet - db-sync may not have started syncing")
-        return 0.0
+        return 0.0, protocol_version_cache
     sync_time_h_m_s = str(timedelta(seconds=(time.perf_counter() - start_sync)))
     LOGGER.info(
         "db sync progress [%%]: %s, sync time [h:m:s]: %s, epoch: %s, block: %s, slot: %s",
@@ -328,7 +340,7 @@ def _log_sync_progress(config: DbSyncConfig, env: str, start_sync: float) -> flo
         },
     )
     helpers.print_last_n_lines(config.db_sync_log_file, 5)
-    return db_sync_progress
+    return db_sync_progress, protocol_version_cache
 
 
 def _collect_perf_stats(
@@ -391,6 +403,7 @@ def wait_for_db_to_sync(
     max_sync_timeout_in_sec = 1828000
     counter = 0
     rollback_counter = 0
+    protocol_version_cache: tuple[int, int] | None = None
 
     db_sync_process = helpers.manage_process(proc_name="cardano-db-sync", action="get")
     if db_sync_process is None:
@@ -423,10 +436,11 @@ def wait_for_db_to_sync(
                 perf_stats=perf_stats,
             )
         if counter % log_frequency == 0:
-            db_sync_progress = _log_sync_progress(
+            db_sync_progress, protocol_version_cache = _log_sync_progress(
                 config=config,
                 env=config.env,
                 start_sync=start_sync,
+                protocol_version_cache=protocol_version_cache,
             )
 
         try:
