@@ -120,63 +120,14 @@ def zip_file(archive_name: str, file_name: str | pl.Path) -> None:
         LOGGER.exception("Error while zipping file")
 
 
-def zip_files(archive_name: str, file_names: list[str | pl.Path]) -> None:
-    """Compress multiple files into a single zip archive, skipping missing ones.
-
-    Args:
-        archive_name: Output archive filename.
-        file_names: List of file paths to include; missing files are skipped.
-    """
-    files_to_zip = [pl.Path(f) for f in file_names if pl.Path(f).exists()]
-    if not files_to_zip:
-        LOGGER.warning("Skipping zip: none of the source files exist for %s", archive_name)
-        return
-    try:
-        with zipfile.ZipFile(
-            archive_name, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-        ) as zf:
-            for f in files_to_zip:
-                zf.write(f, f.name)
-        LOGGER.info("Zipped %s file(s) into '%s'.", len(files_to_zip), archive_name)
-    except (OSError, zipfile.BadZipFile):
-        LOGGER.exception("Error while zipping files into %s", archive_name)
-
-
 _MONITOR_BUNDLE_LOG_NAMES = frozenset(
     {"monitor.log", "monitor_stderr.log", "oom.log", "postgres.log"}
 )
 
 
 def list_sync_log_files(workdir: pl.Path) -> list[pl.Path]:
-    """Return workdir *.log files for sync_logs.zip, excluding monitor bundle logs."""
+    """Return workdir *.log files for the sync-logs artifact, excluding monitor logs."""
     return sorted(p for p in workdir.glob("*.log") if p.name not in _MONITOR_BUNDLE_LOG_NAMES)
-
-
-def create_zip_bundle(archive_path: pl.Path, files: list[pl.Path], base_dir: pl.Path) -> None:
-    """Create a zip bundle from provided files, skipping missing ones.
-
-    Args:
-        archive_path: Output .zip path.
-        files: Files to include in the archive.
-        base_dir: Base directory used to compute relative archive entry names.
-    """
-    files_to_zip = [f for f in files if f.exists()]
-    if not files_to_zip:
-        LOGGER.warning("Skipping zip bundle: none of the source files exist for %s", archive_path)
-        return
-    try:
-        with zipfile.ZipFile(
-            archive_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-        ) as zip_fp:
-            for file_path in files_to_zip:
-                arcname = (
-                    file_path.relative_to(base_dir)
-                    if file_path.is_relative_to(base_dir)
-                    else file_path.name
-                )
-                zip_fp.write(file_path, arcname=str(arcname))
-    except (OSError, zipfile.BadZipFile):
-        LOGGER.exception("Error while creating zip bundle %s", archive_path)
 
 
 def delete_file(file_path: pl.Path) -> None:

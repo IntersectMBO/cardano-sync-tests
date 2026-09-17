@@ -130,10 +130,9 @@ class TestDbSyncArtifacts:
         node_synced: NodeSyncResult | None,  # noqa: ARG002
         db_sync_synced: DbSyncResult,  # noqa: ARG002
     ):
-        """Prepare comprehensive CI bundles for artifact collection.
+        """Check the files CI uploads are all present, and close the monitor first.
 
-        Creates standardized logs/results bundles that any CI system can collect.
-        Upload remains CI-runner responsibility.
+        The workflow uploads these files directly, so nothing is archived here.
         """
         if not artifacts.is_ci_environment():
             LOGGER.info(
@@ -141,7 +140,7 @@ class TestDbSyncArtifacts:
                 sync_context.workdir,
             )
             pytest.skip(
-                "Not in CI environment; skipping upload",
+                "Not in CI environment; skipping the artifact check",
             )
 
         env = sync_context.env
@@ -151,46 +150,25 @@ class TestDbSyncArtifacts:
         )
 
         # Stop the monitor now so its EXIT trap fires and writes oom.log before
-        # we build monitor.zip. The fixture teardown stop_monitor() call becomes
-        # a no-op (pid file already gone).
+        # the workflow uploads it. The fixture teardown stop_monitor() call
+        # becomes a no-op (pid file already gone).
         db_sync.stop_monitor(sync_context.workdir)
 
-        root_dir = pl.Path.cwd()
         test_results_file = config.workdir / "db_sync_results.json"
-        # Enforce CI artifact contract: publish exactly two bundles.
         log_files = helpers.list_sync_log_files(config.workdir)
         results_files = sorted(config.workdir.glob("*.json")) + sorted(
             (config.workdir / "cardano-db-sync").glob("*.json")
         )
 
-        assert log_files, f"No log files found for CI bundling in {config.workdir}"
+        assert log_files, f"No log files found for CI upload in {config.workdir}"
         assert test_results_file.exists(), f"Missing db-sync results JSON: {test_results_file}"
-        assert results_files, f"No JSON result files found for CI bundling in {config.workdir}"
+        assert results_files, f"No JSON result files found for CI upload in {config.workdir}"
 
-        logs_bundle = root_dir / "sync_logs.zip"
-        results_bundle = root_dir / "sync_results.zip"
-        monitor_bundle = root_dir / "monitor.zip"
-
-        helpers.create_zip_bundle(logs_bundle, log_files, base_dir=config.workdir)
-        helpers.create_zip_bundle(results_bundle, results_files, base_dir=config.workdir)
-        helpers.zip_files(
-            str(monitor_bundle),
-            [
-                config.monitor_log_file,
-                config.monitor_stderr_log_file,
-                config.oom_log_file,
-                config.postgres_log_file,
-            ],
-        )
-
-        assert logs_bundle.exists(), f"Logs bundle was not created: {logs_bundle}"
-        assert results_bundle.exists(), f"Results bundle was not created: {results_bundle}"
-        monitor_status = monitor_bundle if monitor_bundle.exists() else "(monitor bundle skipped)"
         LOGGER.info(
-            "Prepared CI bundles for artifact_paths upload: %s, %s, %s",
-            logs_bundle,
-            results_bundle,
-            monitor_status,
+            "Artifacts ready for upload from %s: %s logs, %s results",
+            config.workdir,
+            len(log_files),
+            len(results_files),
         )
 
     def test_log_analysis(
