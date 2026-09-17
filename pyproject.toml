@@ -51,8 +51,12 @@ repository = "https://github.com/IntersectMBO/cardano-sync-tests"
 dev = [
     "mypy >= 2.3",
     "pre-commit >= 4.6",
-    "types-requests >= 2.32",
+    # Read by framework_tests/test_ci_artifact_paths.py, which parses the
+    # workflow files. Only tests need it, so it stays out of the runtime deps.
+    "pyyaml >= 6.0",
     "types-PyMySQL >= 1.1",
+    "types-PyYAML >= 6.0",
+    "types-requests >= 2.32",
 ]
 
 [tool.setuptools]
