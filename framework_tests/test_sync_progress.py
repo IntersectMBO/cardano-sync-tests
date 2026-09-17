@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import json
 import logging
 import os
@@ -305,6 +306,167 @@ def test_refresh_protocol_version_query_failure_with_no_prior_cache_leaves_it_un
 
     assert tip.protocol_version is None
     assert cache is None
+
+
+def test_refresh_protocol_version_skips_the_query_in_byron(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def fake_get_current_protocol_version(env: str) -> int:
+        calls.append(env)
+        return 11
+
+    monkeypatch.setattr(node, "get_current_protocol_version", fake_get_current_protocol_version)
+
+    tip, cache = node.refresh_protocol_version(
+        env="mainnet", tip=_make_tip(era="byron", epoch=5), cached=None
+    )
+
+    # `query protocol-parameters` is a Shelley+ ledger query, so it must not run here.
+    assert calls == []
+    assert tip.protocol_version is None
+    assert cache is None
+
+
+def test_refresh_protocol_version_byron_check_ignores_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def fake_get_current_protocol_version(env: str) -> int:
+        calls.append(env)
+        return 11
+
+    monkeypatch.setattr(node, "get_current_protocol_version", fake_get_current_protocol_version)
+
+    node.refresh_protocol_version(env="mainnet", tip=_make_tip(era="Byron", epoch=5), cached=None)
+
+    assert calls == []
+
+
+def test_refresh_protocol_version_queries_again_once_byron_is_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(node, "get_current_protocol_version", lambda env: 2)  # noqa: ARG005
+
+    tip, cache = node.refresh_protocol_version(
+        env="mainnet", tip=_make_tip(era="shelley", epoch=208), cached=None
+    )
+
+    assert tip.protocol_version == 2
+    assert cache == (208, 2)
+
+
+# --- node.get_current_protocol_version ----------------------------------------
+
+
+def _fake_cli_output(payload: object) -> collections.abc.Callable:
+    class _Completed:
+        stdout = json.dumps(payload).encode("utf-8")
+
+    def _run(cli_args: list[str]) -> _Completed:  # noqa: ARG001
+        return _Completed()
+
+    return _run
+
+
+def test_get_current_protocol_version_reads_the_major_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        node.cli, "cli", _fake_cli_output({"protocolVersion": {"major": 11, "minor": 0}})
+    )
+
+    assert node.get_current_protocol_version(env="preview") == 11
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({}, id="no-protocolVersion-key"),
+        pytest.param({"protocolVersion": {}}, id="no-major-key"),
+        pytest.param({"protocolVersion": None}, id="null-protocolVersion"),
+    ],
+)
+def test_get_current_protocol_version_raises_when_the_field_is_missing(
+    monkeypatch: pytest.MonkeyPatch, payload: dict
+) -> None:
+    monkeypatch.setattr(node.cli, "cli", _fake_cli_output(payload))
+
+    # Must raise rather than return 0: `refresh_protocol_version` turns this into
+    # an honest "unknown", where a 0 would look like a real protocol version.
+    with pytest.raises((KeyError, TypeError)):
+        node.get_current_protocol_version(env="preview")
+
+
+def test_missing_field_reaches_the_caller_as_unknown_not_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(node.cli, "cli", _fake_cli_output({"protocolVersion": {}}))
+
+    tip, cache = node.refresh_protocol_version(env="preview", tip=_make_tip(epoch=5), cached=None)
+
+    assert tip.protocol_version is None
+    assert cache is None
+
+
+# --- node.refresh_and_write_progress ------------------------------------------
+
+
+def test_refresh_and_write_progress_writes_the_queried_version(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(node, "get_current_protocol_version", lambda env: 11)  # noqa: ARG005
+
+    cache = node.refresh_and_write_progress(
+        workdir=tmp_path, env="preview", tip=_make_tip(epoch=5), cached=None
+    )
+
+    data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
+    assert data["node"]["protocol_version"] == 11
+    assert cache == (5, 11)
+
+
+def test_refresh_and_write_progress_queries_once_per_write(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def fake_get_current_protocol_version(env: str) -> int:
+        calls.append(env)
+        return 11
+
+    monkeypatch.setattr(node, "get_current_protocol_version", fake_get_current_protocol_version)
+
+    # Three writes inside one epoch: the first queries, the cache serves the rest.
+    cache = None
+    for _ in range(3):
+        cache = node.refresh_and_write_progress(
+            workdir=tmp_path, env="preview", tip=_make_tip(epoch=5), cached=cache
+        )
+
+    assert len(calls) == 1
+
+
+def test_refresh_and_write_progress_still_writes_when_the_query_fails(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(env: str) -> int:  # noqa: ARG001
+        msg = "cardano-cli unavailable"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(node, "get_current_protocol_version", _boom)
+
+    # A failed query must not cost the era/epoch/slot line as well.
+    node.refresh_and_write_progress(
+        workdir=tmp_path, env="preview", tip=_make_tip(epoch=5), cached=None
+    )
+
+    data = json.loads((tmp_path / "sync_progress_preview.json").read_text())
+    assert data["node"]["protocol_version"] is None
+    assert data["node"]["epoch"] == 5
+    assert data["node"]["era"] == "babbage"
 
 
 # --- db_sync's dbsync-key write (via _log_sync_progress) ----------------------

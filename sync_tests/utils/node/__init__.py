@@ -445,6 +445,27 @@ def get_testnet_args(env: str) -> tp.Iterable[str]:
         raise exceptions.SyncError(msg) from e
 
 
+def refresh_and_write_progress(
+    workdir: pl.Path | None,
+    env: str,
+    tip: "Tip",
+    cached: tuple[int, int] | None,
+) -> tuple[int, int] | None:
+    """Attach the protocol version to `tip`, then record sync progress.
+
+    `write_progress_file` is the only consumer of `tip.protocol_version`, so the
+    query belongs here rather than on every tip poll. Callers poll the tip every
+    few seconds but write progress far less often, so querying at the write site
+    keeps one query per written line and bounds a persistently failing query to
+    the same rate.
+
+    Returns the (possibly updated) cache to pass into the next call.
+    """
+    tip, cached = refresh_protocol_version(env=env, tip=tip, cached=cached)
+    write_progress_file(workdir=workdir, env=env, tip=tip)
+    return cached
+
+
 def write_progress_file(workdir: pl.Path | None, env: str, tip: "Tip") -> None:
     """Record the node's current sync position for CI heartbeats.
 
@@ -508,7 +529,10 @@ def get_current_protocol_version(env: str) -> int:
     ]
     output = cli.cli(cli_args=cmd).stdout.decode("utf-8").strip()
     output_json = json.loads(output)
-    return int(output_json.get("protocolVersion", {}).get("major", 0))
+    # Indexed, not `.get`: a missing field means the version is unknown, and the
+    # caller already turns the resulting KeyError/TypeError into `None`. A default
+    # of 0 would instead report a real-looking version that no era ever had.
+    return int(output_json["protocolVersion"]["major"])
 
 
 def refresh_protocol_version(
@@ -531,6 +555,13 @@ def refresh_protocol_version(
     Returns the tip with `protocol_version` filled in, plus the (possibly
     updated) cache to pass into the next call.
     """
+    # `query protocol-parameters` is a Shelley-and-later ledger query, so it is not
+    # valid in Byron. Byron also predates the protocol version this reports, and the
+    # versions worth telling apart (Conway's 9, 10 and 11) are all far later, so
+    # skipping the query here costs no information.
+    if str(tip.era).lower() == "byron":
+        return dataclasses.replace(tip, protocol_version=None), cached
+
     if cached is not None and cached[0] == tip.epoch:
         return dataclasses.replace(tip, protocol_version=cached[1]), cached
 
@@ -894,9 +925,6 @@ def wait_for_shelley_era(
 
     while True:
         tip = get_current_tip(env=env)
-        tip, protocol_version_cache = refresh_protocol_version(
-            env=env, tip=tip, cached=protocol_version_cache
-        )
         elapsed_minutes = int((time.perf_counter() - start_time) / 60)
 
         # Log status every 12 iterations (1 minute at 5-second intervals)
@@ -910,7 +938,9 @@ def wait_for_shelley_era(
                 f"elapsed: {elapsed_minutes} minutes, "
                 f"node logfile: {logfile_size} bytes"
             )
-            write_progress_file(workdir=workdir, env=env, tip=tip)
+            protocol_version_cache = refresh_and_write_progress(
+                workdir=workdir, env=env, tip=tip, cached=protocol_version_cache
+            )
 
         # Check if we've reached the target era or later
         current_idx = era_order.get(str(tip.era).lower())
@@ -919,7 +949,9 @@ def wait_for_shelley_era(
                 f"Node reached {tip.era} era at epoch {tip.epoch}, block {tip.block}. "
                 f"Proceeding to start db-sync (min_era={min_era})."
             )
-            write_progress_file(workdir=workdir, env=env, tip=tip)
+            protocol_version_cache = refresh_and_write_progress(
+                workdir=workdir, env=env, tip=tip, cached=protocol_version_cache
+            )
             return
 
         # Check timeout
@@ -943,9 +975,6 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
     # Get the initial tip data and calculated slot
     tip = get_current_tip(env=env)
     protocol_version_cache: tuple[int, int] | None = None
-    tip, protocol_version_cache = refresh_protocol_version(
-        env=env, tip=tip, cached=protocol_version_cache
-    )
     last_slot_no = get_calculated_slot_no(env=env) if tip.sync_progress is None else -1
     start_sync = time.perf_counter()
     count = 0
@@ -961,7 +990,9 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
                 f" - actual_slot : {tip.slot} "
                 f" - syncProgress: {tip.sync_progress}",
             )
-            write_progress_file(workdir=workdir, env=env, tip=tip)
+            protocol_version_cache = refresh_and_write_progress(
+                workdir=workdir, env=env, tip=tip, cached=protocol_version_cache
+            )
 
         # Use the same current time for both era and epoch updates.
         current_time_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -987,20 +1018,21 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
         # Check termination condition:
         # For nodes reporting sync progress, we wait until progress reaches 100.
         if tip.sync_progress is not None and tip.sync_progress >= 100:
-            write_progress_file(workdir=workdir, env=env, tip=tip)
+            protocol_version_cache = refresh_and_write_progress(
+                workdir=workdir, env=env, tip=tip, cached=protocol_version_cache
+            )
             break
         # Otherwise (for nodes without sync progress) wait until the slot number passes
         # the calculated value.
         if tip.sync_progress is None and tip.slot > last_slot_no:
-            write_progress_file(workdir=workdir, env=env, tip=tip)
+            protocol_version_cache = refresh_and_write_progress(
+                workdir=workdir, env=env, tip=tip, cached=protocol_version_cache
+            )
             break
 
         time.sleep(5)
         count += 1
         tip = get_current_tip(env=env)
-        tip, protocol_version_cache = refresh_protocol_version(
-            env=env, tip=tip, cached=protocol_version_cache
-        )
 
     done_time_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
