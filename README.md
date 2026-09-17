@@ -112,16 +112,30 @@ pytest sync_tests/tests/ \
 When db-sync tests are included, `test_dbsync_artifacts.py` generates a comprehensive
 test results JSON and checks db-sync logs for errors and rollbacks.
 
-GitHub Actions uploads these bundles when CI finishes:
+When CI finishes, GitHub Actions uploads three artifacts, each holding its
+files directly:
 
-- `sync_logs.zip`
-- `sync_results.zip`
-- `monitor.zip`
+| Artifact | Holds |
+| --- | --- |
+| `sync-results-*` | the results JSON and the sync markers |
+| `sync-logs-*` | the node and db-sync logs, plus the nix build log |
+| `sync-monitor-*` | `monitor.log`, `monitor_stderr.log`, `oom.log` |
 
-Bundle generation is CI-agnostic and keyed off standard CI variables
-(`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`). The workflow uploads the zips
-with `actions/upload-artifact`; local runs keep raw files under `test_workdir/`
-for debugging.
+The db-sync workflow prefixes each name with `db-sync-`, so it publishes
+`db-sync-results-*`, `db-sync-logs-*` and `db-sync-monitor-*`. Its monitor
+artifact also carries `postgres/postgres.log`, which keeps its subdirectory.
+
+Actions zips each artifact on upload, so the tests archive nothing themselves.
+Results are the smallest artifact by far, so a release comparison can fetch
+just those without the much larger logs:
+
+```sh
+gh run download <run-id> --name sync-results-<runner>-<env>-<revision>
+```
+
+The artifact check is CI-agnostic and keyed off standard CI variables
+(`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`). Local runs keep the same raw
+files under `test_workdir/` for debugging.
 
 Results JSON includes enriched performance samples under `system_metrics`.
 
@@ -136,7 +150,7 @@ post-sync test durations are excluded from measured sync time.
 ## Graph Generation
 
 A test run does not generate graphs. The sync tests write results JSON only,
-so `sync_results.zip` holds no PNGs. To generate graphs from a run, or from an
+so the results artifact holds no PNGs. To generate graphs from a run, or from an
 old results file, run `sync_static_graphs.py` directly:
 
 ### Node-sync graphs
