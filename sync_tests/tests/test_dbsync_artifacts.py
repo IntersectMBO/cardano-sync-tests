@@ -12,6 +12,7 @@ from collections import OrderedDict
 
 import pytest
 
+from sync_tests.tests.conftest import DBSYNC_MARKER_TEXT
 from sync_tests.tests.conftest import DbSyncResult
 from sync_tests.tests.conftest import NodeSyncResult
 from sync_tests.tests.conftest import SyncContext
@@ -255,6 +256,7 @@ def _extract_log_metrics(
     try:
         log_metrics = db_sync_metrics_extractor.get_db_sync_data_from_logs(
             db_log,
+            stop_marker=DBSYNC_MARKER_TEXT,
         )
         test_data["epoch_timings"] = log_metrics["epoch_timings"]
         test_data["block_insertion_rates"] = log_metrics["block_insertions"]

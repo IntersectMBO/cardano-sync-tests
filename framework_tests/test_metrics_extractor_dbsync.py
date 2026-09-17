@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib as pl
 
 import pytest
@@ -71,3 +72,50 @@ def test_get_db_sync_data_from_logs_empty_file(tmp_path: pl.Path) -> None:
     result = metrics_extractor.get_db_sync_data_from_logs(log_file)
 
     assert result == {"epoch_timings": {}, "block_insertions": [], "epoch_details": {}}
+
+
+def test_get_db_sync_data_from_logs_stops_at_stop_marker(tmp_path: pl.Path) -> None:
+    """Block insertions logged after ``stop_marker`` are ignored."""
+    log_file = tmp_path / "db_sync.log"
+    log_file.write_text(
+        "[2026-01-01 10:00:00.00 UTC] Starting epoch 5\n"
+        "[2026-01-01 10:00:01.00 UTC] Insert Babbage Block: epoch 5, slot 1000, block 100\n"
+        "SYNC_MARKER_DBSYNC_DONE 2026-01-01T10:00:02Z\n"
+        "[2026-01-01 10:00:03.00 UTC] Insert Babbage Block: epoch 5, slot 1001, block 101\n"
+        "[2026-01-01 10:00:04.00 UTC] Starting epoch 6\n",
+        encoding="utf-8",
+    )
+
+    result = metrics_extractor.get_db_sync_data_from_logs(
+        log_file, stop_marker="SYNC_MARKER_DBSYNC_DONE"
+    )
+
+    assert [b["block"] for b in result["block_insertions"]] == [100]
+    assert set(result["epoch_timings"].keys()) == {5}
+
+    # Without a stop marker the whole file is parsed
+    unbounded = metrics_extractor.get_db_sync_data_from_logs(log_file)
+    assert [b["block"] for b in unbounded["block_insertions"]] == [100, 101]
+    assert set(unbounded["epoch_timings"].keys()) == {5, 6}
+
+
+def test_get_db_sync_data_from_logs_marker_before_any_data_warns(
+    tmp_path: pl.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A marker ahead of all data yields no metrics and a warning."""
+    log_file = tmp_path / "db_sync.log"
+    log_file.write_text(
+        "SYNC_MARKER_DBSYNC_DONE 2026-01-01T10:00:00Z\n"
+        "[2026-01-01 10:00:01.00 UTC] Starting epoch 5\n"
+        "[2026-01-01 10:00:02.00 UTC] Insert Babbage Block: epoch 5, slot 1000, block 100\n",
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = metrics_extractor.get_db_sync_data_from_logs(
+            log_file, stop_marker="SYNC_MARKER_DBSYNC_DONE"
+        )
+
+    assert result == {"epoch_timings": {}, "block_insertions": [], "epoch_details": {}}
+    assert "SYNC_MARKER_DBSYNC_DONE" in caplog.text

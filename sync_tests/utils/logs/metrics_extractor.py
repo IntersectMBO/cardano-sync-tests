@@ -5,11 +5,15 @@ from __future__ import annotations
 import datetime
 import heapq
 import itertools
+import logging
 import pathlib as pl
 import re
 import typing as tp
 
-from sync_tests.utils.logs.filtering import open_filtered_log_fd
+from sync_tests.utils.logs.filtering import MarkerReachedError
+from sync_tests.utils.logs.filtering import process_filtered_log
+
+LOGGER = logging.getLogger(__name__)
 
 
 def merge_sorted_unique(*iterables: tp.Iterable) -> list:
@@ -17,8 +21,15 @@ def merge_sorted_unique(*iterables: tp.Iterable) -> list:
     return [key for key, _ in itertools.groupby(heapq.merge(*iterables))]
 
 
-def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
-    """Extract relevant data from the log file and return a dictionary."""
+def get_data_from_logs(log_file: pl.Path, stop_marker: str | None = None) -> dict[str, dict]:
+    """Extract relevant data from the log file and return a dictionary.
+
+    Args:
+        log_file: Path to the log file.
+        stop_marker: Optional marker string; parsing stops at the first line that
+            contains it, so data logged after the marker is ignored. When unset,
+            the whole log file is parsed.
+    """
     chunk_size = 512 * 1024  # 512 KB
     tip_details_dict: dict[datetime.datetime, int] = {}
     heap_ram_details_dict: dict[datetime.datetime, float] = {}
@@ -27,6 +38,7 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
     cpu_ticks_dict: dict[datetime.datetime, float] = {}
     cpu_details_dict: dict[datetime.datetime, float] = {}
     logs_details_dict: dict[str, dict[str, tp.Any]] = {}
+    marker_hit = False
 
     timestamp_pattern = re.compile(r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{1,2}:\d{1,2}")
     heap_pattern = re.compile(r'"Heap",Number ([-+]?\d+\.?\d*(?:[Ee][-+]?\d+)?)')
@@ -41,6 +53,10 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
 
     def _process_log_line(line: str) -> None:
         """Extract relevant data from a log line and updates dictionaries."""
+        # Stop at the marker; anything logged after it is out of the measured window
+        if stop_marker and stop_marker in line:
+            raise MarkerReachedError
+
         # Extract numeric values for heap, RSS, and CPU if they exist
         if (
             "cardano.node.resources" in line
@@ -80,50 +96,63 @@ def get_data_from_logs(log_file: pl.Path) -> dict[str, dict]:
 
     def _process_log_file(infile: tp.IO) -> None:
         # Read the file in chunks to handle large logs efficiently
+        nonlocal marker_hit
         incomplete_line = ""
-        while chunk := infile.read(chunk_size):
+        try:
+            while chunk := infile.read(chunk_size):
+                if incomplete_line:
+                    chunk = incomplete_line + chunk  # Prepend leftover from previous chunk
+
+                lines = chunk.splitlines(keepends=False)
+
+                # Handle incomplete lines at the end of the chunk
+                incomplete_line = lines.pop() if chunk[-1] not in "\n\r" else ""
+
+                # Process each complete log line
+                for line in lines:
+                    _process_log_line(line)
+
+            # Process any remaining incomplete line
             if incomplete_line:
-                chunk = incomplete_line + chunk  # Prepend leftover from previous chunk
+                _process_log_line(incomplete_line)
+        except MarkerReachedError:
+            marker_hit = True
 
-            lines = chunk.splitlines(keepends=False)
-
-            # Handle incomplete lines at the end of the chunk
-            incomplete_line = lines.pop() if chunk[-1] not in "\n\r" else ""
-
-            # Process each complete log line
-            for line in lines:
-                _process_log_line(line)
-
-        # Process any remaining incomplete line
-        if incomplete_line:
-            _process_log_line(incomplete_line)
+    def _no_cpu_data() -> bool:
+        return not centi_cpu_dict and not cpu_ticks_dict
 
     filter_pattern = r"cardano\.node\.resources|Resources:|new tip"
+    if stop_marker:
+        filter_pattern = f"{filter_pattern}|{re.escape(stop_marker)}"
 
-    process = open_filtered_log_fd(
+    process_filtered_log(
         log_file=log_file,
         pattern=filter_pattern,
+        handler=_process_log_file,
         tool="rg",
     )
-    if process:
-        with process:
-            if process.stdout:
-                _process_log_file(infile=process.stdout)
 
-    if not centi_cpu_dict and not cpu_ticks_dict:
-        process = open_filtered_log_fd(
+    # Parsing that ended at the marker legitimately sees no CPU data; retrying then
+    # would re-walk the log only to stop at the same marker again.
+    if not marker_hit and _no_cpu_data():
+        process_filtered_log(
             log_file=log_file,
             pattern=filter_pattern,
+            handler=_process_log_file,
             tool="grep",
         )
-        if process:
-            with process:
-                if process.stdout:
-                    _process_log_file(infile=process.stdout)
     # If neither 'rg' nor 'grep' is available, read the log file directly without filtering
-    if not centi_cpu_dict and not cpu_ticks_dict:
+    if not marker_hit and _no_cpu_data():
         with open(log_file, encoding="utf-8") as infile:
             _process_log_file(infile=infile)
+
+    if marker_hit and _no_cpu_data() and not tip_details_dict:
+        LOGGER.warning(
+            "No node metrics found before stop marker %r in %s; the marker may predate "
+            "the measured data (e.g. left over from an earlier run)",
+            stop_marker,
+            log_file,
+        )
 
     # Both sources report the same counter in centiseconds of CPU time: the legacy
     # tracing renders it as "CentiCpu", the new tracing as "Cpu Ticks".

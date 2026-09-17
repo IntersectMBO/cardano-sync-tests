@@ -113,3 +113,6 @@ ENV/
 # mkdocs documentation
 /site
 state-cluster
+
+# Editor session files
+.ses_tmp.vim
