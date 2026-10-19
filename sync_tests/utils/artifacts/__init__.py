@@ -118,9 +118,9 @@ def emergency_upload_artifacts(
     """Flush in-progress artifact data to disk only.
 
     Writes enriched perf stats and epoch sync times to disk. The JSON files are
-    picked up by test_upload_ci_artifacts and included in sync_results.zip. No
-    zips are created here, no CI uploads are performed, and no processes are
-    terminated; teardown owns process lifecycle.
+    picked up by test_upload_ci_artifacts and uploaded with the other results. No
+    CI uploads are performed here and no processes are terminated; teardown owns
+    process lifecycle.
 
     Args:
         config: A DbSyncConfig instance with paths and settings.

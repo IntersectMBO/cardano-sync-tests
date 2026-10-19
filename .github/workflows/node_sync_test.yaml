@@ -112,15 +112,40 @@ jobs:
           done
           echo "::endgroup::"
 
-      - name: Upload CI bundles
+      # Three artifacts, each holding its files directly. Actions zips every
+      # artifact on upload, so archiving here as well would mean unpacking twice
+      # to reach a log. Keeping them separate lets a comparison run fetch the
+      # results JSON without the far larger node log.
+      - name: Upload sync results
         if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
-          name: sync-ci-bundles-${{ runner.name }}-${{ inputs.environment }}-${{ steps.rev.outputs.artifact_slug }}
+          name: sync-results-${{ runner.name }}-${{ inputs.environment }}-${{ steps.rev.outputs.artifact_slug }}
+          path: test_workdir/*.json
+          if-no-files-found: warn
+      - name: Upload sync logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-logs-${{ runner.name }}-${{ inputs.environment }}-${{ steps.rev.outputs.artifact_slug }}
+          # The monitor logs are excluded here and uploaded by the step below, so
+          # each log lands in exactly one artifact. postgres.log needs no exclusion:
+          # it lives in test_workdir/postgres/, which this glob cannot reach.
           path: |
-            sync_logs.zip
-            sync_results.zip
-            monitor.zip
+            test_workdir/*.log
+            !test_workdir/monitor.log
+            !test_workdir/monitor_stderr.log
+            !test_workdir/oom.log
+          if-no-files-found: warn
+      - name: Upload monitor logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-monitor-${{ runner.name }}-${{ inputs.environment }}-${{ steps.rev.outputs.artifact_slug }}
+          path: |
+            test_workdir/monitor.log
+            test_workdir/monitor_stderr.log
+            test_workdir/oom.log
           if-no-files-found: warn
 
       - name: Cleanup test workdir
