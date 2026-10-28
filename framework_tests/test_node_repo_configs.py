@@ -156,5 +156,5 @@ def test_node_repo_without_configs_for_env_fails(tmp_path: pl.Path) -> None:
     conf_dir.mkdir()
     _write_node_repo(repo_dir)
 
-    with pytest.raises(FileNotFoundError, match="preview-config.json"):
+    with pytest.raises(FileNotFoundError, match=r"preview-config\.json"):
         node.get_node_repo_config_files(env="preview", node_repo_dir=repo_dir, conf_dir=conf_dir)
