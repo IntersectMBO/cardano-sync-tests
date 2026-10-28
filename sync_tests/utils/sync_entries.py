@@ -51,6 +51,7 @@ def run_node_sync(
     start_era: str,
     clean_start: bool = True,
     full_sync: bool = False,
+    node_config_source: str = "published",
 ) -> NodeRunResult:
     """Build cardano-node from revision, start it, and wait until synced.
 
@@ -67,6 +68,10 @@ def run_node_sync(
         full_sync: When ``True``, wait for 100 %% sync progress and collect
             era/epoch timing details (node-only pipeline). When ``False``
             (default), wait only until ``start_era`` is reached (db-sync pipeline).
+        node_config_source: Where the node config files come from. ``"published"``
+            (default) downloads them from ``CONFIGS_BASE_URL``; ``"node-repo"``
+            copies the files shipped in the cardano-node repository at
+            ``node_revision``.
 
     Returns:
         NodeRunResult with CLI version info, log path, and (when
@@ -82,7 +87,7 @@ def run_node_sync(
         shutil.rmtree(db_dir, ignore_errors=True)
 
     node.set_node_socket_path_env_var(base_dir=base_dir)
-    node.get_node_files(node_rev=node_revision, base_dir=base_dir)
+    node_repo = node.get_node_files(node_rev=node_revision, base_dir=base_dir)
     cardano_cli_path = (base_dir / "bin" / "cardano-cli").resolve()
     if not cardano_cli_path.exists():
         msg = f"cardano-cli not found after build: {cardano_cli_path}"
@@ -90,13 +95,17 @@ def run_node_sync(
     helpers.export_env_var("CARDANO_CLI_PATH", str(cardano_cli_path))
     cli_version, cli_git_rev = node.get_node_version()
     node.rm_node_config_files(conf_dir=conf_dir)
-    node_topology_type = "non-bootstrap-peers" if env == "mainnet" else ""
-    node.get_node_config_files(
-        env=env,
-        node_topology_type=node_topology_type,
-        conf_dir=conf_dir,
-        disable_genesis_mode_flag=False,
-    )
+    if node_config_source == "node-repo":
+        node_repo_dir = pl.Path(node_repo.working_tree_dir or node_repo.git_dir)
+        node.get_node_repo_config_files(env=env, node_repo_dir=node_repo_dir, conf_dir=conf_dir)
+    else:
+        node_topology_type = "non-bootstrap-peers" if env == "mainnet" else ""
+        node.get_node_config_files(
+            env=env,
+            node_topology_type=node_topology_type,
+            conf_dir=conf_dir,
+            disable_genesis_mode_flag=False,
+        )
     node.configure_node(
         config_file=conf_dir / "config.json",
         cli_version=cli_version,

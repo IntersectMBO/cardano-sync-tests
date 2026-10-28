@@ -19,6 +19,16 @@ on:
           pytest --node-revision: tag/branch, or "latest" for newest IntersectMBO/cardano-node release.
         type: string
         default: "latest"
+      node_config_source:
+        description: >-
+          pytest --node-config-source: "published" downloads the configs from
+          book.world.dev.cardano.org, "node-repo" copies the configs shipped in
+          the cardano-node repository at node_revision (mainnet only).
+        type: choice
+        options:
+          - published
+          - node-repo
+        default: published
       configs_base_url:
         description: "Base URL for Cardano environment configs"
         required: false
@@ -88,7 +98,8 @@ jobs:
             nix develop -v --accept-flake-config .#python --command \
               pytest sync_tests/tests/test_nodesync_artifacts.py \
               --environment "${{ inputs.environment }}" \
-              --node-revision "${{ steps.rev.outputs.node_revision }}"
+              --node-revision "${{ steps.rev.outputs.node_revision }}" \
+              --node-config-source "${{ inputs.node_config_source }}"
           } > test_workdir/ci_step.log 2>&1 || pytest_exit=$?
 
           bash sync_tests/scripts/print-ci-summary.sh test_workdir/ci_step.log "$pytest_exit"

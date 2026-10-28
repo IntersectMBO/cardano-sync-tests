@@ -36,6 +36,30 @@ TESTNET_ARGS = {
     "preprod": ("--testnet-magic", "1"),
 }
 
+# The cardano-node repository ships one set of config files per environment under
+# this directory, named ``<env>-<file>``. These are the files a release is tested
+# and published with, so a sync test can take them from the revision it builds.
+# As of node 11.2 only mainnet ships there.
+NODE_REPO_CONFIG_DIR: tp.Final = pl.Path("configuration") / "cardano"
+_NODE_REPO_CONFIG_FILES: tp.Final = (
+    "config.json",
+    "topology.json",
+    "byron-genesis.json",
+    "shelley-genesis.json",
+    "alonzo-genesis.json",
+    "conway-genesis.json",
+)
+_NODE_REPO_OPTIONAL_CONFIG_FILES: tp.Final = ("checkpoints.json", "peer-snapshot.json")
+
+
+def _is_envelope_config(config: dict) -> bool:
+    """Tell the cardano-config envelope (node 11.2+) from the flat config format.
+
+    The envelope nests every setting under ``Configuration``; the flat format keeps
+    them at the top level.
+    """
+    return isinstance(config.get("Configuration"), dict)
+
 
 @dataclasses.dataclass(frozen=True)
 class Tip:
@@ -114,6 +138,62 @@ def download_config_file(config_slug: str, save_as: pl.Path) -> None:
         response.raise_for_status()
         with open(save_as, "wb") as f:
             f.writelines(response.iter_content(chunk_size=8192))
+
+
+def _strip_file_name_prefix(value: tp.Any, prefix: str) -> tp.Any:
+    """Return ``value`` with every ``<prefix>*.json`` string shortened to ``*.json``."""
+    if isinstance(value, dict):
+        return {k: _strip_file_name_prefix(v, prefix) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_file_name_prefix(v, prefix) for v in value]
+    if isinstance(value, str) and value.startswith(prefix) and value.endswith(".json"):
+        return value[len(prefix) :]
+    return value
+
+
+def get_node_repo_config_files(env: str, node_repo_dir: pl.Path, conf_dir: pl.Path) -> None:
+    """Copy the node configuration files shipped in the cardano-node repository.
+
+    The files live under ``configuration/cardano`` as ``<env>-<file>``. They are
+    copied to ``conf_dir`` under the names the rest of this module expects
+    (``config.json``, ``topology.json``, ...) and the references between them are
+    shortened to match. The config keeps whatever format the revision ships, flat
+    or cardano-config envelope.
+
+    Args:
+        env: Environment name (preview, preprod, mainnet).
+        node_repo_dir: Working tree of the checked-out cardano-node revision.
+        conf_dir: Directory to write the configuration files to.
+
+    Raises:
+        FileNotFoundError: The revision ships no config files for ``env``.
+    """
+    src_dir = node_repo_dir / NODE_REPO_CONFIG_DIR
+    prefix = f"{env}-"
+    LOGGER.info("Copying the node configuration files for %s from %s", env, src_dir)
+    for name in _NODE_REPO_CONFIG_FILES:
+        src = src_dir / f"{prefix}{name}"
+        if not src.is_file():
+            msg = f"The cardano-node revision ships no '{src.name}' in '{src_dir}'"
+            raise FileNotFoundError(msg)
+        shutil.copyfile(src, conf_dir / name)
+    for name in _NODE_REPO_OPTIONAL_CONFIG_FILES:
+        src = src_dir / f"{prefix}{name}"
+        if src.is_file():
+            shutil.copyfile(src, conf_dir / name)
+        else:
+            LOGGER.warning("%s is not shipped for %s", name, env)
+
+    for name in ("config.json", "topology.json"):
+        file_path = conf_dir / name
+        with open(file_path) as fh:
+            data = json.load(fh)
+        with open(file_path, "w") as fh:
+            json.dump(_strip_file_name_prefix(data, prefix=prefix), fh, indent=2)
+
+    peer_snapshot_path = conf_dir / "peer-snapshot.json"
+    if peer_snapshot_path.is_file():
+        normalize_peer_snapshot(peer_snapshot_path)
 
 
 def get_node_config_files(
@@ -363,6 +443,8 @@ def configure_node(
     2. Enables resource metrics: un-silences the ``Resources`` tracer and forces an
        uncoloured human-readable stdout backend. The new-tracing options are always
        written; the legacy ones are added on top when the config selects legacy.
+       A cardano-config envelope (node 11.2+) gets the new-tracing options under
+       ``Configuration.HermodTracing`` and nothing else.
 
     Args:
         config_file: Path to the node ``config.json``.
@@ -376,6 +458,20 @@ def configure_node(
     # --- config.json patches ---
     with open(config_file) as fh:
         node_config_json = json.load(fh)
+
+    if _is_envelope_config(node_config_json):
+        # The envelope knows new tracing only, so there is no switch to detect or
+        # write, and the legacy keys would not be read.
+        tracing = node_config_json["Configuration"].setdefault("HermodTracing", {})
+        trace_opts = tracing.setdefault("TraceOptions", {})
+        _configure_new_tracing(trace_opts=trace_opts)
+        with open(config_file, "w") as fh:
+            json.dump(node_config_json, fh, indent=2)
+        LOGGER.info("Configured new trace-dispatcher for resource monitoring (envelope config)")
+        _downgrade_peer_snapshot_if_needed(
+            cli_version=cli_version, conf_dir=conf_dir, topology_file=topology_file
+        )
+        return
 
     # The node selects the tracing system with `UseTraceDispatcher`. Its default
     # was legacy up to node 10.1, new tracing from 10.2 on, and node 11.1 dropped
@@ -414,7 +510,15 @@ def configure_node(
     with open(config_file, "w") as fh:
         json.dump(node_config_json, fh, indent=2)
 
-    # --- peer snapshot downgrade (only for nodes < 10.5) ---
+    _downgrade_peer_snapshot_if_needed(
+        cli_version=cli_version, conf_dir=conf_dir, topology_file=topology_file
+    )
+
+
+def _downgrade_peer_snapshot_if_needed(
+    cli_version: str | None, conf_dir: pl.Path, topology_file: pl.Path
+) -> None:
+    """Downgrade the peer snapshot to version 1 for nodes older than 10.5."""
     node_ver = _parse_node_major_minor(cli_version)
     if node_ver and node_ver >= _MIN_PEER_SNAPSHOT_V2:
         LOGGER.info("Node supports peer snapshot v2 natively, skipping downgrade")

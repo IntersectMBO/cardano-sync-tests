@@ -101,6 +101,7 @@ pytest sync_tests/tests/ \
 | --- | --- | --- |
 | `--environment` | `preview` | `preview` \| `preprod` \| `mainnet` |
 | `--node-revision` | `None` | Node tag/branch to build; omit to skip node sync |
+| `--node-config-source` | `published` | `published` downloads the node configs from `CONFIGS_BASE_URL`; `node-repo` copies the configs shipped in the cardano-node repository at `--node-revision` (mainnet only) |
 | `--db-sync-revision` | `None` | DB-sync tag/branch; omit to skip db-sync |
 | `--db-sync-start-era` | `shelley` | Min node era before starting db-sync |
 | `--db-sync-start-options` | `""` | Extra db-sync flags |
