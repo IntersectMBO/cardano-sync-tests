@@ -139,15 +139,43 @@ jobs:
           done
           echo "::endgroup::"
 
-      - name: Upload CI bundles
+      # Three artifacts, each holding its files directly. See the same steps in
+      # node_sync_test.yaml for why nothing is archived here.
+      - name: Upload sync results
         if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
-          name: db-sync-ci-bundles-${{ runner.name }}-${{ inputs.environment }}-node-${{ steps.inputs.outputs.node_slug }}-dbsync-${{ steps.inputs.outputs.db_sync_slug }}
+          name: db-sync-results-${{ runner.name }}-${{ inputs.environment }}-node-${{ steps.inputs.outputs.node_slug }}-dbsync-${{ steps.inputs.outputs.db_sync_slug }}
           path: |
-            sync_logs.zip
-            sync_results.zip
-            monitor.zip
+            test_workdir/*.json
+            test_workdir/cardano-db-sync/*.json
+          if-no-files-found: warn
+      - name: Upload sync logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: db-sync-logs-${{ runner.name }}-${{ inputs.environment }}-node-${{ steps.inputs.outputs.node_slug }}-dbsync-${{ steps.inputs.outputs.db_sync_slug }}
+          # The monitor logs are excluded here and uploaded by the step below, so
+          # each log lands in exactly one artifact. postgres.log needs no exclusion:
+          # it lives in test_workdir/postgres/, which this glob cannot reach.
+          path: |
+            test_workdir/*.log
+            !test_workdir/monitor.log
+            !test_workdir/monitor_stderr.log
+            !test_workdir/oom.log
+          if-no-files-found: warn
+      - name: Upload monitor logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: db-sync-monitor-${{ runner.name }}-${{ inputs.environment }}-node-${{ steps.inputs.outputs.node_slug }}-dbsync-${{ steps.inputs.outputs.db_sync_slug }}
+          path: |
+            test_workdir/monitor.log
+            test_workdir/monitor_stderr.log
+            test_workdir/oom.log
+            # Keeps its subdirectory in the artifact, so it appears as
+            # postgres/postgres.log rather than at the root.
+            test_workdir/postgres/postgres.log
           if-no-files-found: warn
 
       - name: Cleanup test workdir
