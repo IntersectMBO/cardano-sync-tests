@@ -143,6 +143,11 @@ Results JSON includes enriched performance samples under `system_metrics`.
 Fixtures write sync-completion markers to `sync_markers_<env>.json` so that
 post-sync test durations are excluded from measured sync time.
 
+Clean node-only full-sync runs measure from node launch, including CLI-readiness
+waiting. Their initial Byron era starts at epoch zero even if the first tip query
+arrives later; per-epoch timings include only observed epochs. Resumed runs retain
+the first-observation timing boundary. Older results excluded startup waiting.
+
 ## Logs
 
 - Node log: `test_workdir/node_sync.log`

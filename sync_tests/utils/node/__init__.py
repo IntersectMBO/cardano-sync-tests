@@ -62,6 +62,14 @@ def _is_envelope_config(config: dict) -> bool:
 
 
 @dataclasses.dataclass(frozen=True)
+class SyncStart:
+    """Wall-clock and monotonic timestamps captured before a clean node launch."""
+
+    timestamp: datetime.datetime
+    counter: float
+
+
+@dataclasses.dataclass(frozen=True)
 class Tip:
     epoch: int
     block: int
@@ -1070,17 +1078,38 @@ def wait_for_shelley_era(
         count += 1
 
 
-def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None = None) -> tuple:
-    """Wait for the Cardano node to start."""
+def wait_for_node_to_sync(
+    env: str,
+    base_dir: pl.Path,
+    workdir: pl.Path | None = None,
+    *,
+    genesis_start: SyncStart | None = None,
+) -> tuple:
+    """Wait for full sync and collect observed era and epoch timings.
+
+    Args:
+        env: Cardano environment.
+        base_dir: Node database and configuration directory.
+        workdir: Optional directory for progress updates.
+        genesis_start: Timestamps captured before launching a clean node. Includes
+            startup in total and initial-era duration, and counts the initial
+            Byron era from epoch zero even if the first tip query arrives later.
+            Omit for resumed runs, which are measured from the first observation.
+
+    Returns:
+        Sync duration, target slot, latest chunk, era details, and epoch details.
+        Epoch timings cover only observed epochs; startup does not fabricate
+        timings for epochs completed before the first tip query.
+    """
     LOGGER.info("Waiting for the node to sync")
-    era_details_dict = {}
+    era_details_dict: dict[str, dict[str, tp.Any]] = {}
     epoch_details_dict = {}
 
     # Get the initial tip data and calculated slot
     tip = get_current_tip(env=env)
     protocol_version_cache: tuple[int, int] | None = None
     last_slot_no = get_calculated_slot_no(env=env) if tip.sync_progress is None else -1
-    start_sync = time.perf_counter()
+    start_sync = genesis_start.counter if genesis_start is not None else time.perf_counter()
     count = 0
 
     while True:
@@ -1103,16 +1132,23 @@ def wait_for_node_to_sync(env: str, base_dir: pl.Path, workdir: pl.Path | None =
 
         # If we see a new era, record its starting details.
         if tip.era not in era_details_dict:
+            initial_genesis_era = genesis_start is not None and not era_details_dict
+            start_epoch = 0 if initial_genesis_era and tip.era == "byron" else tip.epoch
+            era_start_sync_time = (
+                genesis_start.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+                if initial_genesis_era and genesis_start is not None
+                else current_time_str
+            )
             if env == "mainnet":
-                actual_era_start_time = blockfrost.get_epoch_start_datetime(epoch_no=tip.epoch)
+                actual_era_start_time = blockfrost.get_epoch_start_datetime(epoch_no=start_epoch)
             else:
                 actual_era_start_time = explorer.get_epoch_start_datetime_from_explorer(
-                    env=env, epoch_no=tip.epoch
+                    env=env, epoch_no=start_epoch
                 )
             era_details_dict[tip.era] = {
-                "start_epoch": tip.epoch,
+                "start_epoch": start_epoch,
                 "start_time": actual_era_start_time,
-                "start_sync_time": current_time_str,
+                "start_sync_time": era_start_sync_time,
             }
 
         # If we see a new epoch, record its starting sync time.
