@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import logging
 import pathlib as pl
 import shutil
@@ -65,7 +66,8 @@ def run_node_sync(
         clean_start: When ``True`` (default) the node DB directory is wiped before
             startup so the node syncs from genesis.
         full_sync: When ``True``, wait for 100 %% sync progress and collect
-            era/epoch timing details (node-only pipeline). When ``False``
+            era/epoch timing details (node-only pipeline). Clean full-sync runs
+            include startup in their sync duration. When ``False``
             (default), wait only until ``start_era`` is reached (db-sync pipeline).
 
     Returns:
@@ -109,6 +111,16 @@ def run_node_sync(
     LOGGER.info("Node will write logs to: %s", node_logfile_path)
     LOGGER.info("Monitor node logs with: tail -f %s", node_logfile_path)
 
+    # The node can sync several Byron epochs before the first successful CLI
+    # query. Keep the clean launch boundary rather than losing that work while
+    # waiting for readiness. Resumed and db-sync runs retain their old boundary.
+    genesis_start = (
+        node.SyncStart(
+            timestamp=datetime.datetime.now(tz=datetime.UTC), counter=time.perf_counter()
+        )
+        if clean_start and full_sync
+        else None
+    )
     node.start_node(
         base_dir=base_dir,
         node_start_arguments=(),
@@ -146,7 +158,12 @@ def run_node_sync(
             latest_chunk_no,
             era_details,
             epoch_details,
-        ) = node.wait_for_node_to_sync(env=env, base_dir=base_dir, workdir=node_logfile_path.parent)
+        ) = node.wait_for_node_to_sync(
+            env=env,
+            base_dir=base_dir,
+            workdir=node_logfile_path.parent,
+            genesis_start=genesis_start,
+        )
         LOGGER.info(
             "--- Full sync complete: sync_time_sec=%s last_slot_no=%s latest_chunk_no=%s eras=%s",
             sync_time_sec,
