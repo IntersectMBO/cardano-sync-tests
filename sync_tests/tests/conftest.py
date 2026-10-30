@@ -94,6 +94,17 @@ def pytest_addoption(parser: tp.Any) -> None:
         help="cardano-node tag or branch to build (omit to skip node sync)",
     )
     parser.addoption(
+        "--node-config-source",
+        action="store",
+        choices=("published", "node-repo"),
+        default="published",
+        help=(
+            "Where the node config files come from: 'published' downloads them from "
+            "CONFIGS_BASE_URL, 'node-repo' copies the files shipped in the cardano-node "
+            "repository at --node-revision, which ships mainnet only (default: published)"
+        ),
+    )
+    parser.addoption(
         "--db-sync-revision",
         action="store",
         default=None,
@@ -249,12 +260,19 @@ def _write_marker_to_status(
 def sync_context(request: FixtureRequest) -> SyncContext:
     """Build shared paths and environment info for the session."""
     env: str = request.config.getoption("--environment")
+    node_config_source: str = request.config.getoption("--node-config-source")
     LOGGER.info(
-        "Starting sync_context setup: env=%s CONFIGS_BASE_URL=%s",
+        "Starting sync_context setup: env=%s node_config_source=%s CONFIGS_BASE_URL=%s",
         env,
+        node_config_source,
         configuration.CONFIGS_BASE_URL,
     )
-    _validate_configs_base_url(env)
+    if node_config_source == "published":
+        _validate_configs_base_url(env)
+    elif env != "mainnet":
+        # Fail here, before the nix build, rather than in the config step after it.
+        msg = f"--node-config-source node-repo supports mainnet only, not '{env}'"
+        raise ValueError(msg)
     workdir_opt: str | None = request.config.getoption("--workdir")
 
     if workdir_opt:
@@ -346,6 +364,7 @@ def node_synced(
             conf_dir=conf_dir,
             start_era=start_era,
             full_sync=full_sync,
+            node_config_source=request.config.getoption("--node-config-source"),
         )
         node_started_here = True
 

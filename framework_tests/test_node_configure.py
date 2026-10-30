@@ -144,6 +144,52 @@ def test_configure_node_is_idempotent(tmp_path: pl.Path) -> None:
         assert _configure(patched, tmp_path=tmp_path) == patched
 
 
+# The same options inside the cardano-config envelope that node 11.2 ships.
+ENVELOPE_CONFIG: tp.Final = {
+    "$schema": "https://example.invalid/config.schema.json",
+    "Version": 2,
+    "MinNodeVersion": "11.2.0",
+    "Configuration": {
+        "Consensus": {"ConsensusMode": "GenesisMode"},
+        "HermodTracing": {"TraceOptions": IOG_TRACE_OPTIONS},
+    },
+}
+
+
+def test_configure_node_patches_tracing_inside_envelope(tmp_path: pl.Path) -> None:
+    """An envelope config is patched where the node reads it, under HermodTracing."""
+    patched = _configure(json.loads(json.dumps(ENVELOPE_CONFIG)), tmp_path=tmp_path)
+    trace_opts = patched["Configuration"]["HermodTracing"]["TraceOptions"]
+
+    assert trace_opts["Resources"]["severity"] == "Info"
+    assert trace_opts[""]["backends"] == ["Stdout HumanFormatUncoloured"]
+    assert trace_opts["ChainDB"] == {"severity": "Info"}
+
+
+def test_configure_node_adds_no_flat_keys_to_envelope(tmp_path: pl.Path) -> None:
+    """The envelope gets no tracing switch and no legacy keys next to Configuration."""
+    patched = _configure(json.loads(json.dumps(ENVELOPE_CONFIG)), tmp_path=tmp_path)
+
+    assert sorted(patched) == ["$schema", "Configuration", "MinNodeVersion", "Version"]
+    assert sorted(patched["Configuration"]) == ["Consensus", "HermodTracing"]
+
+
+def test_configure_node_envelope_without_tracing_section(tmp_path: pl.Path) -> None:
+    """An envelope that leaves tracing to the defaults still gets the resource tracer."""
+    config = {"Configuration": {"Consensus": {"ConsensusMode": "GenesisMode"}}}
+    patched = _configure(config, tmp_path=tmp_path)
+    trace_opts = patched["Configuration"]["HermodTracing"]["TraceOptions"]
+
+    assert trace_opts["Resources"]["severity"] == "Info"
+    assert trace_opts[""]["backends"] == ["Stdout HumanFormatUncoloured"]
+
+
+def test_configure_node_envelope_is_idempotent(tmp_path: pl.Path) -> None:
+    """Configuring an already configured envelope must not change it."""
+    patched = _configure(json.loads(json.dumps(ENVELOPE_CONFIG)), tmp_path=tmp_path)
+    assert _configure(patched, tmp_path=tmp_path) == patched
+
+
 def _write_peer_snapshot(tmp_path: pl.Path) -> pl.Path:
     """Write a version 2 peer snapshot and the topology referencing it."""
     topology_file = tmp_path / "topology.json"
