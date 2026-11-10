@@ -632,6 +632,40 @@ def _run_heartbeat_tick(workdir: pl.Path, mode: str = "node-only", timeout: floa
         return (exc.stdout or b"").decode("utf-8")
 
 
+def _run_heartbeat_ticks(workdir: pl.Path, *later: dict) -> str:
+    """Run one heartbeat.sh tick per progress write and return the stdout.
+
+    The first tick sees slot 1000 written at ``t1``. A fake ``sleep`` stands in
+    for the wait between ticks: each call puts the next of ``later`` in the
+    progress file, and the call after the last one ends the loop.
+    """
+    _write_progress(workdir, "preview", {"node": {"slot": 1000, "updated_at": "t1"}})
+    for num, node_progress in enumerate(later):
+        (workdir / f"later_{num}.json").write_text(json.dumps({"node": node_progress}))
+    fake_sleep = workdir / "bin" / "sleep"
+    fake_sleep.parent.mkdir()
+    fake_sleep.write_text(
+        "#!/usr/bin/env bash\n"
+        f'cd "{workdir}" || exit 1\n'
+        "next=$(ls later_*.json 2>/dev/null | head -n 1)\n"
+        '[ -n "$next" ] && mv "$next" sync_progress_preview.json\n'
+    )
+    fake_sleep.chmod(0o755)
+    env = dict(
+        os.environ,
+        SYNC_TESTS_HEARTBEAT_WORKDIR=str(workdir),
+        PATH=f"{fake_sleep.parent}{os.pathsep}{os.environ['PATH']}",
+    )
+    result = subprocess.run(
+        ["bash", str(_HEARTBEAT_SH), "node-only"],
+        env=env,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    return result.stdout.decode("utf-8")
+
+
 def _write_progress(workdir: pl.Path, env: str, payload: dict) -> None:
     helpers.write_json_to_file(workdir / f"sync_progress_{env}.json", payload)
 
@@ -857,3 +891,42 @@ def test_heartbeat_picks_the_newest_progress_file(tmp_path: pl.Path) -> None:
 
     assert "epoch=5" in output
     assert "epoch=9999" not in output
+
+
+def test_heartbeat_runtime_counts_hours_and_minutes(
+    tmp_path: pl.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # bash starts SECONDS from the environment value. The extra 30 s keeps the
+    # minute stable while the tick runs.
+    monkeypatch.setenv("SECONDS", str(26 * 3600 + 5 * 60 + 30))
+
+    output = _run_heartbeat_tick(tmp_path)
+
+    assert "runtime: 26h 05m\n" in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_reports_the_slot_advance_between_writes(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(tmp_path, {"slot": 1750, "updated_at": "t2"})
+
+    assert output.count("advance[node]:") == 1
+    assert "advance[node]: +750 slots since t1\n" in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_counts_a_stall_from_the_last_slot_change(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(
+        tmp_path,
+        {"slot": 1750, "updated_at": "t2"},
+        {"slot": 1750, "updated_at": "t3"},
+    )
+
+    assert "advance[node]: no new slot since t2\n" in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_is_silent_when_the_progress_file_was_not_rewritten(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(tmp_path, {"slot": 1000, "updated_at": "t1"})
+
+    assert output.count("progress[node]:") == 2
+    assert "advance[node]:" not in output
