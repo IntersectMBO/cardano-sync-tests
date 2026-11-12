@@ -496,7 +496,7 @@ def generate_resource_consumption_graphs(
         "rss_ram",
         1024**3,
         "RSS Consumption",
-        "RSS consumed [GB]",
+        "RSS consumed [GiB]",
         "nodesync_rss_consumption",
         zero_means_no_sample=True,
     )
@@ -504,7 +504,7 @@ def generate_resource_consumption_graphs(
         "heap_ram",
         1024**3,
         "RAM Consumption",
-        "RAM consumed [GB]",
+        "RAM consumed [GiB]",
         "nodesync_ram_consumption",
         zero_means_no_sample=True,
     )
@@ -696,14 +696,14 @@ def generate_dbsync_rss_graph(
                 rss_val = entry.get("rss_mem_usage")
                 if time_val is not None and rss_val is not None and rss_val > 0:
                     x.append(float(time_val) / 3600)  # Convert seconds to hours
-                    y.append(float(rss_val) / (1024**3))  # Convert bytes to GB
+                    y.append(float(rss_val) / (1024**3))  # Convert bytes to GiB
 
         if x and y:
             plt.plot(x, y, label=dataset_name, color=palette[idx % len(palette)])
 
     plt.title("DB-Sync RSS Memory Usage Over Time")
     plt.xlabel("Time [hours]")
-    plt.ylabel("RSS Memory [GB]")
+    plt.ylabel("RSS Memory [GiB]")
     plt.legend()
     plt.tight_layout()
     _savefig(output_dir / f"dbsync_rss_over_time.{fmt}", dpi=dpi, fmt=fmt)
@@ -728,7 +728,7 @@ def generate_dbsync_combined_resources_graph(
 
     # RSS on right Y-axis
     ax2 = ax1.twinx()
-    ax2.set_ylabel("RSS Memory [GB]", color="tab:red")
+    ax2.set_ylabel("RSS Memory [GiB]", color="tab:red")
     ax2.tick_params(axis="y", labelcolor="tab:red")
 
     for idx, (dataset_name, data) in enumerate(datasets.items()):
@@ -755,7 +755,7 @@ def generate_dbsync_combined_resources_graph(
 
                 if rss_val is not None and rss_val > 0:
                     rss_times.append(time_hours)
-                    rss_values.append(float(rss_val) / (1024**3))  # Convert bytes to GB
+                    rss_values.append(float(rss_val) / (1024**3))  # Convert bytes to GiB
 
         color = palette[idx % len(palette)]
         if cpu_times and cpu_values:
