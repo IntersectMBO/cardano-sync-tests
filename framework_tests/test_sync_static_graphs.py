@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import pathlib as pl
+from unittest import mock
 
+import pytest
+
+from sync_tests.scripts import sync_static_graphs
 from sync_tests.scripts.sync_static_graphs import detect_json_mode
 from sync_tests.scripts.sync_static_graphs import generate_static_graphs
 from sync_tests.scripts.sync_static_graphs import normalize_dbsync_data
@@ -82,6 +86,41 @@ class TestNormalizeDbsyncData:
     def test_epoch_details_defaults_to_empty_dict_when_not_a_dict(self) -> None:
         result = normalize_dbsync_data({"epoch_details": "not-a-dict"})
         assert result["epoch_details"] == {}
+
+
+def test_node_memory_graphs_use_gib(tmp_path: pl.Path) -> None:
+    datasets = {"node": {"sample": {"tip": 1, "rss_ram": 1024**3, "heap_ram": 2 * 1024**3}}}
+    plotted = {}
+
+    def capture_figure(path: pl.Path, **_kwargs: object) -> None:
+        ax = sync_static_graphs.plt.gca()
+        plotted[path.stem] = (ax.get_ylabel(), list(ax.lines[0].get_ydata()))
+
+    with mock.patch.object(sync_static_graphs, "_savefig", side_effect=capture_figure):
+        sync_static_graphs.generate_resource_consumption_graphs(
+            datasets, tmp_path, dpi=50, fmt="png"
+        )
+
+    assert plotted["nodesync_rss_consumption"] == ("RSS consumed [GiB]", [1.0])
+    assert plotted["nodesync_ram_consumption"] == ("RAM consumed [GiB]", [2.0])
+
+
+@pytest.mark.parametrize(
+    "graph_function",
+    ["generate_dbsync_rss_graph", "generate_dbsync_combined_resources_graph"],
+)
+def test_dbsync_memory_graphs_use_gib(graph_function: str, tmp_path: pl.Path) -> None:
+    datasets = {"dbsync": {"system_metrics": [{"time": 0, "rss_mem_usage": 1024**3}]}}
+    plotted = []
+
+    def capture_figure(*_args: object, **_kwargs: object) -> None:
+        ax = sync_static_graphs.plt.gcf().axes[-1]
+        plotted.append((ax.get_ylabel(), list(ax.lines[0].get_ydata())))
+
+    with mock.patch.object(sync_static_graphs, "_savefig", side_effect=capture_figure):
+        getattr(sync_static_graphs, graph_function)(datasets, tmp_path, dpi=50, fmt="png")
+
+    assert plotted == [("RSS Memory [GiB]", [1.0])]
 
 
 def test_generate_static_graphs_dbsync_mode_produces_pngs(tmp_path: pl.Path) -> None:
