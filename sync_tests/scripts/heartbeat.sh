@@ -16,7 +16,7 @@ WORKDIR="${SYNC_TESTS_HEARTBEAT_WORKDIR:-test_workdir}"
 INTERVAL="${SYNC_TESTS_HEARTBEAT_INTERVAL_SEC:-600}"
 TAIL_LINES="${SYNC_TESTS_HEARTBEAT_TAIL_LINES:-30}"
 HALF_TAIL=$(( TAIL_LINES / 2 ))
-declare -A LAST_SLOT LAST_UPDATED LAST_CHANGE
+declare -A LAST_SLOT LAST_UPDATED LAST_CHANGE LAST_PID LAST_CPU LAST_ELAPSED
 
 _newest_file() {
   local newest=""
@@ -66,6 +66,7 @@ _advance_line() {
   local slot="$2"
   local updated="$3"
   local last="${LAST_SLOT[$label]:-}"
+  local stalled=""
   [ "$updated" = "${LAST_UPDATED[$label]:-}" ] && return 0
   LAST_UPDATED[$label]="$updated"
   LAST_SLOT[$label]="$slot"
@@ -76,6 +77,35 @@ _advance_line() {
     LAST_CHANGE[$label]="$updated"
   else
     printf 'advance[%s]: no new slot since %s\n' "$label" "${LAST_CHANGE[$label]}"
+    stalled=1
+  fi
+  _process_line "$label" "$stalled"
+}
+
+# Read on every write, so that a stall has earlier values to compare with.
+_process_line() {
+  local label="$1"
+  local stalled="$2"
+  local name="cardano-node"
+  local pid="" cpu="" elapsed="" rss="" cpu_used elapsed_since
+  [ "$label" = "dbsync" ] && name="cardano-db-sync"
+  read -r pid cpu elapsed rss < <(ps -o pid=,cputimes=,etimes=,rss= -C "$name")
+  # A new process counts from its own start, not from the values of the old one.
+  if [ "$pid" != "${LAST_PID[$label]:-}" ]; then
+    LAST_CPU[$label]=0
+    LAST_ELAPSED[$label]=0
+  fi
+  LAST_PID[$label]="$pid"
+  cpu_used=$(( ${cpu:-0} - ${LAST_CPU[$label]:-0} ))
+  elapsed_since=$(( ${elapsed:-0} - ${LAST_ELAPSED[$label]:-0} ))
+  LAST_CPU[$label]="${cpu:-0}"
+  LAST_ELAPSED[$label]="${elapsed:-0}"
+  [ -n "$stalled" ] || return 0
+  if [ -z "$pid" ]; then
+    printf 'stalled[%s]: %s is not running\n' "$label" "$name"
+  else
+    printf 'stalled[%s]: %s pid=%s rss=%sMB cpu=%ss in %ss\n' \
+      "$label" "$name" "$pid" $(( rss / 1024 )) "$cpu_used" "$elapsed_since"
   fi
 }
 

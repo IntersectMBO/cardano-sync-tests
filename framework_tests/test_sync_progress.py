@@ -632,18 +632,32 @@ def _run_heartbeat_tick(workdir: pl.Path, mode: str = "node-only", timeout: floa
         return (exc.stdout or b"").decode("utf-8")
 
 
-def _run_heartbeat_ticks(workdir: pl.Path, *later: dict) -> str:
+# One process that uses 100 s of CPU time in every 600 s. The columns are pid,
+# CPU seconds, seconds since the process started, and memory in KB.
+_PS_ROWS = ("4242 0 0 2048000", "4242 100 600 2048000", "4242 200 1200 2048000")
+
+
+def _run_heartbeat_ticks(
+    workdir: pl.Path, *later: dict, label: str = "node", ps_rows: tuple[str, ...] = _PS_ROWS
+) -> str:
     """Run one heartbeat.sh tick per progress write and return the stdout.
 
-    The first tick sees slot 1000 written at ``t1``. A fake ``sleep`` stands in
-    for the wait between ticks: each call puts the next of ``later`` in the
-    progress file, and the call after the last one ends the loop.
+    The first tick sees slot 1000 written at ``t1`` under ``label``. A fake
+    ``sleep`` stands in for the wait between ticks: each call puts the next of
+    ``later`` in the progress file, and the call after the last one ends the
+    loop. A fake ``ps`` stands in for the process table: it answers only the
+    query for the process of ``label``, with the next of ``ps_rows`` on each
+    call, and with no process when the rows run out.
     """
-    _write_progress(workdir, "preview", {"node": {"slot": 1000, "updated_at": "t1"}})
-    for num, node_progress in enumerate(later):
-        (workdir / f"later_{num}.json").write_text(json.dumps({"node": node_progress}))
-    fake_sleep = workdir / "bin" / "sleep"
-    fake_sleep.parent.mkdir()
+    process = "cardano-db-sync" if label == "dbsync" else "cardano-node"
+    _write_progress(workdir, "preview", {label: {"slot": 1000, "updated_at": "t1"}})
+    for num, progress in enumerate(later):
+        (workdir / f"later_{num}.json").write_text(json.dumps({label: progress}))
+    for num, row in enumerate(ps_rows):
+        (workdir / f"ps_row_{num}").write_text(f"{row}\n")
+    bin_dir = workdir / "bin"
+    bin_dir.mkdir()
+    fake_sleep = bin_dir / "sleep"
     fake_sleep.write_text(
         "#!/usr/bin/env bash\n"
         f'cd "{workdir}" || exit 1\n'
@@ -651,13 +665,23 @@ def _run_heartbeat_ticks(workdir: pl.Path, *later: dict) -> str:
         '[ -n "$next" ] && mv "$next" sync_progress_preview.json\n'
     )
     fake_sleep.chmod(0o755)
+    fake_ps = bin_dir / "ps"
+    fake_ps.write_text(
+        "#!/usr/bin/env bash\n"
+        f'cd "{workdir}" || exit 1\n'
+        f'[ "$*" = "-o pid=,cputimes=,etimes=,rss= -C {process}" ] || exit 1\n'
+        "calls=$(cat ps_calls 2>/dev/null || echo 0)\n"
+        'echo "$(( calls + 1 ))" > ps_calls\n'
+        'cat "ps_row_${calls}" 2>/dev/null\n'
+    )
+    fake_ps.chmod(0o755)
     env = dict(
         os.environ,
         SYNC_TESTS_HEARTBEAT_WORKDIR=str(workdir),
-        PATH=f"{fake_sleep.parent}{os.pathsep}{os.environ['PATH']}",
+        PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
     )
     result = subprocess.run(
-        ["bash", str(_HEARTBEAT_SH), "node-only"],
+        ["bash", str(_HEARTBEAT_SH), "combined" if label == "dbsync" else "node-only"],
         env=env,
         capture_output=True,
         timeout=30,
@@ -930,3 +954,42 @@ def test_heartbeat_is_silent_when_the_progress_file_was_not_rewritten(tmp_path: 
 
     assert output.count("progress[node]:") == 2
     assert "advance[node]:" not in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_shows_the_process_of_a_stalled_node(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(
+        tmp_path, {"slot": 1000, "updated_at": "t2"}, {"slot": 1000, "updated_at": "t3"}
+    )
+
+    # 2048000 KB is 2000 MB. Both stalled writes, t2 and t3, report.
+    assert output.count("stalled[node]: cardano-node pid=4242 rss=2000MB cpu=100s in 600s\n") == 2
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_says_when_a_stalled_db_sync_is_not_running(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(
+        tmp_path, {"slot": 1000, "updated_at": "t2"}, label="dbsync", ps_rows=()
+    )
+
+    assert "stalled[dbsync]: cardano-db-sync is not running\n" in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_counts_a_restarted_process_from_its_own_start(tmp_path: pl.Path) -> None:
+    # The snapshot tests start db-sync a second time. 1024000 KB is 1000 MB.
+    output = _run_heartbeat_ticks(
+        tmp_path,
+        {"slot": 1000, "updated_at": "t2"},
+        label="dbsync",
+        ps_rows=("4242 900 5000 2048000", "5000 5 30 1024000"),
+    )
+
+    assert "stalled[dbsync]: cardano-db-sync pid=5000 rss=1000MB cpu=5s in 30s\n" in output
+
+
+@pytest.mark.usefixtures("_require_jq")
+def test_heartbeat_gives_no_stall_evidence_when_the_slot_moves(tmp_path: pl.Path) -> None:
+    output = _run_heartbeat_ticks(tmp_path, {"slot": 1750, "updated_at": "t2"})
+
+    assert "stalled[" not in output
