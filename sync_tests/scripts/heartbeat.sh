@@ -16,6 +16,7 @@ WORKDIR="${SYNC_TESTS_HEARTBEAT_WORKDIR:-test_workdir}"
 INTERVAL="${SYNC_TESTS_HEARTBEAT_INTERVAL_SEC:-600}"
 TAIL_LINES="${SYNC_TESTS_HEARTBEAT_TAIL_LINES:-30}"
 HALF_TAIL=$(( TAIL_LINES / 2 ))
+declare -A LAST_SLOT LAST_UPDATED LAST_CHANGE
 
 _newest_file() {
   local newest=""
@@ -54,6 +55,27 @@ _progress_line() {
   else
     printf 'progress[%s]: syncProgress unavailable - era=%s epoch=%s slot=%s protocolVersion=%s (as of %s)\n' \
       "$label" "$era" "$epoch" "$slot" "$protocol_version" "$updated"
+  fi
+  _advance_line "$label" "$slot" "$updated"
+}
+
+# A tick with no new write says nothing: db-sync on mainnet writes less often
+# than the heartbeat.
+_advance_line() {
+  local label="$1"
+  local slot="$2"
+  local updated="$3"
+  local last="${LAST_SLOT[$label]:-}"
+  [ "$updated" = "${LAST_UPDATED[$label]:-}" ] && return 0
+  LAST_UPDATED[$label]="$updated"
+  LAST_SLOT[$label]="$slot"
+  if [ -z "$last" ]; then
+    LAST_CHANGE[$label]="$updated"
+  elif [ "$slot" != "$last" ]; then
+    printf 'advance[%s]: %+d slots since %s\n' "$label" $(( slot - last )) "${LAST_CHANGE[$label]}"
+    LAST_CHANGE[$label]="$updated"
+  else
+    printf 'advance[%s]: no new slot since %s\n' "$label" "${LAST_CHANGE[$label]}"
   fi
 }
 
@@ -153,6 +175,7 @@ _heartbeat_tick() {
 
   echo "::group::Heartbeat [${phase}] $(date -u +%FT%TZ)"
   echo "status: ${status}"
+  printf 'runtime: %dh %02dm\n' $(( SECONDS / 3600 )) $(( SECONDS % 3600 / 60 ))
   if [ "${#progress_files[@]}" -gt 0 ]; then
     local progress_file
     progress_file="$(_newest_file "${progress_files[@]}")"
