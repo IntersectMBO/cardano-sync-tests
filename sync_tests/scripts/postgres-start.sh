@@ -23,11 +23,22 @@ export PGUSER="${PGUSER:-postgres}"
 
 # kill running postgres and clear its data
 if [ "${2:-""}" = "-k" ]; then
-  # try to kill whatever is listening on postgres port
-  listening_pid="$(lsof -i:"$PGPORT" -t || echo "")"
-  if [ -n "$listening_pid" ]; then
-    if ! kill "$listening_pid"; then
-      echo "Warning: failed to kill PID $listening_pid on port $PGPORT." >&2
+  # lsof -t lists one PID per backend connection, not just the postmaster,
+  # so there can be several lines to kill, not just one.
+  listening_pids="$(lsof -i:"$PGPORT" -t || true)"
+  if [ -n "$listening_pids" ]; then
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill "$pid" 2>/dev/null || echo "Warning: failed to kill PID $pid on port $PGPORT." >&2
+    done <<< "$listening_pids"
+
+    # wait for postgres to actually release the data dir before wiping it
+    for _ in $(seq 1 30); do
+      [ -z "$(lsof -i:"$PGPORT" -t || true)" ] && break
+      sleep 1
+    done
+    if [ -n "$(lsof -i:"$PGPORT" -t || true)" ]; then
+      echo "Warning: postgres on port $PGPORT did not stop in time." >&2
       echo "Another postgres may be running. Stop it or set PGPORT to a free port." >&2
     fi
   fi

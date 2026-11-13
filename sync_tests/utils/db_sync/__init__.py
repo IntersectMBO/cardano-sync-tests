@@ -43,6 +43,7 @@ def create_db_sync_config(
     pg_user: str | None = None,
     pg_dbname: str | None = None,
     pg_dir: pl.Path | None = None,
+    perf_stats_filename: str = "db_sync_performance_stats.json",
 ) -> DbSyncConfig:
     """Create a DbSyncConfig instance from environment variables and parameters."""
     return db_sync_config.create_db_sync_config(
@@ -53,6 +54,7 @@ def create_db_sync_config(
         pg_user=pg_user,
         pg_dbname=pg_dbname,
         pg_dir=pg_dir,
+        perf_stats_filename=perf_stats_filename,
     )
 
 
