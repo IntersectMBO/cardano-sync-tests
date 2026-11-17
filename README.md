@@ -168,9 +168,11 @@ python3 sync_tests/scripts/sync_static_graphs.py \
   --mode node
 ```
 
-Generates (5 graphs):
+Generates (7 graphs):
 
+- `nodesync_progress.png` - Chain tip over time since start, with era boundaries
 - `nodesync_cpu_consumption.png` - CPU load over slot
+- `nodesync_cpu_consumption_smoothed.png` - CPU load, mean per slot band
 - `nodesync_rss_consumption.png` - RSS memory over slot
 - `nodesync_ram_consumption.png` - Heap memory over slot
 - `nodesync_duration_per_epoch.png` - Sync duration per epoch
