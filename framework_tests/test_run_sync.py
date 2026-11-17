@@ -1,9 +1,9 @@
 """Tests for sync_tests/scripts/run_sync.sh.
 
 pytest is replaced by a small script that records its arguments and writes
-a JUnit file, so the tests pin what the runner adds around it: the report
-with the network and run type read from the options, and pytest's exit
-code kept whatever the report does.
+a JUnit file, so the tests pin what the runner adds around it: the stats
+report with the network and run type read from the options, the results
+upload of a node run, and pytest's exit code kept whatever the reports do.
 """
 
 from __future__ import annotations
@@ -30,24 +30,32 @@ for ((i = 1; i <= $#; i++)); do
       '</testsuite></testsuites>' > "${!j}"
   fi
 done
+if [ -n "${FAKE_PYTEST_RESULTS:-}" ]; then touch "$FAKE_PYTEST_RESULTS"; fi
 exit "${FAKE_PYTEST_EXIT:-0}"
 """
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
-    """Store every uploaded document and confirm its run id."""
+    """Store every stats document and confirm it; confirm every results upload."""
 
     seen: tp.ClassVar[list[dict]] = []
+    uploads: tp.ClassVar[list[str]] = []
 
     def do_PUT(self) -> None:
-        """Record the document and answer with its run id."""
+        """Record the request and answer the way the tcache does."""
         length = int(self.headers.get("Content-Length", 0))
-        doc = json.loads(self.rfile.read(length))
-        _Handler.seen.append(doc)
+        body = self.rfile.read(length)
+        if self.path.startswith("/sync-results/"):
+            _Handler.uploads.append(self.path)
+            answer = {"sync_results": self.path.rsplit("/", 1)[-1], "id": 1}
+        else:
+            doc = json.loads(body)
+            _Handler.seen.append(doc)
+            answer = {"run_id": doc["run_id"]}
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"run_id": doc["run_id"]}).encode())
+        self.wfile.write(json.dumps(answer).encode())
 
     def log_message(self, *args: tp.Any) -> None:
         """Keep the test output clean."""
@@ -57,6 +65,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 def server() -> tp.Iterator[str]:
     """Start a local tcache stand-in and yield its root URL."""
     _Handler.seen = []
+    _Handler.uploads = []
     httpd = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -104,16 +113,28 @@ def _run(
 def test_node_run_is_reported_with_its_options(
     tmp_path: pl.Path, fake_pytest: pl.Path, server: str
 ) -> None:
-    """Pytest gets the arguments as given plus the JUnit file; the report names the network."""
+    """Pytest gets the arguments as given plus the JUnit file; both reports name the run."""
     workdir = tmp_path / "wd"
     workdir.mkdir()
     (workdir / "node_sync_results.json").write_text(
-        json.dumps({"env": "mainnet", "tag_no1": "11.2.0", "sync_time_seconds1": 132111}),
+        json.dumps(
+            {
+                "env": "mainnet",
+                "tag_no1": "11.2.0",
+                "sync_time_seconds1": 132111,
+                "start_sync_time1": "2026-10-28T12:38:51+00:00",
+            }
+        ),
         encoding="utf-8",
     )
     args = ["sync_tests/tests/x.py", "--environment", "mainnet", "--workdir", str(workdir)]
 
-    result = _run(tmp_path, args, {"TCACHE_URL": server})
+    # The sync writes its results during the run, so the file is newer than the run's start.
+    result = _run(
+        tmp_path,
+        args,
+        {"TCACHE_URL": server, "FAKE_PYTEST_RESULTS": str(workdir / "node_sync_results.json")},
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
     recorded = fake_pytest.read_text(encoding="utf-8").split("\n")
@@ -124,18 +145,29 @@ def test_node_run_is_reported_with_its_options(
     assert doc["duration"] == 132111.0
     assert doc["counts"]["total"] == 2
     assert doc["exit_code"] == 0
+    assert _Handler.uploads == ["/sync-results/11.2.0"]
+    assert "stored 11.2.0 on mainnet as run 1" in result.stdout
 
 
 def test_dbsync_run_keeps_the_failing_exit_code(
     tmp_path: pl.Path, fake_pytest: pl.Path, server: str
 ) -> None:
-    """A db-sync run is named as one, and a failed pytest still reports and still fails."""
+    """A db-sync run is named as one, uploads no results, and a failed pytest still fails."""
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    # A db-sync run syncs the node too and leaves node results in its workdir.
+    (workdir / "node_sync_results.json").write_text(
+        json.dumps(
+            {"env": "preview", "tag_no1": "11.2.0", "start_sync_time1": "2026-10-28T12:38:51+00:00"}
+        ),
+        encoding="utf-8",
+    )
     args = [
         "sync_tests/tests/",
         "--db-sync-revision",
         "13.7.2.1",
         "--workdir",
-        str(tmp_path / "wd"),
+        str(workdir),
     ]
 
     result = _run(tmp_path, args, {"TCACHE_URL": server, "FAKE_PYTEST_EXIT": "1"})
@@ -145,6 +177,7 @@ def test_dbsync_run_keeps_the_failing_exit_code(
     (doc,) = _Handler.seen
     assert doc["testrun_name"] == "sync-dbsync-preview"
     assert doc["exit_code"] == 1
+    assert _Handler.uploads == []
 
 
 @pytest.mark.usefixtures("fake_pytest")
