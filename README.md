@@ -160,7 +160,12 @@ sync_tests/scripts/run_sync.sh sync_tests/tests/test_nodesync_artifacts.py \
   --node-revision 11.2.0 --environment mainnet
 ```
 
-CI uses the same runner. The report is off until `ENABLE_TCACHE_STATS=true`,
+A node sync run also uploads its results (`node_sync_results.json` with the
+sync markers and progress files, zipped) to the cache's `/sync-results`, where
+the public sync analyzer reads them. The run is named by the node version,
+the start time and the network in the results file.
+
+CI uses the same runner. Both reports are off until `ENABLE_TCACHE_STATS=true`,
 `TCACHE_BASIC_AUTH` and `TCACHE_URL` are set, as repository variables and
 secrets on CI or in the environment on a laptop. A failed report never
 changes the run's exit code; the job summary shows what happened.
