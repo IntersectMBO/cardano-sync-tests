@@ -2,10 +2,11 @@
 # shellcheck shell=bash
 # run_sync.sh <pytest arguments...>
 #
-# Run the sync tests, then report the run to the tcache. One entry point for
+# Run the sync tests, then report the run to the tcache: its statistics,
+# and for a node sync its results for the sync analyzer. One entry point for
 # CI and a laptop: pytest gets every argument as given, plus a JUnit file in
-# the workdir for the report. The exit code is pytest's; the report never
-# changes it.
+# the workdir for the report. The exit code is pytest's; the reports never
+# change it.
 
 set -uo pipefail
 
@@ -33,10 +34,13 @@ for ((i = 0; i < ${#ARGS[@]}; i++)); do
 done
 
 mkdir -p "$WORKDIR"
-# pytest writes the file only at session end; an old one must not be reported.
-rm -f "$WORKDIR/junit.xml"
+# pytest writes these at session end; an earlier run's must not be reported.
+rm -f "$WORKDIR/junit.xml" "$WORKDIR/node_sync_results.json"
 PYTEST_EXIT=0
 pytest "$@" --junitxml "$WORKDIR/junit.xml" || PYTEST_EXIT=$?
 
 bash "$SCRIPTS_DIR/report_stats.sh" "$WORKDIR" "$PYTEST_EXIT" "$KIND" "$ENVIRONMENT" || :
+if [ "$KIND" = "node" ]; then
+  bash "$SCRIPTS_DIR/report_sync_results.sh" "$WORKDIR" "$ENVIRONMENT" || :
+fi
 exit "$PYTEST_EXIT"
