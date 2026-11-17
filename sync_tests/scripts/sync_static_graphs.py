@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import itertools
 import json
 import logging
 import pathlib as pl
@@ -318,6 +319,8 @@ def _generate_node_graphs(
     log_data = {}
     sync_duration_data = {}
     sync_time_data = {}
+    start_times: dict[str, str | None] = {}
+    era_start_slots: dict[str, int] = {}
 
     for idx, file_path_str in enumerate(file_list):
         file_path = pl.Path(file_path_str)
@@ -356,6 +359,21 @@ def _generate_node_graphs(
                     era: sync_results.get(f"{era}_sync_duration_secs", 0) for era in eras
                 }
                 sync_time_data[dataset_name] = sync_time_per_era
+                start_times[dataset_name] = sync_results.get("start_sync_time1")
+
+                # Which eras a file describes depends on when its first sample
+                # landed, so the file that describes the most sets the lines.
+                file_era_starts = _era_start_slots(
+                    {
+                        era: (
+                            sync_results.get(f"{era}_start_epoch"),
+                            sync_results.get(f"{era}_slots_in_era"),
+                        )
+                        for era in eras
+                    }
+                )
+                if len(file_era_starts) > len(era_start_slots):
+                    era_start_slots = file_era_starts
 
         except Exception:
             LOGGER.exception("Unexpected error with file %s", file_path)
@@ -371,6 +389,9 @@ def _generate_node_graphs(
     )
     generate_duration_per_epoch_graphs(sync_duration_data, output_path, dpi=dpi, fmt=fmt)
     generate_sync_time_per_era_graphs(sync_time_data, eras, output_path, dpi=dpi, fmt=fmt)
+    generate_sync_progress_graph(
+        log_data, start_times, era_start_slots, output_path, dpi=dpi, fmt=fmt
+    )
 
 
 def _generate_dbsync_graphs(
@@ -447,6 +468,116 @@ def _generate_dbsync_graphs(
         window_minutes=throughput_window,
     )
     generate_dbsync_era_breakdown_graph(datasets, output_path, dpi=dpi, fmt=fmt)
+
+
+def _era_start_slots(
+    eras: dict[str, tuple[int | None, int | None]],
+) -> dict[str, int]:
+    """Return the first slot of each era the run went through after the first.
+
+    The results file counts only the slots the run saw of an era, so a run
+    that joined the chain after an era's first epoch, or a testnet file that
+    describes only the eras the run went through, counts too few. The epoch
+    length of an era is its seen slots over its seen epochs, which holds
+    either way, and the start slot follows from the start epochs. Epochs
+    before the first described era are taken to be as long as its epochs.
+
+    Args:
+        eras: Per era in chain order, its start epoch and the slots the run
+            saw of it; (None, None) for an era the results file does not
+            describe.
+
+    Returns:
+        The first slot of each described era after the first described one;
+        empty when fewer than two eras are described.
+    """
+    described = [
+        (era, int(start_epoch), int(slots))
+        for era, (start_epoch, slots) in eras.items()
+        if start_epoch is not None and slots is not None
+    ]
+    starts: dict[str, int] = {}
+    running = 0.0
+    for (_, prev_start, prev_slots), (era, start, _) in itertools.pairwise(described):
+        epochs = start - prev_start
+        if epochs <= 0:
+            return {}
+        if not starts:
+            running = prev_start * prev_slots / epochs
+        running += prev_slots
+        starts[era] = int(running)
+    return starts
+
+
+def generate_sync_progress_graph(
+    datasets: dict[str, dict],
+    start_times: dict[str, str | None],
+    era_start_slots: dict[str, int],
+    output_dir: pl.Path,
+    dpi: int,
+    fmt: str,
+) -> None:
+    """Plot the chain tip against the time since each run started.
+
+    Every run starts at hour zero, so runs that started weeks apart share one
+    time axis. A dotted line marks the first slot of each era, labelled at the
+    right edge.
+
+    Args:
+        datasets: The `log_values` of each run, keyed by its label.
+        start_times: The `start_sync_time1` of each run, keyed by its label;
+            the first sample stands in for a missing one.
+        era_start_slots: The first slot of each era to mark.
+        output_dir: Output directory for the graph.
+        dpi: Image resolution.
+        fmt: Image format.
+    """
+    plt.figure(figsize=(8, 6))
+    palette = sns.color_palette("tab10")
+    highest_tip = 0
+
+    for idx, (dataset_name, data) in enumerate(datasets.items()):
+        try:
+            samples = sorted(
+                (datetime.datetime.fromisoformat(stamp), int(value["tip"]))
+                for stamp, value in data.items()
+                if value.get("tip") is not None
+            )
+            started = start_times.get(dataset_name)
+            start = datetime.datetime.fromisoformat(started) if started else samples[0][0]
+            hours = [(stamp - start).total_seconds() / 3600 for stamp, __ in samples]
+        except (IndexError, TypeError, ValueError):
+            LOGGER.warning("No usable tip samples for %s", dataset_name)
+            continue
+        million_slots = [tip / 1_000_000 for __, tip in samples]
+        highest_tip = max(highest_tip, samples[-1][1])
+        plt.plot(hours, million_slots, label=dataset_name, color=palette[idx % len(palette)])
+
+    ax = plt.gca()
+    # Only the eras the runs reached: a line above the data would stretch the axis.
+    for era, slot in era_start_slots.items():
+        if slot > highest_tip:
+            continue
+        plt.axhline(slot / 1_000_000, color="grey", linewidth=0.6, linestyle=":")
+        ax.text(
+            0.995,
+            slot / 1_000_000,
+            era,
+            transform=ax.get_yaxis_transform(),
+            ha="right",
+            va="bottom",
+            fontsize=7,
+            color="grey",
+        )
+
+    plt.title("Sync Progress")
+    plt.xlabel("Time since start [hours]")
+    plt.ylabel("Chain tip [million slots]")
+    plt.legend(loc="upper left")
+    plt.tight_layout()
+    _savefig(output_dir / f"nodesync_progress.{fmt}", dpi=dpi, fmt=fmt)
+    plt.close()
+    LOGGER.info("Successfully generated node-sync progress graph.")
 
 
 def generate_resource_consumption_graphs(

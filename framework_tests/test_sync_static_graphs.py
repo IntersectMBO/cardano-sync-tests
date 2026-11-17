@@ -177,7 +177,12 @@ def test_generate_static_graphs_node_mode_produces_pngs(tmp_path: pl.Path) -> No
             },
         },
         "sync_duration_per_epoch": {"0": 60, "1": 55},
-        "eras_in_test": ["shelley"],
+        "eras_in_test": ["byron", "shelley"],
+        "start_sync_time1": "2026-01-01T09:59:00+00:00",
+        "byron_start_epoch": 0,
+        "byron_slots_in_era": 100,
+        "shelley_start_epoch": 1,
+        "shelley_slots_in_era": 200,
     }
     results_file = tmp_path / "node_sync_preview_results.json"
     results_file.write_text(json.dumps(results), encoding="utf-8")
@@ -193,4 +198,81 @@ def test_generate_static_graphs_node_mode_produces_pngs(tmp_path: pl.Path) -> No
 
     produced = {p.name for p in output_dir.glob("*.png")}
     assert produced, "expected at least one PNG to be generated"
+    assert "nodesync_progress.png" in produced
     assert all(p.stat().st_size > 0 for p in output_dir.glob("*.png"))
+
+
+def test_sync_progress_graph_plots_hours_against_million_slots(tmp_path: pl.Path) -> None:
+    """Hours count from the run's start time; without one, from its first sample."""
+    datasets = {
+        "11.2.0": {
+            "2026-01-01 11:30:00+00:00": {"tip": 1_250_000},
+            "2026-01-01 10:00:00+00:00": {"tip": 500_000},
+            "2026-01-01 12:00:00+00:00": {},
+        },
+        "11.1.0": {
+            "2026-03-01 00:00:00+00:00": {"tip": 0},
+            "2026-03-01 02:00:00+00:00": {"tip": 1_000_000},
+        },
+    }
+    start_times = {"11.2.0": "2026-01-01T09:30:00+00:00", "11.1.0": None}
+    plotted = {}
+
+    def capture_figure(path: pl.Path, **_kwargs: object) -> None:
+        ax = sync_static_graphs.plt.gca()
+        plotted[path.name] = [
+            (line.get_label(), list(line.get_xdata()), list(line.get_ydata())) for line in ax.lines
+        ]
+
+    with mock.patch.object(sync_static_graphs, "_savefig", side_effect=capture_figure):
+        sync_static_graphs.generate_sync_progress_graph(
+            datasets, start_times, {"shelley": 1_000_000}, tmp_path, dpi=50, fmt="png"
+        )
+
+    runs = plotted["nodesync_progress.png"][:2]
+    assert runs == [
+        ("11.2.0", [0.5, 2.0], [0.5, 1.25]),
+        ("11.1.0", [0.0, 2.0], [0.0, 1.0]),
+    ]
+    era_line = plotted["nodesync_progress.png"][2]
+    assert era_line[2] == [1.0, 1.0]
+
+
+def test_sync_progress_graph_skips_a_run_it_cannot_time(tmp_path: pl.Path) -> None:
+    """A run with a naive start time must not stop the others; eras past the data get no line."""
+    datasets = {
+        "bad": {"2026-01-01 10:00:00+00:00": {"tip": 100}},
+        "good": {"2026-01-01 10:00:00+00:00": {"tip": 100}},
+    }
+    start_times = {"bad": "2026-01-01T09:00:00", "good": None}
+    plotted = {}
+
+    def capture_figure(path: pl.Path, **_kwargs: object) -> None:
+        ax = sync_static_graphs.plt.gca()
+        plotted[path.name] = [line.get_label() for line in ax.lines]
+
+    with mock.patch.object(sync_static_graphs, "_savefig", side_effect=capture_figure):
+        sync_static_graphs.generate_sync_progress_graph(
+            datasets, start_times, {"shelley": 50, "allegra": 1_000}, tmp_path, dpi=50, fmt="png"
+        )
+
+    assert plotted["nodesync_progress.png"][:1] == ["good"]
+    assert len(plotted["nodesync_progress.png"]) == 2
+
+
+def test_era_start_slots_follow_the_start_epochs() -> None:
+    """A run that joined at epoch 1 saw 3 byron epochs of 10 slots and 5 shelley of 20.
+
+    Byron therefore starts at slot 10, shelley at 40 and mary at 140; allegra is not
+    in the file and gets no line, and neither does byron, the first era.
+    """
+    starts = sync_static_graphs._era_start_slots(
+        {"byron": (1, 30), "shelley": (4, 100), "allegra": (None, None), "mary": (9, 50)}
+    )
+    assert starts == {"shelley": 40, "mary": 140}
+
+
+def test_era_start_slots_need_two_described_eras() -> None:
+    """A results file from before the era fields, or with one era, gets no lines."""
+    assert sync_static_graphs._era_start_slots({"byron": (None, None)}) == {}
+    assert sync_static_graphs._era_start_slots({"conway": (646, 72_144_000)}) == {}
