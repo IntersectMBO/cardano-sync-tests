@@ -148,6 +148,23 @@ waiting. Their initial Byron era starts at epoch zero even if the first tip quer
 arrives later; per-epoch timings include only observed epochs. Resumed runs retain
 the first-observation timing boundary. Older results excluded startup waiting.
 
+## Run stats on the tcache
+
+A run can report its counts, sync time and versions to the
+testing-results-cache (`PUT /stats`), the same way cardano-node-tests does.
+Run the tests through the runner instead of calling pytest; it takes the
+same arguments and reports the run when it ends:
+
+```sh
+sync_tests/scripts/run_sync.sh sync_tests/tests/test_nodesync_artifacts.py \
+  --node-revision 11.2.0 --environment mainnet
+```
+
+CI uses the same runner. The report is off until `ENABLE_TCACHE_STATS=true`,
+`TCACHE_BASIC_AUTH` and `TCACHE_URL` are set, as repository variables and
+secrets on CI or in the environment on a laptop. A failed report never
+changes the run's exit code; the job summary shows what happened.
+
 ## Logs
 
 - Node log: `test_workdir/node_sync.log`

@@ -82,6 +82,10 @@ jobs:
 
       - name: Run node sync pytest
         shell: bash
+        env:
+          TCACHE_BASIC_AUTH: ${{ secrets.TCACHE_BASIC_AUTH }}
+          TCACHE_URL: ${{ secrets.TCACHE_URL }}
+          ENABLE_TCACHE_STATS: ${{ vars.ENABLE_TCACHE_STATS }}
         run: |
           set -euo pipefail
 
@@ -96,7 +100,7 @@ jobs:
           {
             echo "=== ci step started $(date -u +%FT%TZ) ==="
             nix develop -v --accept-flake-config .#python --command \
-              pytest sync_tests/tests/test_nodesync_artifacts.py \
+              bash sync_tests/scripts/run_sync.sh sync_tests/tests/test_nodesync_artifacts.py \
               --environment "${{ inputs.environment }}" \
               --node-revision "${{ steps.rev.outputs.node_revision }}" \
               --node-config-source "${{ inputs.node_config_source }}"
