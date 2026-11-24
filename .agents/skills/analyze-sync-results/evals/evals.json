@@ -1,0 +1,23 @@
+{
+  "skill_name": "analyze-sync-results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Compare the mainnet sync performance of 11.2.1 and 11.2.3. The files are called cardano-node-11.2.1.json and cardano-node-11.2.3.json.",
+      "expected_output": "Ask for local artifact paths or GitHub Actions run URLs before accessing results. Do not search an assumed results directory or invent measurements.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Analyze this node-sync run and tell me whether anything looks concerning: https://github.com/IntersectMBO/cardano-sync-tests/actions/runs/44747763247",
+      "expected_output": "Read the repository analysis guide, inspect the explicit GitHub run and artifacts, download available evidence into isolated directories, and analyze the actual layout. Identify the tested node revision separately from the harness SHA. Do not ask for a local path or invent an unsupplied baseline. Distinguish observations from regression claims and handle expired artifacts honestly.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I downloaded two mainnet runs to /workspace/sync-run-a and /workspace/sync-run-b. Each contains node_sync_results.json and node_sync.log. Compare the builds and write a short Slack summary. Don't edit any files.",
+      "expected_output": "Use only the supplied locations and read the guide. If either path is missing, ask for a correction rather than searching elsewhere. Otherwise verify build identities, configuration, timing boundaries, sample filtering, and matching chain ranges before comparing metrics. Keep the Slack summary free of internal paths and unsupported causal claims. Do not create graphs or a report file without authorization.",
+      "files": []
+    }
+  ]
+}
