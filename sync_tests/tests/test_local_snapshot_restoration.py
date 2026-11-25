@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 import os
 import pathlib as pl
@@ -31,15 +30,17 @@ POST_SYNC_WAIT_MINUTES = 20
 def local_restoration_result(
     request: FixtureRequest,
     sync_context: SyncContext,
+    snapshot_created: dict[str, tp.Any],
 ) -> tp.Generator[dict[str, tp.Any], None, None]:
     """Restore db-sync from a local snapshot, sync, and yield result data.
 
-    Reads snapshot metadata written by a prior snapshot creation run. Run the
-    snapshot_creation marked tests first to produce that metadata.
+    Depends on the snapshot_created fixture directly so pytest always runs
+    snapshot creation first, regardless of test file collection order.
 
     Args:
         request: Pytest fixture request for CLI options.
         sync_context: Shared session context.
+        snapshot_created: Snapshot metadata from the snapshot_creation fixture.
 
     Yields:
         Dict with restoration timing, tip data, and sync results.
@@ -65,6 +66,7 @@ def local_restoration_result(
         env=env,
         workdir=sync_context.workdir,
         pg_port=pg_port,
+        perf_stats_filename="db_sync_performance_stats_restoration.json",
     )
 
     platform_system, platform_release, platform_version = helpers.get_os_type()
@@ -79,17 +81,7 @@ def local_restoration_result(
     db_sync.create_database()
 
     # restore snapshot
-    snapshot_state_file = sync_context.workdir / "sync_session_state.json"
-    if not snapshot_state_file.exists():
-        msg = f"Snapshot metadata file not found: {snapshot_state_file}"
-        raise FileNotFoundError(msg)
-    try:
-        with open(snapshot_state_file, encoding="utf-8") as state_fh:
-            snapshot_data = json.load(state_fh)
-        snapshot_file = snapshot_data["snapshot_file"]
-    except (json.JSONDecodeError, KeyError) as exc:
-        msg = f"Invalid snapshot metadata in {snapshot_state_file}: {exc}"
-        raise ValueError(msg) from exc
+    snapshot_file = snapshot_created["snapshot_file"]
     LOGGER.info("Restoring from snapshot: %s", snapshot_file)
     restoration_time = db_sync.restore_db_sync_from_snapshot(
         config,

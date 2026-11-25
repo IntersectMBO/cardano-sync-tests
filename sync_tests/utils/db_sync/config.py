@@ -80,6 +80,7 @@ def create_db_sync_config(
     pg_user: str | None = None,
     pg_dbname: str | None = None,
     pg_dir: pl.Path | None = None,
+    perf_stats_filename: str = "db_sync_performance_stats.json",
 ) -> DbSyncConfig:
     """Create a DbSyncConfig instance from environment variables and parameters.
 
@@ -91,6 +92,10 @@ def create_db_sync_config(
         pg_user: PostgreSQL user (defaults to current system user).
         pg_dbname: PostgreSQL database name (defaults to env name).
         pg_dir: PostgreSQL data directory (defaults to ``workdir / "postgres"``).
+        perf_stats_filename: Name of the perf-stats file under
+            ``workdir / "cardano-db-sync"``. Give each independent db-sync run in
+            the same session a distinct name so one run's stats file doesn't
+            overwrite another's.
 
     Returns:
         DbSyncConfig: A configuration instance with all paths and settings.
@@ -113,7 +118,7 @@ def create_db_sync_config(
         pg_dir = workdir / "postgres"
 
     # Build all paths relative to workdir.
-    perf_stats_file = workdir / "cardano-db-sync/db_sync_performance_stats.json"
+    perf_stats_file = workdir / "cardano-db-sync" / perf_stats_filename
     node_log_file = workdir / "node_sync.log"
     db_sync_log_file = workdir / "db_sync.log"
     epoch_sync_times_file = workdir / "cardano-db-sync/epoch_sync_times_dump.json"

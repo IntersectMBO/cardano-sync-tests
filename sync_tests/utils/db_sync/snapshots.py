@@ -269,9 +269,12 @@ def create_db_sync_snapshot_stage_2(config: DbSyncConfig, stage_2_cmd: str) -> s
             (line for line in result.stdout.splitlines() if line.startswith("Created")),
             "Snapshot creation output not found.",
         )
-        snapshot_path = (
-            snapshot_line.split()[1] if "Created" in snapshot_line else "Snapshot path unknown"
-        )
+        if "Created" in snapshot_line:
+            # The script writes the snapshot relative to db_sync_dir (its cwd above),
+            # not the caller's cwd, so anchor it here to keep the path meaningful later.
+            snapshot_path = str(db_sync_dir / snapshot_line.split()[1])
+        else:
+            snapshot_path = "Snapshot path unknown"
     except subprocess.TimeoutExpired as e:
         msg = "Snapshot creation timed out."
         raise RuntimeError(msg) from e
